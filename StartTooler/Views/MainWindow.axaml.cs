@@ -1,5 +1,7 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Platform.Storage;
+using StartTooler.Models;
 using StartTooler.ViewModels;
 
 namespace StartTooler.Views;
@@ -26,6 +28,16 @@ public partial class MainWindow : Window
         {
             var folderPath = folders[0].Path.LocalPath;
             viewModel.ScanFolder(folderPath);
+        }
+    }
+
+    private void OnCardDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is Border border && border.DataContext is MediaFile mediaFile)
+        {
+            var previewWindow = new PreviewWindow();
+            previewWindow.ShowFile(mediaFile);
+            previewWindow.Show(this);
         }
     }
 }
