@@ -2,14 +2,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="StartTooler.App"
              xmlns:local="using:StartTooler"
-             xmlns:converters="using:StartTooler.Converters"
              RequestedThemeVariant="Default">
              <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
-
-    <Application.Resources>
-        <converters:ThumbnailPathConverter x:Key="ThumbnailPathConverter"/>
-        <converters:BytesToMBConverter x:Key="BytesToMBConverter"/>
-    </Application.Resources>
 
     <Application.DataTemplates>
         <local:ViewLocator/>
