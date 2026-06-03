@@ -1,0 +1,152 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:StartTooler.ViewModels"
+        xmlns:m="using:StartTooler.Models"
+        xmlns:layout="using:Avalonia.Layout"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
+        x:Class="StartTooler.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="StartTooler - 媒体文件管理器"
+        Width="1200" Height="800">
+
+    <Design.DataContext>
+        <vm:MainWindowViewModel/>
+    </Design.DataContext>
+
+    <Window.Styles>
+        <!-- 进度条样式 -->
+        <Style Selector="ProgressBar">
+            <Setter Property="Height" Value="4"/>
+            <Setter Property="Margin" Value="0,5,0,0"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- 顶部工具栏 -->
+        <Border Grid.Row="0" Background="#2D2D30" Padding="10">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <Button Content="选择目录" 
+                        Click="OnSelectDirectoryClicked"
+                        Padding="15,5"
+                        Background="#0E639C"
+                        Foreground="White"/>
+                
+                <Button Content="刷新" 
+                        Command="{Binding RefreshCurrentDirectoryCommand}"
+                        Padding="15,5"
+                        IsEnabled="{Binding !IsScanning}"/>
+                
+                <Button Content="取消扫描" 
+                        Command="{Binding CancelScanCommand}"
+                        Padding="15,5"
+                        Background="#C50F1F"
+                        Foreground="White"
+                        IsEnabled="{Binding IsScanning}"/>
+                
+                <TextBlock Text="{Binding StatusMessage}" 
+                           VerticalAlignment="Center"
+                           Foreground="White"
+                           Margin="20,0,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 主内容区域 -->
+        <Grid Grid.Row="1" ColumnDefinitions="300,*">
+            <!-- 左侧目录树 -->
+            <Border Grid.Column="0" BorderBrush="#3F3F46" BorderThickness="0,0,1,0" Background="#252526">
+                <ScrollViewer>
+                    <TreeView ItemsSource="{Binding DirectoryTree}" 
+                              SelectedItem="{Binding SelectedDirectory}"
+                              Margin="5">
+                        <TreeView.ItemTemplate>
+                            <TreeDataTemplate ItemsSource="{Binding Children}">
+                                <TextBlock Text="{Binding Name}" 
+                                           Foreground="White"
+                                           Padding="2,2"/>
+                            </TreeDataTemplate>
+                        </TreeView.ItemTemplate>
+                    </TreeView>
+                </ScrollViewer>
+            </Border>
+
+            <!-- 右侧媒体文件网格 -->
+            <Border Grid.Column="1" Background="#1E1E1E">
+                <ScrollViewer>
+                    <ItemsControl ItemsSource="{Binding MediaFiles}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel ItemWidth="180" ItemHeight="220" Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="m:MediaFile">
+                                <Border Background="#2D2D30" 
+                                        CornerRadius="5"
+                                        Margin="5"
+                                        Padding="10"
+                                        ToolTip.Tip="{Binding FilePath}">
+                                    <StackPanel Spacing="5">
+                                        <!-- 缩略图显示 -->
+                                        <Border Background="#3F3F46" 
+                                                Height="140" 
+                                                CornerRadius="3"
+                                                ClipToBounds="True">
+                                            <Image Stretch="UniformToFill">
+                                                <Image.Source>
+                                                    <Binding Path="ThumbnailPath" Converter="{StaticResource ThumbnailPathConverter}"/>
+                                                </Image.Source>
+                                            </Image>
+                                        </Border>
+                                        
+                                        <!-- 文件信息 -->
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="{Binding FileName}" 
+                                                       Foreground="White"
+                                                       FontSize="12"
+                                                       TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            
+                                            <TextBlock Foreground="#B0B0B0" FontSize="10">
+                                                <Run Text="{Binding FileSize, Converter={StaticResource BytesToMBConverter}, StringFormat='{}{0:F2} MB'}"/>
+                                            </TextBlock>
+                                            
+                                            <TextBlock Text="{Binding LastModified, StringFormat='yyyy-MM-dd HH:mm'}" 
+                                                       Foreground="#808080" 
+                                                       FontSize="9"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- 底部状态栏 -->
+        <Border Grid.Row="2" Background="#007ACC" Padding="10,5">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="{Binding StatusMessage}" 
+                           Foreground="White"
+                           VerticalAlignment="Center"/>
+                
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                    <TextBlock Text="{Binding MediaFiles.Count, StringFormat='共 {0} 个文件'}" 
+                               Foreground="White"
+                               VerticalAlignment="Center"/>
+                    
+                    <ProgressBar Minimum="0" 
+                                Maximum="100" 
+                                Value="{Binding ScanProgress}"
+                                Width="150"
+                                IsIndeterminate="{Binding IsScanning}"
+                                IsVisible="{Binding IsScanning}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
