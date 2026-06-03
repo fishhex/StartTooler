@@ -3,6 +3,8 @@ using Avalonia.Input;
 using Avalonia.Platform.Storage;
 using StartTooler.Models;
 using StartTooler.ViewModels;
+using System;
+using System.Diagnostics;
 
 namespace StartTooler.Views;
 
@@ -35,9 +37,35 @@ public partial class MainWindow : Window
     {
         if (sender is Border border && border.DataContext is MediaFile mediaFile)
         {
-            var previewWindow = new PreviewWindow();
-            previewWindow.ShowFile(mediaFile);
-            previewWindow.Show(this);
+            if (mediaFile.FileType == "视频")
+            {
+                // 视频：直接使用系统默认播放器打开
+                OpenWithDefaultPlayer(mediaFile.FilePath);
+            }
+            else
+            {
+                // 图片：显示预览窗口
+                var previewWindow = new PreviewWindow();
+                previewWindow.ShowFile(mediaFile);
+                previewWindow.Show(this);
+            }
+        }
+    }
+
+    private void OpenWithDefaultPlayer(string filePath)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = filePath,
+                UseShellExecute = true
+            };
+            Process.Start(psi);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error opening file: {ex.Message}");
         }
     }
 }
