@@ -34,23 +34,88 @@ public class ThumbnailService
 
         try
         {
-            // 如果是图片，直接返回原路径
             if (mediaFile.FileType == "图片")
             {
-                mediaFile.ThumbnailPath = mediaFile.FilePath;
-                return mediaFile.FilePath;
+                mediaFile.ThumbnailPath = await GenerateImageThumbnailAsync(mediaFile.FilePath);
+                return mediaFile.ThumbnailPath;
             }
 
-            // 如果是视频，使用 FFmpeg 生成首帧缩略图
             if (mediaFile.FileType == "视频")
             {
-                return await GenerateVideoThumbnailAsync(mediaFile.FilePath);
+                mediaFile.ThumbnailPath = await GenerateVideoThumbnailAsync(mediaFile.FilePath);
+                return mediaFile.ThumbnailPath;
             }
 
             return null;
         }
         catch (Exception)
         {
+            return null;
+        }
+    }
+
+    private async Task<string?> GenerateImageThumbnailAsync(string imagePath)
+    {
+        try
+        {
+            var fileName = $"{GetFileHash(imagePath)}_image.jpg";
+            var thumbnailPath = Path.Combine(_thumbnailCacheDir, fileName);
+
+            if (File.Exists(thumbnailPath))
+            {
+                return thumbnailPath;
+            }
+
+            if (!IsFFmpegAvailable())
+            {
+                Console.WriteLine("FFmpeg 未安装或不在系统 PATH 中");
+                return null;
+            }
+
+            var arguments = $"-i \"{imagePath}\" -vf \"scale=160:120:force_original_aspect_ratio=decrease,pad=160:120:(ow-iw)/2:(oh-ih)/2:white\" -frames:v 1 -q:v 5 -y \"{thumbnailPath}\"";
+
+            var processInfo = new ProcessStartInfo
+            {
+                FileName = "ffmpeg",
+                Arguments = arguments,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(processInfo);
+            if (process == null)
+            {
+                Console.WriteLine("无法启动 FFmpeg 进程");
+                return null;
+            }
+
+            var completed = await Task.Run(() => process.WaitForExit(30000));
+
+            if (!completed || process.ExitCode != 0)
+            {
+                var error = await process.StandardError.ReadToEndAsync();
+                Console.WriteLine($"FFmpeg 执行失败: {error}");
+
+                if (File.Exists(thumbnailPath))
+                {
+                    File.Delete(thumbnailPath);
+                }
+
+                return null;
+            }
+
+            if (File.Exists(thumbnailPath) && new FileInfo(thumbnailPath).Length > 0)
+            {
+                return thumbnailPath;
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"生成缩略图时出错: {ex.Message}");
             return null;
         }
     }
@@ -79,13 +144,7 @@ public class ThumbnailService
                 return null;
             }
 
-            // 构建 FFmpeg 命令
-            // -i: 输入文件
-            // -ss 00:00:01: 从第1秒开始提取（避免黑屏）
-            // -vframes 1: 只提取1帧
-            // -vf scale=320:-1: 缩放宽度为320px，高度自适应
-            // -q:v 5: JPEG 质量（1-31，越小质量越高）
-            var arguments = $"-i \"{videoPath}\" -ss 00:00:01 -vframes 1 -vf scale=320:-1 -q:v 5 -y \"{thumbnailPath}\"";
+            var arguments = $"-i \"{videoPath}\" -ss 00:00:01 -vframes 1 -vf \"scale=160:120:force_original_aspect_ratio=decrease,pad=160:120:(ow-iw)/2:(oh-ih)/2:white\" -q:v 5 -y \"{thumbnailPath}\"";
 
             var processInfo = new ProcessStartInfo
             {

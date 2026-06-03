@@ -43,33 +43,41 @@
         </Border>
 
         <!-- 媒体文件网格视图 -->
-        <ScrollViewer Grid.Row="2">
-            <ItemsControl ItemsSource="{Binding MediaFiles}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel Orientation="Horizontal" ItemWidth="180" ItemHeight="220"/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
+        <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
+            <DockPanel>
+                <ItemsControl ItemsSource="{Binding MediaFiles}" HorizontalAlignment="Center">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" ItemWidth="180" ItemHeight="220"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border Margin="8" 
+                        <Border Width="164" 
+                                Height="204"
+                                Margin="8" 
                                 BorderBrush="#E0E0E0" 
                                 BorderThickness="1"
                                 CornerRadius="4"
                                 Background="White">
-                            <StackPanel>
-                                <!-- 缩略图 -->
-                                <Image Width="160" 
-                                       Height="120" 
-                                       Stretch="UniformToFill"
-                                       Margin="10,10,10,5">
-                                    <Image.Source>
-                                        <Binding Path="ThumbnailPath" Converter="{StaticResource ThumbnailConverter}"/>
-                                    </Image.Source>
-                                </Image>
+                            <Grid RowDefinitions="Auto, *, Auto, Auto">
                                 
-                                <!-- 文件名 -->
-                                <TextBlock Text="{Binding FileName}" 
+                                <Border Grid.Row="0"
+                                        Height="120"
+                                        Margin="10,10,10,5"
+                                        Background="#F0F0F0"
+                                        ClipToBounds="True">
+                                    <Image Stretch="UniformToFill"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center">
+                                        <Image.Source>
+                                            <Binding Path="ThumbnailPath" Converter="{StaticResource ThumbnailConverter}"/>
+                                        </Image.Source>
+                                    </Image>
+                                </Border>
+                                
+                                <TextBlock Grid.Row="1"
+                                           Text="{Binding FileName}" 
                                            FontSize="11"
                                            FontWeight="Medium"
                                            TextWrapping="Wrap"
@@ -78,22 +86,24 @@
                                            Margin="8,5,8,2"
                                            Foreground="#333333"/>
                                 
-                                <!-- 文件信息 -->
-                                <TextBlock Text="{Binding FileType}" 
+                                <TextBlock Grid.Row="2"
+                                           Text="{Binding FileType}" 
                                            FontSize="9"
                                            Foreground="#999999"
                                            Margin="8,0,8,2"/>
                                 
-                                <TextBlock Text="{Binding FormattedFileSize}" 
+                                <TextBlock Grid.Row="3"
+                                           Text="{Binding FormattedFileSize}" 
                                            FontSize="9"
                                            Foreground="#999999"
                                            Margin="8,0,8,5"/>
-                            </StackPanel>
+                            </Grid>
                         </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
-        </ScrollViewer>
+        </DockPanel>
+    </ScrollViewer>
     </Grid>
 
 </Window>
