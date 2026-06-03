@@ -9,6 +9,7 @@ public class MediaFile
     public string FileType { get; set; } = string.Empty; // "Image" or "Video"
     public DateTime ModifiedTime { get; set; }
     public long FileSize { get; set; }
+    public string? ThumbnailPath { get; set; } // 缩略图路径
     
     public string FormattedFileSize
     {

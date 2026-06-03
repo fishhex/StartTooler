@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:StartTooler.ViewModels"
+        xmlns:converters="using:StartTooler.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
@@ -8,6 +9,10 @@
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="媒体文件扫描工具">
+
+    <Window.Resources>
+        <converters:ThumbnailPathToBitmapConverter x:Key="ThumbnailConverter"/>
+    </Window.Resources>
 
     <Window.Styles>
         <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
@@ -45,6 +50,19 @@
                   GridLinesVisibility="Horizontal"
                   Margin="10">
             <DataGrid.Columns>
+                <!-- 缩略图列 -->
+                <DataGridTemplateColumn Header="预览" Width="*">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Image Width="80" Height="60" Stretch="UniformToFill">
+                                <Image.Source>
+                                    <Binding Path="ThumbnailPath" Converter="{StaticResource ThumbnailConverter}"/>
+                                </Image.Source>
+                            </Image>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                
                 <DataGridTextColumn Header="文件名" 
                                     Binding="{Binding FileName}"
                                     Width="2*"/>
