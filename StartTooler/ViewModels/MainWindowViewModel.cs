@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using StartTooler.Models;
 using StartTooler.Services;
 
@@ -25,16 +26,32 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private string _statusMessage = "请选择一个文件夹开始扫描";
 
+    [ObservableProperty]
+    private ObservableCollection<RecentFolder> _recentFolders = new();
+
+    [ObservableProperty]
+    private bool _isSidebarExpanded = true;
+
+    [ObservableProperty]
+    private bool _isSidebarCollapsed;
+
     public MainWindowViewModel()
     {
         _fileScanService = new FileScanService();
         _thumbnailService = new ThumbnailService();
+        LoadRecentFolders();
     }
 
     public async void ScanFolder(string folderPath)
     {
         if (string.IsNullOrWhiteSpace(folderPath))
             return;
+
+        // 保存到最近打开的文件夹
+        DatabaseService.Instance.SaveRecentFolder(folderPath);
+        
+        // 重新加载最近文件夹列表
+        LoadRecentFolders();
 
         IsScanning = true;
         SelectedFolderPath = folderPath;
@@ -93,5 +110,47 @@ public partial class MainWindowViewModel : ViewModelBase
         }
 
         StatusMessage = $"扫描完成，共找到 {totalCount} 个媒体文件，缩略图生成完毕";
+    }
+
+    /// <summary>
+    /// 加载最近打开的文件夹列表
+    /// </summary>
+    private void LoadRecentFolders()
+    {
+        try
+        {
+            var recentFolders = DatabaseService.Instance.GetRecentFolders(10);
+            RecentFolders.Clear();
+            foreach (var folder in recentFolders)
+            {
+                RecentFolders.Add(folder);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"加载最近文件夹失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 切换侧边栏展开/折叠状态
+    /// </summary>
+    [RelayCommand]
+    public void ToggleSidebar()
+    {
+        IsSidebarExpanded = !IsSidebarExpanded;
+        IsSidebarCollapsed = !IsSidebarCollapsed;
+    }
+
+    /// <summary>
+    /// 选择最近打开的文件夹
+    /// </summary>
+    [RelayCommand]
+    public void SelectRecentFolder(string folderPath)
+    {
+        if (!string.IsNullOrWhiteSpace(folderPath))
+        {
+            ScanFolder(folderPath);
+        }
     }
 }

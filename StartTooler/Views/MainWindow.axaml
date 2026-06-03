@@ -6,6 +6,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="StartTooler.Views.MainWindow"
+        x:Name="Root"
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="媒体文件扫描工具">
@@ -22,9 +23,31 @@
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <DockPanel>
         <!-- 顶部工具栏 -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="10" Spacing="10">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="10" Spacing="10">
+            <!-- 侧边栏折叠/展开按钮 -->
+            <Button Width="32"
+                    Height="32"
+                    Padding="0"
+                    Command="{Binding ToggleSidebarCommand}"
+                    ToolTip.Tip="切换侧边栏">
+                <Grid>
+                    <!-- 展开状态的图标（左箭头） -->
+                    <Path Data="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" 
+                          Fill="#666666"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          IsVisible="{Binding IsSidebarExpanded}"/>
+                    <!-- 折叠状态的图标（右箭头） -->
+                    <Path Data="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" 
+                          Fill="#666666"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          IsVisible="{Binding IsSidebarCollapsed}"/>
+                </Grid>
+            </Button>
+            
             <Button Content="选择文件夹" 
                     Click="OnSelectFolderButton_Click"
                     Padding="15,8"
@@ -35,77 +58,118 @@
                        Foreground="Gray"/>
         </StackPanel>
 
-        <!-- 状态栏 -->
-        <Border Grid.Row="1" Background="#F5F5F5" Padding="10,5">
-            <TextBlock Text="{Binding StatusMessage}" 
-                       FontSize="12"
-                       Foreground="#666666"/>
+        <!-- 左侧边栏 - 最近打开的文件夹 -->
+        <Border DockPanel.Dock="Left"
+                Width="250"
+                Margin="10,0,5,10" 
+                Padding="10"
+                IsVisible="{Binding IsSidebarExpanded}">
+            <Grid RowDefinitions="Auto,*">
+                <TextBlock Grid.Row="0" Text="最近打开的文件夹:" 
+                           FontSize="13" 
+                           FontWeight="Medium"
+                           Margin="0,0,0,10"/>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding RecentFolders}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Content="{Binding FolderName}" 
+                                        ToolTip.Tip="{Binding FolderPath}"
+                                        Margin="0,0,0,6"
+                                        Padding="8,6"
+                                        FontSize="12"
+                                        HorizontalContentAlignment="Left"
+                                        HorizontalAlignment="Stretch"
+                                        Command="{Binding #Root.DataContext.SelectRecentFolderCommand}"
+                                        CommandParameter="{Binding FolderPath}"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        CornerRadius="3">
+                                    <Button.Styles>
+                                        <Style Selector="Button:pointerover /template/ Border#PART_ButtonBackgroundBorder">
+                                            <Setter Property="Background" Value="#E8F4FD"/>
+                                        </Style>
+                                        <Style Selector="Button:pressed /template/ Border#PART_ButtonBackgroundBorder">
+                                            <Setter Property="Background" Value="#D0E8F7"/>
+                                        </Style>
+                                    </Button.Styles>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
         </Border>
 
-        <!-- 媒体文件网格视图 -->
-        <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
-            <DockPanel>
+        <!-- 右侧主内容区域 -->
+        <Grid RowDefinitions="Auto,*">
+            <!-- 状态栏 -->
+            <Border Grid.Row="0" Background="#F5F5F5" Padding="10,5" Margin="0,0,10,10">
+                <TextBlock Text="{Binding StatusMessage}" 
+                           FontSize="12"
+                           Foreground="#666666"/>
+            </Border>
+
+            <!-- 媒体文件网格视图 -->
+            <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
                 <ItemsControl ItemsSource="{Binding MediaFiles}" HorizontalAlignment="Center">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <WrapPanel Orientation="Horizontal" ItemWidth="180" ItemHeight="220"/>
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Width="164" 
-                                Height="204"
-                                Margin="8" 
-                                BorderBrush="#E0E0E0" 
-                                BorderThickness="1"
-                                CornerRadius="4"
-                                Background="White"
-                                DoubleTapped="OnCardDoubleTapped"
-                                Cursor="Hand">
-                            <Grid RowDefinitions="Auto, *, Auto, Auto">
-                                
-                                <Border Grid.Row="0"
-                                        Height="120"
-                                        Margin="10,10,10,5"
-                                        Background="#F0F0F0"
-                                        ClipToBounds="True">
-                                    <Image Stretch="UniformToFill"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center">
-                                        <Image.Source>
-                                            <Binding Path="ThumbnailPath" Converter="{StaticResource ThumbnailConverter}"/>
-                                        </Image.Source>
-                                    </Image>
-                                </Border>
-                                
-                                <TextBlock Grid.Row="1"
-                                           Text="{Binding FileName}" 
-                                           FontSize="11"
-                                           FontWeight="Medium"
-                                           TextWrapping="Wrap"
-                                           TextTrimming="CharacterEllipsis"
-                                           MaxHeight="30"
-                                           Margin="8,5,8,2"
-                                           Foreground="#333333"/>
-                                
-                                <TextBlock Grid.Row="2"
-                                           Text="{Binding FileType}" 
-                                           FontSize="9"
-                                           Foreground="#999999"
-                                           Margin="8,0,8,2"/>
-                                
-                                <TextBlock Grid.Row="3"
-                                           Text="{Binding FormattedFileSize}" 
-                                           FontSize="9"
-                                           Foreground="#999999"
-                                           Margin="8,0,8,5"/>
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </DockPanel>
-    </ScrollViewer>
-    </Grid>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Width="164" 
+                                    Height="204"
+                                    Margin="8" 
+                                    CornerRadius="4"
+                                    DoubleTapped="OnCardDoubleTapped"
+                                    Cursor="Hand">
+                                <Grid RowDefinitions="Auto, *, Auto, Auto">
+                                    
+                                    <Border Grid.Row="0"
+                                            Height="120"
+                                            Margin="10,10,10,5"
+                                            Background="#F0F0F0"
+                                            ClipToBounds="True">
+                                        <Image Stretch="UniformToFill"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center">
+                                            <Image.Source>
+                                                <Binding Path="ThumbnailPath" Converter="{StaticResource ThumbnailConverter}"/>
+                                            </Image.Source>
+                                        </Image>
+                                    </Border>
+                                    
+                                    <TextBlock Grid.Row="1"
+                                               Text="{Binding FileName}" 
+                                               FontSize="11"
+                                               FontWeight="Medium"
+                                               TextWrapping="Wrap"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxHeight="30"
+                                               Margin="8,5,8,2"
+                                               Foreground="#333333"/>
+                                    
+                                    <TextBlock Grid.Row="2"
+                                               Text="{Binding FileType}" 
+                                               FontSize="9"
+                                               Foreground="#999999"
+                                               Margin="8,0,8,2"/>
+                                    
+                                    <TextBlock Grid.Row="3"
+                                               Text="{Binding FormattedFileSize}" 
+                                               FontSize="9"
+                                               Foreground="#999999"
+                                               Margin="8,0,8,5"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
 
 </Window>
