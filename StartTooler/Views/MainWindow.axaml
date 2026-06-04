@@ -133,6 +133,11 @@
                                     CornerRadius="4"
                                     DoubleTapped="OnCardDoubleTapped"
                                     Cursor="Hand">
+                                <Border.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="删除" Command="{Binding ElementName=Root, Path=DataContext.DeleteFileCommand}" CommandParameter="{Binding FilePath}"/>
+                                    </ContextMenu>
+                                </Border.ContextMenu>
                                 <Grid RowDefinitions="Auto, *, Auto, Auto">
                                     
                                     <Border Grid.Row="0"

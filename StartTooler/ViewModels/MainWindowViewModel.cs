@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -140,6 +141,34 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         IsSidebarExpanded = !IsSidebarExpanded;
         IsSidebarCollapsed = !IsSidebarCollapsed;
+    }
+
+    /// <summary>
+    /// 删除文件
+    /// </summary>
+    [RelayCommand]
+    public void DeleteFile(string filePath)
+    {
+        if (!string.IsNullOrWhiteSpace(filePath) && System.IO.File.Exists(filePath))
+        {
+            try
+            {
+                System.IO.File.Delete(filePath);
+                
+                // 从列表中移除
+                var fileToRemove = MediaFiles.FirstOrDefault(f => f.FilePath == filePath);
+                if (fileToRemove != null)
+                {
+                    MediaFiles.Remove(fileToRemove);
+                }
+                
+                StatusMessage = $"已删除文件：{System.IO.Path.GetFileName(filePath)}";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"删除失败：{ex.Message}";
+            }
+        }
     }
 
     /// <summary>
