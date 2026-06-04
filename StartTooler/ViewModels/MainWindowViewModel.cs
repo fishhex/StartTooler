@@ -72,6 +72,9 @@ public partial class MainWindowViewModel : ViewModelBase
             
             // 异步生成所有文件的缩略图
             await GenerateThumbnailsAsync(files);
+            
+            // 保存文件记录到数据库
+            SaveMediaFileRecords(files);
         }
         catch (Exception ex)
         {
@@ -114,6 +117,42 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// 保存媒体文件记录到数据库
+    /// </summary>
+    private void SaveMediaFileRecords(List<MediaFile> files)
+    {
+        foreach (var file in files)
+        {
+            try
+            {
+                // 计算特征码
+                var featureCode = MediaFileService.GetMultiExposureSignature(file.FilePath);
+                
+                // 检查是否已存在
+                var existingRecord = DatabaseService.Instance.GetMediaFileRecordByPath(file.FilePath);
+                
+                var record = existingRecord ?? new Models.MediaFileRecord
+                {
+                    FeatureCode = featureCode,
+                    FileName = file.FileName,
+                    LocalPath = file.FilePath,
+                    IsUploaded = false
+                };
+                
+                // 更新特征码（如果重新计算）
+                record.FeatureCode = featureCode;
+                record.FileName = file.FileName;
+                
+                DatabaseService.Instance.SaveMediaFileRecord(record);
+            }
+            catch (Exception)
+            {
+                // 忽略单个文件记录保存失败
+            }
+        }
+    }
+
+    /// <summary>
     /// 加载最近打开的文件夹列表
     /// </summary>
     private void LoadRecentFolders()
@@ -153,6 +192,14 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             try
             {
+                // 先从数据库中查找并删除记录
+                var record = DatabaseService.Instance.GetMediaFileRecordByPath(filePath);
+                if (record != null)
+                {
+                    DatabaseService.Instance.DeleteMediaFileRecord(record.Id);
+                }
+                
+                // 删除物理文件
                 System.IO.File.Delete(filePath);
                 
                 // 从列表中移除

@@ -40,6 +40,9 @@ public class DatabaseService : IDisposable
     {
         // 创建最近打开文件夹表
         _connection.CreateTable<RecentFolder>();
+        
+        // 创建媒体文件记录表
+        _connection.CreateTable<MediaFileRecord>();
     }
 
     /// <summary>
@@ -136,6 +139,168 @@ public class DatabaseService : IDisposable
             Console.WriteLine($"清空最近文件夹记录失败: {ex.Message}");
         }
     }
+
+    #region MediaFileRecord Operations
+
+    /// <summary>
+    /// 保存或更新媒体文件记录
+    /// </summary>
+    public void SaveMediaFileRecord(MediaFileRecord record)
+    {
+        if (record == null)
+            return;
+
+        try
+        {
+            record.UpdatedTime = DateTime.Now;
+
+            // 查找是否已存在（通过本地路径）
+            var existing = _connection.Table<MediaFileRecord>()
+                .FirstOrDefault(r => r.LocalPath == record.LocalPath);
+
+            if (existing != null)
+            {
+                // 更新现有记录
+                existing.FeatureCode = record.FeatureCode;
+                existing.FileName = record.FileName;
+                existing.IsUploaded = record.IsUploaded;
+                existing.UpdatedTime = record.UpdatedTime;
+                _connection.Update(existing);
+            }
+            else
+            {
+                // 插入新记录
+                _connection.Insert(record);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"保存媒体文件记录失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 根据特征码查找记录
+    /// </summary>
+    public MediaFileRecord? GetMediaFileRecordByFeatureCode(string featureCode)
+    {
+        try
+        {
+            return _connection.Table<MediaFileRecord>()
+                .FirstOrDefault(r => r.FeatureCode == featureCode);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"查询媒体文件记录失败: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 根据本地路径查找记录
+    /// </summary>
+    public MediaFileRecord? GetMediaFileRecordByPath(string localPath)
+    {
+        try
+        {
+            return _connection.Table<MediaFileRecord>()
+                .FirstOrDefault(r => r.LocalPath == localPath);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"查询媒体文件记录失败: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 获取所有未上传的记录
+    /// </summary>
+    public List<MediaFileRecord> GetUnuploadedRecords()
+    {
+        try
+        {
+            return _connection.Table<MediaFileRecord>()
+                .Where(r => !r.IsUploaded)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"查询未上传记录失败: {ex.Message}");
+            return new List<MediaFileRecord>();
+        }
+    }
+
+    /// <summary>
+    /// 获取所有已上传的记录
+    /// </summary>
+    public List<MediaFileRecord> GetUploadedRecords()
+    {
+        try
+        {
+            return _connection.Table<MediaFileRecord>()
+                .Where(r => r.IsUploaded)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"查询已上传记录失败: {ex.Message}");
+            return new List<MediaFileRecord>();
+        }
+    }
+
+    /// <summary>
+    /// 更新上传状态
+    /// </summary>
+    public void UpdateUploadStatus(int id, bool isUploaded)
+    {
+        try
+        {
+            var record = _connection.Table<MediaFileRecord>().FirstOrDefault(r => r.Id == id);
+            if (record != null)
+            {
+                record.IsUploaded = isUploaded;
+                record.UpdatedTime = DateTime.Now;
+                _connection.Update(record);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"更新上传状态失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 删除记录
+    /// </summary>
+    public void DeleteMediaFileRecord(int id)
+    {
+        try
+        {
+            _connection.Delete<MediaFileRecord>(id);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"删除媒体文件记录失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 清空所有媒体文件记录
+    /// </summary>
+    public void ClearAllMediaFileRecords()
+    {
+        try
+        {
+            _connection.DeleteAll<MediaFileRecord>();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"清空媒体文件记录失败: {ex.Message}");
+        }
+    }
+
+    #endregion
 
     public void Dispose()
     {
