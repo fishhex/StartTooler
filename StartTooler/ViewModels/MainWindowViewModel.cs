@@ -39,6 +39,12 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isMultiSelectMode;
 
+    [ObservableProperty]
+    private bool _isSettingsPanelVisible;
+
+    [ObservableProperty]
+    private SettingsViewModel _settingsViewModel = new();
+
     public MainWindowViewModel()
     {
         _fileScanService = new FileScanService();
@@ -341,5 +347,25 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             ScanFolder(folderPath);
         }
+    }
+
+    [RelayCommand]
+    public void ToggleSettingsPanel()
+    {
+        IsSettingsPanelVisible = !IsSettingsPanelVisible;
+    }
+
+    [RelayCommand]
+    public void SaveSettings()
+    {
+        SettingsViewModel.Save();
+        IsSettingsPanelVisible = false;
+        StatusMessage = "设置已保存";
+    }
+
+    [RelayCommand]
+    public void CancelSettings()
+    {
+        IsSettingsPanelVisible = false;
     }
 }

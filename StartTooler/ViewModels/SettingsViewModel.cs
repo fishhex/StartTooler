@@ -7,17 +7,14 @@ namespace StartTooler.ViewModels;
 
 public partial class SettingsViewModel : ViewModelBase
 {
-    private readonly Action<bool>? _onClose;
-
     [ObservableProperty]
     private ObservableCollection<SettingsPageViewModel> _pages = new();
 
     [ObservableProperty]
     private SettingsPageViewModel? _selectedPage;
 
-    public SettingsViewModel(Action<bool>? onClose = null)
+    public SettingsViewModel()
     {
-        _onClose = onClose;
         InitializePages();
     }
 
@@ -30,7 +27,7 @@ public partial class SettingsViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void Save()
+    public void Save()
     {
         foreach (var page in Pages)
         {
@@ -40,8 +37,6 @@ public partial class SettingsViewModel : ViewModelBase
             }
             // 在此添加其他子页面的保存逻辑
         }
-
-        _onClose?.Invoke(true);
     }
 }
 

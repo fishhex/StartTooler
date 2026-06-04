@@ -6,6 +6,7 @@
         <ApplicationManifest>app.manifest</ApplicationManifest>
         <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
         <CompileAvaloniaXaml>true</CompileAvaloniaXaml>
+        <AvaloniaDisableBuildStats>true</AvaloniaDisableBuildStats>
     </PropertyGroup>
 
     <ItemGroup>

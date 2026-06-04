@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using StartTooler.Models;
 using StartTooler.ViewModels;
@@ -41,12 +40,10 @@ public partial class MainWindow : Window
         {
             if (mediaFile.FileType == "视频")
             {
-                // 视频：直接使用系统默认播放器打开
                 OpenWithDefaultPlayer(mediaFile.FilePath);
             }
             else
             {
-                // 图片：显示预览窗口
                 var previewWindow = new PreviewWindow();
                 previewWindow.ShowFile(mediaFile);
                 previewWindow.Show(this);
@@ -54,25 +51,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnSettingsButton_Click(object? sender, RoutedEventArgs e)
-    {
-        var settingsWindow = new SettingsWindow();
-        var viewModel = new ViewModels.SettingsViewModel(result => settingsWindow.Close(result));
-        settingsWindow.DataContext = viewModel;
-        
-        var result = await settingsWindow.ShowDialog<bool>(this);
-        
-        if (result && DataContext is MainWindowViewModel vm)
-        {
-            vm.StatusMessage = "设置已保存";
-        }
-    }
-
     private void OnCardPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (sender is Border border && border.DataContext is MediaFile mediaFile)
         {
-            // 只有在多选模式下才切换选中状态
             if (DataContext is MainWindowViewModel viewModel && viewModel.IsMultiSelectMode)
             {
                 mediaFile.IsSelected = !mediaFile.IsSelected;
