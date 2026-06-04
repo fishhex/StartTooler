@@ -36,6 +36,9 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isSidebarCollapsed;
 
+    [ObservableProperty]
+    private bool _isMultiSelectMode;
+
     public MainWindowViewModel()
     {
         _fileScanService = new FileScanService();
@@ -216,6 +219,104 @@ public partial class MainWindowViewModel : ViewModelBase
                 StatusMessage = $"删除失败：{ex.Message}";
             }
         }
+    }
+
+    /// <summary>
+    /// 切换多选模式
+    /// </summary>
+    public void OnMultiSelectModeChanged(bool isMultiSelectMode)
+    {
+        // 退出多选模式时清除所有选中状态
+        if (!isMultiSelectMode)
+        {
+            foreach (var file in MediaFiles)
+            {
+                file.IsSelected = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 全选
+    /// </summary>
+    [RelayCommand]
+    public void SelectAll()
+    {
+        foreach (var file in MediaFiles)
+        {
+            file.IsSelected = true;
+        }
+    }
+
+    /// <summary>
+    /// 取消全选
+    /// </summary>
+    [RelayCommand]
+    public void DeselectAll()
+    {
+        foreach (var file in MediaFiles)
+        {
+            file.IsSelected = false;
+        }
+    }
+
+    /// <summary>
+    /// 反选
+    /// </summary>
+    [RelayCommand]
+    public void InvertSelection()
+    {
+        foreach (var file in MediaFiles)
+        {
+            file.IsSelected = !file.IsSelected;
+        }
+    }
+
+    /// <summary>
+    /// 批量删除选中的文件
+    /// </summary>
+    [RelayCommand]
+    public void BatchDelete()
+    {
+        var selectedFiles = MediaFiles.Where(f => f.IsSelected).ToList();
+        if (selectedFiles.Count == 0)
+            return;
+
+        int successCount = 0;
+        int failCount = 0;
+
+        foreach (var file in selectedFiles)
+        {
+            try
+            {
+                // 从数据库中查找并删除记录
+                var record = DatabaseService.Instance.GetMediaFileRecordByPath(file.FilePath);
+                if (record != null)
+                {
+                    DatabaseService.Instance.DeleteMediaFileRecord(record.Id);
+                }
+
+                // 删除物理文件
+                if (System.IO.File.Exists(file.FilePath))
+                {
+                    System.IO.File.Delete(file.FilePath);
+                }
+
+                successCount++;
+            }
+            catch (Exception)
+            {
+                failCount++;
+            }
+        }
+
+        // 从列表中移除已删除的文件
+        foreach (var file in selectedFiles)
+        {
+            MediaFiles.Remove(file);
+        }
+
+        StatusMessage = $"批量删除完成：成功 {successCount} 个，失败 {failCount} 个";
     }
 
     /// <summary>

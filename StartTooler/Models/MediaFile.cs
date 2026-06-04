@@ -1,8 +1,9 @@
 using System;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace StartTooler.Models;
 
-public class MediaFile
+public partial class MediaFile : ObservableObject
 {
     public string FilePath { get; set; } = string.Empty;
     public string FileName { get; set; } = string.Empty;
@@ -10,6 +11,9 @@ public class MediaFile
     public DateTime ModifiedTime { get; set; }
     public long FileSize { get; set; }
     public string? ThumbnailPath { get; set; } // 缩略图路径
+    
+    [ObservableProperty]
+    private bool _isSelected;
     
     public string FormattedFileSize
     {

@@ -5,6 +5,7 @@ using StartTooler.Models;
 using StartTooler.ViewModels;
 using System;
 using System.Diagnostics;
+using System.Linq;
 
 namespace StartTooler.Views;
 
@@ -48,6 +49,18 @@ public partial class MainWindow : Window
                 var previewWindow = new PreviewWindow();
                 previewWindow.ShowFile(mediaFile);
                 previewWindow.Show(this);
+            }
+        }
+    }
+
+    private void OnCardPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is Border border && border.DataContext is MediaFile mediaFile)
+        {
+            // 只有在多选模式下才切换选中状态
+            if (DataContext is MainWindowViewModel viewModel && viewModel.IsMultiSelectMode)
+            {
+                mediaFile.IsSelected = !mediaFile.IsSelected;
             }
         }
     }
