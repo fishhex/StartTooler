@@ -143,6 +143,18 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// 刷新当前文件夹
+    /// </summary>
+    [RelayCommand]
+    public void RefreshFolder()
+    {
+        if (!string.IsNullOrWhiteSpace(SelectedFolderPath))
+        {
+            ScanFolder(SelectedFolderPath);
+        }
+    }
+
+    /// <summary>
     /// 选择最近打开的文件夹
     /// </summary>
     [RelayCommand]

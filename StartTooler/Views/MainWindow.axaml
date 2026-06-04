@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:StartTooler.ViewModels"
+        xmlns:models="using:StartTooler.Models"
         xmlns:converters="using:StartTooler.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -52,6 +53,12 @@
                     Click="OnSelectFolderButton_Click"
                     Padding="15,8"
                     FontSize="14"/>
+            
+            <Button Content="刷新" 
+                    Command="{Binding RefreshFolderCommand}"
+                    Padding="15,8"
+                    FontSize="14"/>
+                    
             <TextBlock Text="{Binding SelectedFolderPath}" 
                        VerticalAlignment="Center"
                        FontSize="12"
@@ -72,7 +79,7 @@
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                     <ItemsControl ItemsSource="{Binding RecentFolders}">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate>
+                            <DataTemplate x:DataType="models:RecentFolder">
                                 <Button Content="{Binding FolderName}" 
                                         ToolTip.Tip="{Binding FolderPath}"
                                         Margin="0,0,0,6"
@@ -80,7 +87,7 @@
                                         FontSize="12"
                                         HorizontalContentAlignment="Left"
                                         HorizontalAlignment="Stretch"
-                                        Command="{Binding #Root.DataContext.SelectRecentFolderCommand}"
+                                        Command="{Binding ElementName=Root, Path=DataContext.SelectRecentFolderCommand}"
                                         CommandParameter="{Binding FolderPath}"
                                         Background="Transparent"
                                         BorderThickness="0"
