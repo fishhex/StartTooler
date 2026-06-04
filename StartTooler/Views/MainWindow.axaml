@@ -14,6 +14,9 @@
 
     <Window.Resources>
         <converters:ThumbnailPathToBitmapConverter x:Key="ThumbnailConverter"/>
+        <converters:BoolToStringConverter x:Key="MultiSelectTextConverter" 
+                                          TrueValue="取消多选" 
+                                          FalseValue="多选"/>
     </Window.Resources>
 
     <Window.Styles>
@@ -54,7 +57,7 @@
                     Padding="15,8"
                     FontSize="14"/>
             
-            <ToggleButton Content="多选" 
+            <ToggleButton Content="{Binding IsMultiSelectMode, Converter={StaticResource MultiSelectTextConverter}}" 
                           IsChecked="{Binding IsMultiSelectMode, Mode=TwoWay}"
                           Padding="15,8"
                           FontSize="14"
