@@ -35,15 +35,15 @@ public static class MediaFileService
         using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
             // 读头部 8KB（包含部分元数据）
-            fs.Read(buffer, 0, 8192);
+            fs.ReadExactly(buffer, 0, 8192);
             
             // 读 1/4 处的 8KB（这通常是图像数据区的开始，多曝画面不同的地方）
             fs.Seek(fileSize / 4, SeekOrigin.Begin);
-            fs.Read(buffer, 8192, 8192);
+            fs.ReadExactly(buffer, 8192, 8192);
             
             // 读 1/2 正中间处的 8KB（核心像素区）
             fs.Seek(fileSize / 2, SeekOrigin.Begin);
-            fs.Read(buffer, 8192 * 2, 8192);
+            fs.ReadExactly(buffer, 8192 * 2, 8192);
         }
 
         using var md5Engine = MD5.Create();

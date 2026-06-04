@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using StartTooler.Models;
 using StartTooler.ViewModels;
@@ -50,6 +51,20 @@ public partial class MainWindow : Window
                 previewWindow.ShowFile(mediaFile);
                 previewWindow.Show(this);
             }
+        }
+    }
+
+    private async void OnSettingsButton_Click(object? sender, RoutedEventArgs e)
+    {
+        var settingsWindow = new SettingsWindow();
+        var viewModel = new ViewModels.SettingsViewModel(result => settingsWindow.Close(result));
+        settingsWindow.DataContext = viewModel;
+        
+        var result = await settingsWindow.ShowDialog<bool>(this);
+        
+        if (result && DataContext is MainWindowViewModel vm)
+        {
+            vm.StatusMessage = "设置已保存";
         }
     }
 

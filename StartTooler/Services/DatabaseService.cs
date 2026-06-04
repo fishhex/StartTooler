@@ -43,6 +43,9 @@ public class DatabaseService : IDisposable
         
         // 创建媒体文件记录表
         _connection.CreateTable<MediaFileRecord>();
+        
+        // 创建 AI 设置表
+        _connection.CreateTable<AiSetting>();
     }
 
     /// <summary>
@@ -297,6 +300,59 @@ public class DatabaseService : IDisposable
         catch (Exception ex)
         {
             Console.WriteLine($"清空媒体文件记录失败: {ex.Message}");
+        }
+    }
+
+    #endregion
+
+    #region AiSetting Operations
+
+    /// <summary>
+    /// 保存 AI 设置
+    /// </summary>
+    public void SaveAiSetting(AiSetting setting)
+    {
+        if (setting == null)
+            return;
+
+        try
+        {
+            setting.UpdatedTime = DateTime.Now;
+            setting.Id = 1; // 确保是单例
+
+            var existing = _connection.Table<AiSetting>().FirstOrDefault();
+            if (existing != null)
+            {
+                existing.ApiUrl = setting.ApiUrl;
+                existing.ApiToken = setting.ApiToken;
+                existing.ModelName = setting.ModelName;
+                existing.UpdatedTime = setting.UpdatedTime;
+                _connection.Update(existing);
+            }
+            else
+            {
+                _connection.Insert(setting);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"保存 AI 设置失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 获取 AI 设置
+    /// </summary>
+    public AiSetting? GetAiSetting()
+    {
+        try
+        {
+            return _connection.Table<AiSetting>().FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"获取 AI 设置失败: {ex.Message}");
+            return null;
         }
     }
 
