@@ -1,81 +1,52 @@
 using Avalonia.Controls;
-using Avalonia.Input;
-using Avalonia.Platform.Storage;
-using StartTooler.Models;
+using Avalonia.Interactivity;
 using StartTooler.ViewModels;
 using System;
-using System.Diagnostics;
-using System.Linq;
 
 namespace StartTooler.Views;
 
 public partial class MainWindow : Window
 {
+    private MediaManagerWindow? _mediaManagerWindow;
+
     public MainWindow()
     {
         InitializeComponent();
     }
 
-    private async void OnSelectFolderButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    protected override void OnOpened(EventArgs e)
     {
-        var topLevel = TopLevel.GetTopLevel(this);
-        if (topLevel == null) return;
-
-        var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-        {
-            Title = "选择文件夹",
-            AllowMultiple = false
-        });
-
-        if (folders.Count > 0 && DataContext is MainWindowViewModel viewModel)
-        {
-            var folderPath = folders[0].Path.LocalPath;
-            viewModel.ScanFolder(folderPath);
-        }
+        base.OnOpened(e);
+        Hide();
     }
 
-    private void OnCardDoubleTapped(object? sender, TappedEventArgs e)
+    private void OnOpenMediaManagerClick(object? sender, RoutedEventArgs e)
     {
-        if (sender is Border border && border.DataContext is MediaFile mediaFile)
+        if (_mediaManagerWindow != null)
         {
-            if (mediaFile.FileType == "视频")
+            if (_mediaManagerWindow.IsVisible)
             {
-                OpenWithDefaultPlayer(mediaFile.FilePath);
+                _mediaManagerWindow.Activate();
+                return;
             }
-            else
-            {
-                var previewWindow = new PreviewWindow();
-                previewWindow.ShowFile(mediaFile);
-                previewWindow.Show(this);
-            }
-        }
-    }
 
-    private void OnCardPointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (sender is Border border && border.DataContext is MediaFile mediaFile)
-        {
-            if (DataContext is MainWindowViewModel viewModel && viewModel.IsMultiSelectMode)
-            {
-                mediaFile.IsSelected = !mediaFile.IsSelected;
-            }
+            _mediaManagerWindow.Show();
+            return;
         }
-    }
 
-    private void OpenWithDefaultPlayer(string filePath)
-    {
-        try
+        _mediaManagerWindow = new MediaManagerWindow
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = filePath,
-                UseShellExecute = true
-            };
-            Process.Start(psi);
-        }
-        catch (Exception ex)
+            DataContext = new MainWindowViewModel()
+        };
+
+        _mediaManagerWindow.Closed += (_, _) =>
         {
-            Console.WriteLine($"Error opening file: {ex.Message}");
-        }
+            _mediaManagerWindow = null;
+            Show();
+            Activate();
+        };
+
+        _mediaManagerWindow.Show();
+        Hide();
     }
 }

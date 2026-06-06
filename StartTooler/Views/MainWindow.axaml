@@ -1,397 +1,67 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="using:StartTooler.ViewModels"
-        xmlns:models="using:StartTooler.Models"
-        xmlns:converters="using:StartTooler.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
+        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
         x:Class="StartTooler.Views.MainWindow"
-        x:Name="Root"
-        x:DataType="vm:MainWindowViewModel"
-        Icon="/Assets/avalonia-logo.ico"
-        Title="媒体文件扫描工具">
+        Title="StartTooler 控制中心"
+        Width="900"
+        Height="600"
+        WindowStartupLocation="CenterScreen">
 
-    <Window.Resources>
-        <converters:ThumbnailPathToBitmapConverter x:Key="ThumbnailConverter"/>
-        <converters:BoolToStringConverter x:Key="MultiSelectTextConverter" 
-                                          TrueValue="取消多选" 
-                                          FalseValue="多选"/>
-    </Window.Resources>
+    <Border Background="#101218" Padding="30">
+        <Grid RowDefinitions="Auto, *">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <Image Source="/Assets/avalonia-logo.ico" Width="32" Height="32" Stretch="Uniform"/>
+                <StackPanel>
+                    <TextBlock Text="StartTooler" FontSize="22" FontWeight="SemiBold" Foreground="#F5F6FA"/>
+                    <TextBlock Text="工具面板" FontSize="13" Foreground="#A0A4B5"/>
+                </StackPanel>
+            </StackPanel>
 
-    <Window.Styles>
-        <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
-    </Window.Styles>
+            <Border Grid.Row="1" CornerRadius="16" Background="#181B25" Padding="24">
+                <Grid ColumnDefinitions="250,*" ColumnSpacing="24">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="模块" FontSize="14" Foreground="#7D84A0" Margin="0,0,0,4"/>
+                        <Border Background="#22283A" CornerRadius="10" Padding="16" Margin="0,0,0,10">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="媒体管理器" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF"/>
+                                <TextBlock Text="扫描、分组并管理本地媒体文件" TextWrapping="Wrap" Foreground="#B4BAD4" FontSize="12"/>
+                                <Button Content="打开"
+                                        HorizontalAlignment="Left"
+                                        Padding="18,6"
+                                        Background="#A53E42"
+                                        Foreground="White"
+                                        CornerRadius="6"
+                                        Click="OnOpenMediaManagerClick"/>
+                            </StackPanel>
+                        </Border>
 
-    <Design.DataContext>
-        <vm:MainWindowViewModel/>
-    </Design.DataContext>
-
-    <Grid>
-        <DockPanel>
-            <Border DockPanel.Dock="Top" Background="#1E1E1E" Height="45" Padding="10,0">
-                <Grid ColumnDefinitions="*, Auto">
-                    <StackPanel Grid.Column="0" 
-                                Orientation="Horizontal" 
-                                Spacing="8" 
-                                VerticalAlignment="Center">
-                        <Button Width="32"
-                                Height="32"
-                                Padding="0"
-                                Command="{Binding ToggleSidebarCommand}"
-                                ToolTip.Tip="切换侧边栏"
-                                Background="Transparent">
-                            <Grid>
-                                <Path Data="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" 
-                                      Fill="#CCCCCC"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Center"
-                                      IsVisible="{Binding IsSidebarExpanded}"/>
-                                <Path Data="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" 
-                                      Fill="#CCCCCC"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Center"
-                                      IsVisible="{Binding IsSidebarCollapsed}"/>
-                            </Grid>
-                            <Button.Styles>
-                                <Style Selector="Button:pointerover">
-                                    <Setter Property="Background" Value="#333333"/>
-                                </Style>
-                            </Button.Styles>
-                        </Button>
-                        
-                        <Button Content="选择文件夹" 
-                                Click="OnSelectFolderButton_Click"
-                                Padding="12,6"
-                                FontSize="13"/>
-                        
-                        <Button Content="刷新" 
-                                Command="{Binding RefreshFolderCommand}"
-                                Padding="12,6"
-                                FontSize="13"/>
-                        
-                        <ToggleButton Content="{Binding IsMultiSelectMode, Converter={StaticResource MultiSelectTextConverter}}" 
-                                      IsChecked="{Binding IsMultiSelectMode, Mode=TwoWay}"
-                                      Padding="12,6"
-                                      FontSize="13">
-                            <ToggleButton.Styles>
-                                <Style Selector="ToggleButton:checked">
-                                    <Setter Property="Background" Value="#1976D2"/>
-                                    <Setter Property="Foreground" Value="White"/>
-                                </Style>
-                                <Style Selector="ToggleButton:pointerover">
-                                    <Setter Property="Background" Value="#333333"/>
-                                </Style>
-                            </ToggleButton.Styles>
-                        </ToggleButton>
+                        <Border Background="#1F2331" CornerRadius="10" Padding="16">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="快速说明" FontSize="13" Foreground="#EBEDF5"/>
+                                <TextBlock FontSize="11" TextWrapping="Wrap" Foreground="#8E93AC">
+                                    默认会自动打开媒体管理器窗口，您可以在此面板再次启动或在未来接入更多模块。
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-                    
-                    <Button Grid.Column="1" 
-                            Command="{Binding ToggleSettingsPanelCommand}"
-                            ToolTip.Tip="设置"
-                            Background="Transparent"
-                            Width="35" 
-                            Height="35" 
-                            VerticalAlignment="Center">
-                        <Path Data="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.49l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"
-                              Fill="#CCCCCC"
-                              HorizontalAlignment="Center"
-                              VerticalAlignment="Center"/>
-                        <Button.Styles>
-                            <Style Selector="Button:pointerover">
-                                <Setter Property="Background" Value="#333333"/>
-                            </Style>
-                        </Button.Styles>
-                    </Button>
-                </Grid>
-            </Border>
 
-            <Border DockPanel.Dock="Left"
-                    Width="250"
-                    Margin="10,0,5,10" 
-                    Padding="10"
-                    IsVisible="{Binding IsSidebarExpanded}">
-                <Grid RowDefinitions="Auto,*">
-                    <TextBlock Grid.Row="0" Text="最近打开的文件夹:" 
-                               FontSize="13" 
-                               FontWeight="Medium"
-                               Margin="0,0,0,10"/>
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding RecentFolders}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="models:RecentFolder">
-                                    <Button Content="{Binding FolderName}" 
-                                            ToolTip.Tip="{Binding FolderPath}"
-                                            Margin="0,0,0,6"
-                                            Padding="8,6"
-                                            FontSize="12"
-                                            HorizontalContentAlignment="Left"
-                                            HorizontalAlignment="Stretch"
-                                            Command="{Binding ElementName=Root, Path=DataContext.SelectRecentFolderCommand}"
-                                            CommandParameter="{Binding FolderPath}"
-                                            Background="Transparent"
-                                            BorderThickness="0"
-                                            CornerRadius="3">
-                                        <Button.Styles>
-                                            <Style Selector="Button:pointerover /template/ Border#PART_ButtonBackgroundBorder">
-                                                <Setter Property="Background" Value="#E8F4FD"/>
-                                            </Style>
-                                            <Style Selector="Button:pressed /template/ Border#PART_ButtonBackgroundBorder">
-                                                <Setter Property="Background" Value="#D0E8F7"/>
-                                            </Style>
-                                        </Button.Styles>
-                                    </Button>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                </Grid>
-            </Border>
-
-            <Grid RowDefinitions="Auto,*">
-                <Grid.ContextMenu>
-                    <ContextMenu x:DataType="vm:MainWindowViewModel"
-                                 DataContext="{Binding ElementName=Root, Path=DataContext}">
-                        <MenuItem Header="全选" 
-                                  Command="{Binding SelectAllCommand}"
-                                  IsVisible="{Binding IsMultiSelectMode}"/>
-                        <MenuItem Header="取消全选" 
-                                  Command="{Binding DeselectAllCommand}"
-                                  IsVisible="{Binding IsMultiSelectMode}"/>
-                        <MenuItem Header="反选" 
-                                  Command="{Binding InvertSelectionCommand}"
-                                  IsVisible="{Binding IsMultiSelectMode}"/>
-                        <Separator IsVisible="{Binding IsMultiSelectMode}"/>
-                        <MenuItem Header="批量删除" 
-                                  Command="{Binding BatchDeleteCommand}"
-                                  IsVisible="{Binding IsMultiSelectMode}"/>
-                    </ContextMenu>
-                </Grid.ContextMenu>
-                <Border Grid.Row="0" Background="#F5F5F5" Padding="10,5" Margin="0,0,10,10">
-                    <TextBlock Text="{Binding StatusMessage}" 
-                               FontSize="12"
-                               Foreground="#666666"/>
-                </Border>
-
-                <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
-                    <ItemsControl ItemsSource="{Binding DateGroups}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="models:MediaFileDateGroup">
-                                <StackPanel Margin="0,0,0,20">
-                                    <!-- 日期标题 -->
-                                    <Border Background="Transparent" Padding="15,8" CornerRadius="4" Margin="5,0,5,8">
-                                        <TextBlock Text="{Binding DateHeader}" 
-                                                   FontSize="14" 
-                                                   FontWeight="SemiBold"
-                                                   Foreground="#A53E42"/>
-                                    </Border>
-                                    <!-- 该日期下的文件网格 -->
-                                    <ItemsControl ItemsSource="{Binding Files}" HorizontalAlignment="Left">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel Orientation="Horizontal" ItemWidth="180" ItemHeight="220"/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="models:MediaFile">
-                                                <Border Width="164" 
-                                                        Height="204"
-                                                        Margin="8" 
-                                                        CornerRadius="4"
-                                                        DoubleTapped="OnCardDoubleTapped"
-                                                        Cursor="Hand"
-                                                        PointerPressed="OnCardPointerPressed">
-                                                    <Border.ContextMenu>
-                                                        <ContextMenu>
-                                                            <MenuItem Header="删除"
-                                                                      Command="{Binding ElementName=Root, Path=DataContext.DeleteFileCommand}"
-                                                                      CommandParameter="{Binding FilePath}"/>
-                                                            <Separator/>
-                                                            <MenuItem Header="全选" 
-                                                                      Command="{Binding ElementName=Root, Path=DataContext.SelectAllCommand}"
-                                                                      IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
-                                                            <MenuItem Header="取消全选" 
-                                                                      Command="{Binding ElementName=Root, Path=DataContext.DeselectAllCommand}"
-                                                                      IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
-                                                            <MenuItem Header="反选" 
-                                                                      Command="{Binding ElementName=Root, Path=DataContext.InvertSelectionCommand}"
-                                                                      IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
-                                                            <Separator IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
-                                                            <MenuItem Header="批量删除" 
-                                                                      Command="{Binding ElementName=Root, Path=DataContext.BatchDeleteCommand}"
-                                                                      IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
-                                                        </ContextMenu>
-                                                    </Border.ContextMenu>
-                                                    <Grid RowDefinitions="Auto, Auto, *, Auto, Auto">
-                                                        <CheckBox Grid.Row="0"
-                                                                  IsChecked="{Binding IsSelected}"
-                                                                  Margin="8,8,8,4"
-                                                                  HorizontalAlignment="Right"
-                                                                  IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
-                                                        <Border Grid.Row="1"
-                                                                Height="120"
-                                                                Margin="10,10,10,5"
-                                                                Background="Transparent"
-                                                                ClipToBounds="True">
-                                                            <Image Stretch="UniformToFill"
-                                                                   HorizontalAlignment="Center"
-                                                                   VerticalAlignment="Center">
-                                                                <Image.Source>
-                                                                    <Binding Path="ThumbnailPath" Converter="{StaticResource ThumbnailConverter}"/>
-                                                                </Image.Source>
-                                                            </Image>
-                                                        </Border>
-                                                        <TextBlock Grid.Row="2"
-                                                                   Text="{Binding FileName}" 
-                                                                   FontSize="11"
-                                                                   FontWeight="Medium"
-                                                                   TextWrapping="Wrap"
-                                                                   TextTrimming="CharacterEllipsis"
-                                                                   MaxHeight="30"
-                                                                   Margin="8,5,8,2"
-                                                                   Foreground="#333333"/>
-                                                        <TextBlock Grid.Row="3"
-                                                                   Text="{Binding FileType}" 
-                                                                   FontSize="9"
-                                                                   Foreground="#999999"
-                                                                   Margin="8,0,8,2"/>
-                                                        <TextBlock Grid.Row="4"
-                                                                   Text="{Binding FormattedFileSize}" 
-                                                                   FontSize="9"
-                                                                   Foreground="#999999"
-                                                                   Margin="8,0,8,5"/>
-                                                    </Grid>
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
-            </Grid>
-        </DockPanel>
-
-        <Border IsVisible="{Binding IsSettingsPanelVisible}"
-                Background="#1E1E1F"
-                Width="500"
-                HorizontalAlignment="Right"
-                BorderBrush="#333333"
-                BorderThickness="1,0,0,0"
-                BoxShadow="0 0 20 0 #26000000">
-            <Grid RowDefinitions="Auto,*" DataContext="{Binding SettingsViewModel}">
-                <Border Grid.Row="0" Background="#1E1E1F" Padding="15" BorderBrush="#333333" BorderThickness="0,0,0,1">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Grid.Column="0" Text="设置" FontSize="16" FontWeight="Medium" VerticalAlignment="Center" Foreground="#CCCCCC"/>
-                        <Button Grid.Column="1" 
-                                Command="{Binding ElementName=Root, Path=DataContext.CancelSettingsCommand}"
-                                Background="Transparent"
-                                Width="30" Height="30" Padding="0">
-                            <Path Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-                                  Fill="#999999"
-                                  Stretch="Uniform"
-                                  Width="14" Height="14"/>
-                        </Button>
-                    </Grid>
-                </Border>
-
-                <Grid Grid.Row="1" RowDefinitions="*,Auto">
-                    <ScrollViewer Grid.Row="0">
-                        <Grid ColumnDefinitions="150,*">
-                            <Border Grid.Column="0" Background="#1A1A1B" Padding="10" BorderBrush="#333333" BorderThickness="0,0,1,0">
-                                <ListBox ItemsSource="{Binding Pages}"
-                                         SelectedItem="{Binding SelectedPage}"
-                                         Background="Transparent"
-                                         BorderThickness="0">
-                                    <ListBox.Styles>
-                                        <Style Selector="ListBoxItem">
-                                            <Setter Property="Background" Value="Transparent"/>
-                                            <Setter Property="Foreground" Value="#AAAAAA"/>
-                                            <Setter Property="Padding" Value="10,8"/>
-                                            <Setter Property="CornerRadius" Value="4"/>
-                                        </Style>
-                                        <Style Selector="ListBoxItem:pointerover">
-                                            <Setter Property="Background" Value="#2A2A2B"/>
-                                        </Style>
-                                        <Style Selector="ListBoxItem:selected">
-                                            <Setter Property="Background" Value="#A53E42"/>
-                                            <Setter Property="Foreground" Value="White"/>
-                                        </Style>
-                                    </ListBox.Styles>
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding Title}"
-                                                       FontSize="13"
-                                                       Padding="5,4"/>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                            </Border>
-
-                            <ContentControl Grid.Column="1" Content="{Binding SelectedPage.Content}"
-                                            Padding="20,15" VerticalAlignment="Top">
-                                <ContentControl.DataTemplates>
-                                    <DataTemplate DataType="{x:Type vm:AiSettingsViewModel}">
-                                        <StackPanel>
-                                            <StackPanel Margin="0,0,0,15">
-                                                <TextBlock Text="API 地址" FontSize="12" Margin="0,0,0,5" Foreground="#AAAAAA"/>
-                                                <TextBox Text="{Binding ApiUrl}" 
-                                                         Watermark="例如：https://api.openai.com/v1"
-                                                         Padding="8"
-                                                         Background="#141415"
-                                                         Foreground="#CCCCCC"
-                                                         BorderBrush="#333333"
-                                                         CornerRadius="4"/>
-                                            </StackPanel>
-                                            <StackPanel Margin="0,0,0,15">
-                                                <TextBlock Text="API Token" FontSize="12" Margin="0,0,0,5" Foreground="#AAAAAA"/>
-                                                <TextBox Text="{Binding ApiToken}" 
-                                                         Watermark="输入你的 API Token"
-                                                         PasswordChar="*"
-                                                         Padding="8"
-                                                         Background="#141415"
-                                                         Foreground="#CCCCCC"
-                                                         BorderBrush="#333333"
-                                                         CornerRadius="4"/>
-                                            </StackPanel>
-                                            <StackPanel Margin="0,0,0,15">
-                                                <TextBlock Text="模型名称" FontSize="12" Margin="0,0,0,5" Foreground="#AAAAAA"/>
-                                                <TextBox Text="{Binding ModelName}" 
-                                                         Watermark="例如：gpt-4"
-                                                         Padding="8"
-                                                         Background="#141415"
-                                                         Foreground="#CCCCCC"
-                                                         BorderBrush="#333333"
-                                                         CornerRadius="4"/>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ContentControl.DataTemplates>
-                            </ContentControl>
-                        </Grid>
-                    </ScrollViewer>
-
-                    <Border Grid.Row="1" Padding="15" BorderBrush="#333333" BorderThickness="0,1,0,0">
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
-                            <Button Content="取消" 
-                                    Command="{Binding ElementName=Root, Path=DataContext.CancelSettingsCommand}"
-                                    Padding="20,8"
-                                    Background="#2A2A2B"
-                                    Foreground="#AAAAAA"
-                                    BorderBrush="#333333"
-                                    CornerRadius="4"/>
-                            <Button Content="保存" 
-                                    Command="{Binding ElementName=Root, Path=DataContext.SaveSettingsCommand}"
-                                    Padding="20,8"
+                    <Border Background="#1F2331" CornerRadius="12" Padding="20" Grid.Column="1">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+                            <TextBlock Text="欢迎使用 StartTooler" FontSize="20" FontWeight="SemiBold" Foreground="#FFFFFF" HorizontalAlignment="Center"/>
+                            <TextBlock Text="媒体管理器正在单独窗口中运行" Foreground="#9CA2BE" FontSize="13" HorizontalAlignment="Center"/>
+                            <Button Content="重新打开媒体管理器"
+                                    Padding="22,8"
                                     Background="#A53E42"
                                     Foreground="White"
-                                    CornerRadius="4"/>
+                                    CornerRadius="8"
+                                    Click="OnOpenMediaManagerClick"/>
                         </StackPanel>
                     </Border>
                 </Grid>
-            </Grid>
-        </Border>
-    </Grid>
+            </Border>
+        </Grid>
+    </Border>
 
 </Window>
