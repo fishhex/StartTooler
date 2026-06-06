@@ -202,8 +202,7 @@
                                                         Cursor="Hand"
                                                         PointerPressed="OnCardPointerPressed">
                                                     <Border.ContextMenu>
-                                                        <ContextMenu x:DataType="models:MediaFile"
-                                                                     DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                                                        <ContextMenu>
                                                             <MenuItem Header="删除"
                                                                       Command="{Binding ElementName=Root, Path=DataContext.DeleteFileCommand}"
                                                                       CommandParameter="{Binding FilePath}"/>

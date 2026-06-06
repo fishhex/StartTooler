@@ -203,33 +203,33 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     public void DeleteFile(string filePath)
     {
-        if (!string.IsNullOrWhiteSpace(filePath) && System.IO.File.Exists(filePath))
+        if (string.IsNullOrWhiteSpace(filePath))
+            return;
+
+        try
         {
-            try
+            var fileToRemove = MediaFiles.FirstOrDefault(f => f.FilePath == filePath);
+
+            // 先从数据库中查找并删除记录
+            var record = DatabaseService.Instance.GetMediaFileRecordByPath(filePath);
+            if (record != null)
             {
-                // 先从数据库中查找并删除记录
-                var record = DatabaseService.Instance.GetMediaFileRecordByPath(filePath);
-                if (record != null)
-                {
-                    DatabaseService.Instance.DeleteMediaFileRecord(record.Id);
-                }
-                
-                // 删除物理文件
+                DatabaseService.Instance.DeleteMediaFileRecord(record.Id);
+            }
+
+            // 删除物理文件（存在时）
+            if (System.IO.File.Exists(filePath))
+            {
                 System.IO.File.Delete(filePath);
-                
-                // 从列表中移除
-                var fileToRemove = MediaFiles.FirstOrDefault(f => f.FilePath == filePath);
-                if (fileToRemove != null)
-                {
-                    MediaFiles.Remove(fileToRemove);
-                }
-                
-                StatusMessage = $"已删除文件：{System.IO.Path.GetFileName(filePath)}";
             }
-            catch (Exception ex)
-            {
-                StatusMessage = $"删除失败：{ex.Message}";
-            }
+
+            RemoveFileFromCollections(fileToRemove);
+
+            StatusMessage = $"已删除文件：{System.IO.Path.GetFileName(filePath)}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"删除失败：{ex.Message}";
         }
     }
 
@@ -314,6 +314,8 @@ public partial class MainWindowViewModel : ViewModelBase
                     System.IO.File.Delete(file.FilePath);
                 }
 
+                RemoveFileFromCollections(file);
+
                 successCount++;
             }
             catch (Exception)
@@ -322,13 +324,32 @@ public partial class MainWindowViewModel : ViewModelBase
             }
         }
 
-        // 从列表中移除已删除的文件
-        foreach (var file in selectedFiles)
+        StatusMessage = $"批量删除完成：成功 {successCount} 个，失败 {failCount} 个";
+    }
+
+    private void RemoveFileFromCollections(MediaFile? file)
+    {
+        if (file == null)
+            return;
+
+        var dateGroup = DateGroups.FirstOrDefault(g => g.Date == file.ModifiedTime.Date);
+        if (dateGroup != null)
+        {
+            if (dateGroup.Files.Contains(file))
+            {
+                dateGroup.Files.Remove(file);
+            }
+
+            if (dateGroup.Files.Count == 0)
+            {
+                DateGroups.Remove(dateGroup);
+            }
+        }
+
+        if (MediaFiles.Contains(file))
         {
             MediaFiles.Remove(file);
         }
-
-        StatusMessage = $"批量删除完成：成功 {successCount} 个，失败 {failCount} 个";
     }
 
     /// <summary>
