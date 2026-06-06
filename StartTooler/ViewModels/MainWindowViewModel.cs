@@ -22,6 +22,9 @@ public partial class MainWindowViewModel : ViewModelBase
     private ObservableCollection<MediaFile> _mediaFiles = new();
 
     [ObservableProperty]
+    private ObservableCollection<MediaFileDateGroup> _dateGroups = new();
+
+    [ObservableProperty]
     private bool _isScanning;
 
     [ObservableProperty]
@@ -78,6 +81,9 @@ public partial class MainWindowViewModel : ViewModelBase
             }
 
             StatusMessage = $"扫描完成，共找到 {files.Count} 个媒体文件，正在生成缩略图...";
+            
+            // 按日期分组
+            BuildDateGroups(files);
             
             // 异步生成所有文件的缩略图
             await GenerateThumbnailsAsync(files);
@@ -367,5 +373,39 @@ public partial class MainWindowViewModel : ViewModelBase
     public void CancelSettings()
     {
         IsSettingsPanelVisible = false;
+    }
+
+    private void BuildDateGroups(List<MediaFile> files)
+    {
+        DateGroups.Clear();
+
+        var today = DateTime.Today;
+        var yesterday = today.AddDays(-1);
+
+        var groups = files
+            .GroupBy(f => f.ModifiedTime.Date)
+            .OrderByDescending(g => g.Key)
+            .Select(g =>
+            {
+                var header = g.Key switch
+                {
+                    _ when g.Key == today => "今天",
+                    _ when g.Key == yesterday => "昨天",
+                    _ when g.Key.Year == today.Year => g.Key.ToString("M月d日"),
+                    _ => g.Key.ToString("yyyy年M月d日")
+                };
+
+                return new MediaFileDateGroup
+                {
+                    Date = g.Key,
+                    DateHeader = header,
+                    Files = new ObservableCollection<MediaFile>(g.OrderByDescending(f => f.ModifiedTime))
+                };
+            });
+
+        foreach (var group in groups)
+        {
+            DateGroups.Add(group);
+        }
     }
 }
