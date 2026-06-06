@@ -11,6 +11,7 @@ public partial class MediaFile : ObservableObject
     public DateTime ModifiedTime { get; set; }
     public long FileSize { get; set; }
     public string? ThumbnailPath { get; set; } // 缩略图路径
+    public long PerceptualHash { get; set; }
     
     [ObservableProperty]
     private bool _isSelected;

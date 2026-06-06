@@ -14,4 +14,7 @@ public partial class MediaFileDateGroup : ObservableObject
 
     [ObservableProperty]
     private ObservableCollection<MediaFile> _files = new();
+
+    [ObservableProperty]
+    private ObservableCollection<MediaBurstGroup> _burstGroups = new();
 }

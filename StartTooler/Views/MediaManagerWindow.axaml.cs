@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -127,6 +128,34 @@ public partial class MediaManagerWindow : Window
                 mediaFile.IsSelected = !mediaFile.IsSelected;
             }
         }
+    }
+
+    private void OnGroupCardDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (e.Source is Control { DataContext: MediaFile })
+        {
+            return;
+        }
+
+        if (sender is Border { DataContext: MediaBurstGroup group })
+        {
+            ToggleGroupExpansion(group);
+            e.Handled = true;
+        }
+    }
+
+    private void OnGroupBadgeClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: MediaBurstGroup group })
+        {
+            ToggleGroupExpansion(group);
+            e.Handled = true;
+        }
+    }
+
+    private static void ToggleGroupExpansion(MediaBurstGroup group)
+    {
+        group.IsExpanded = !group.IsExpanded;
     }
 
     private void OpenWithDefaultPlayer(string filePath)

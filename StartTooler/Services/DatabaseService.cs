@@ -169,6 +169,7 @@ public class DatabaseService : IDisposable
                 existing.FileName = record.FileName;
                 existing.IsUploaded = record.IsUploaded;
                 existing.RootPath = record.RootPath;
+                existing.PerceptualHash = record.PerceptualHash;
                 existing.UpdatedTime = record.UpdatedTime;
                 _connection.Update(existing);
             }
@@ -333,6 +334,11 @@ public class DatabaseService : IDisposable
             if (columns.All(c => c.Name != "RootPath"))
             {
                 _connection.Execute("ALTER TABLE MediaFileRecords ADD COLUMN RootPath TEXT DEFAULT ''");
+            }
+
+            if (columns.All(c => c.Name != "PerceptualHash"))
+            {
+                _connection.Execute("ALTER TABLE MediaFileRecords ADD COLUMN PerceptualHash INTEGER DEFAULT 0");
             }
         }
         catch (Exception ex)

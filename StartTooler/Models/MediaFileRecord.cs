@@ -21,6 +21,8 @@ public class MediaFileRecord
     [Indexed]
     public string RootPath { get; set; } = string.Empty;
 
+    public long PerceptualHash { get; set; }
+
     public bool IsUploaded { get; set; }
 
     public DateTime CreatedTime { get; set; } = DateTime.Now;

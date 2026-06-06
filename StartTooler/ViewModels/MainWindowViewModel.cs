@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -15,6 +16,7 @@ public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly FileScanService _fileScanService;
     private readonly ThumbnailService _thumbnailService;
+    private const int SimilarityThreshold = 10;
 
     [ObservableProperty]
     private string _selectedFolderPath = string.Empty;
@@ -176,6 +178,11 @@ public partial class MainWindowViewModel : ViewModelBase
         var featureCode = MediaFileService.GetMultiExposureSignature(file.FilePath);
         var existingRecord = DatabaseService.Instance.GetMediaFileRecordByPath(file.FilePath);
 
+        if (file.PerceptualHash == 0)
+        {
+            file.PerceptualHash = ImageHashService.ComputePerceptualHash(file.FilePath);
+        }
+
         var record = existingRecord ?? new MediaFileRecord
         {
             LocalPath = file.FilePath,
@@ -188,6 +195,7 @@ public partial class MainWindowViewModel : ViewModelBase
         record.FeatureCode = featureCode;
         record.FileName = file.FileName;
         record.RootPath = rootPath;
+        record.PerceptualHash = file.PerceptualHash;
 
         DatabaseService.Instance.SaveMediaFileRecord(record);
     }
@@ -375,6 +383,10 @@ public partial class MainWindowViewModel : ViewModelBase
             {
                 DateGroups.Remove(dateGroup);
             }
+            else
+            {
+                RebuildBurstGroups(dateGroup);
+            }
         }
 
         if (MediaFiles.Contains(file))
@@ -391,7 +403,8 @@ public partial class MainWindowViewModel : ViewModelBase
             FileName = record.FileName,
             FileType = ResolveFileType(record.LocalPath),
             ModifiedTime = record.UpdatedTime,
-            FileSize = 0
+            FileSize = 0,
+            PerceptualHash = record.PerceptualHash
         };
 
         if (File.Exists(record.LocalPath))
@@ -529,17 +542,71 @@ public partial class MainWindowViewModel : ViewModelBase
                     _ => g.Key.ToString("yyyy年M月d日")
                 };
 
-                return new MediaFileDateGroup
+                var ordered = g.OrderByDescending(f => f.ModifiedTime).ToList();
+                var dateGroup = new MediaFileDateGroup
                 {
                     Date = g.Key,
                     DateHeader = header,
-                    Files = new ObservableCollection<MediaFile>(g.OrderByDescending(f => f.ModifiedTime))
+                    Files = new ObservableCollection<MediaFile>(ordered)
                 };
+
+                RebuildBurstGroups(dateGroup);
+                return dateGroup;
             });
 
         foreach (var group in groups)
         {
             DateGroups.Add(group);
         }
+    }
+
+    private void RebuildBurstGroups(MediaFileDateGroup dateGroup)
+    {
+        dateGroup.BurstGroups.Clear();
+        var burstGroups = BuildBurstGroups(dateGroup.Files.ToList());
+        foreach (var burst in burstGroups)
+        {
+            dateGroup.BurstGroups.Add(burst);
+        }
+    }
+
+    private List<MediaBurstGroup> BuildBurstGroups(List<MediaFile> files)
+    {
+        var remaining = files.OrderByDescending(f => f.ModifiedTime).ToList();
+        var burstGroups = new List<MediaBurstGroup>();
+
+        while (remaining.Count > 0)
+        {
+            var anchor = remaining[0];
+            remaining.RemoveAt(0);
+
+            var cluster = new List<MediaFile> { anchor };
+
+            for (int i = remaining.Count - 1; i >= 0; i--)
+            {
+                var candidate = remaining[i];
+
+                if (anchor.PerceptualHash == 0 || candidate.PerceptualHash == 0)
+                {
+                    continue;
+                }
+
+                var distance = CalculateHammingDistance(anchor.PerceptualHash, candidate.PerceptualHash);
+                if (distance <= SimilarityThreshold)
+                {
+                    cluster.Add(candidate);
+                    remaining.RemoveAt(i);
+                }
+            }
+
+            burstGroups.Add(new MediaBurstGroup(cluster.OrderByDescending(f => f.ModifiedTime)));
+        }
+
+        return burstGroups;
+    }
+
+    private static int CalculateHammingDistance(long hash1, long hash2)
+    {
+        return BitOperations.PopCount((ulong)(hash1 ^ hash2));
     }
 }
