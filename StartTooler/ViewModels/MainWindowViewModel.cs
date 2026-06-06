@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -48,11 +49,15 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private SettingsViewModel _settingsViewModel = new();
 
+    public event EventHandler? RefreshStarted;
+    public event EventHandler<RefreshProgressChangedEventArgs>? RefreshProgressChanged;
+    public event EventHandler? RefreshCompleted;
+
     public MainWindowViewModel()
     {
         _fileScanService = new FileScanService();
         _thumbnailService = new ThumbnailService();
-        LoadRecentFolders();
+        LoadRecentFolders(tryAutoLoad: true);
     }
 
     public async void ScanFolder(string folderPath)
@@ -60,40 +65,53 @@ public partial class MainWindowViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(folderPath))
             return;
 
+        SelectedFolderPath = folderPath;
+
         // 保存到最近打开的文件夹
         DatabaseService.Instance.SaveRecentFolder(folderPath);
-        
+
         // 重新加载最近文件夹列表
         LoadRecentFolders();
 
+        await LoadFolderFromDatabaseAsync(folderPath);
+    }
+
+    private async Task LoadFolderFromDatabaseAsync(string folderPath)
+    {
         IsScanning = true;
-        SelectedFolderPath = folderPath;
-        StatusMessage = "正在扫描文件...";
+        StatusMessage = "正在从数据库加载媒体记录...";
         MediaFiles.Clear();
 
         try
         {
-            var files = _fileScanService.ScanDirectory(folderPath);
-            
-            foreach (var file in files)
+            var records = DatabaseService.Instance.GetMediaFileRecordsByRootPath(folderPath);
+            var files = new List<MediaFile>();
+
+            foreach (var record in records)
             {
-                MediaFiles.Add(file);
+                var mediaFile = CreateMediaFileFromRecord(record);
+                files.Add(mediaFile);
+                MediaFiles.Add(mediaFile);
             }
 
-            StatusMessage = $"扫描完成，共找到 {files.Count} 个媒体文件，正在生成缩略图...";
-            
+            if (files.Count == 0)
+            {
+                DateGroups.Clear();
+                StatusMessage = "该目录暂无媒体记录，请先导入。";
+                return;
+            }
+
+            StatusMessage = $"已加载 {files.Count} 个媒体记录，正在生成缩略图...";
+
             // 按日期分组
             BuildDateGroups(files);
-            
+
             // 异步生成所有文件的缩略图
             await GenerateThumbnailsAsync(files);
-            
-            // 保存文件记录到数据库
-            SaveMediaFileRecords(files);
         }
         catch (Exception ex)
         {
-            StatusMessage = $"扫描出错: {ex.Message}";
+            StatusMessage = $"加载记录失败: {ex.Message}";
         }
         finally
         {
@@ -134,43 +152,50 @@ public partial class MainWindowViewModel : ViewModelBase
     /// <summary>
     /// 保存媒体文件记录到数据库
     /// </summary>
-    private void SaveMediaFileRecords(List<MediaFile> files)
+    private void SaveMediaFileRecords(List<MediaFile> files, string rootPath, Action? progressCallback = null)
     {
         foreach (var file in files)
         {
             try
             {
-                // 计算特征码
-                var featureCode = MediaFileService.GetMultiExposureSignature(file.FilePath);
-                
-                // 检查是否已存在
-                var existingRecord = DatabaseService.Instance.GetMediaFileRecordByPath(file.FilePath);
-                
-                var record = existingRecord ?? new Models.MediaFileRecord
-                {
-                    FeatureCode = featureCode,
-                    FileName = file.FileName,
-                    LocalPath = file.FilePath,
-                    IsUploaded = false
-                };
-                
-                // 更新特征码（如果重新计算）
-                record.FeatureCode = featureCode;
-                record.FileName = file.FileName;
-                
-                DatabaseService.Instance.SaveMediaFileRecord(record);
+                SaveSingleMediaFileRecord(file, rootPath);
             }
             catch (Exception)
             {
                 // 忽略单个文件记录保存失败
             }
+            finally
+            {
+                progressCallback?.Invoke();
+            }
         }
+    }
+
+    private static void SaveSingleMediaFileRecord(MediaFile file, string rootPath)
+    {
+        var featureCode = MediaFileService.GetMultiExposureSignature(file.FilePath);
+        var existingRecord = DatabaseService.Instance.GetMediaFileRecordByPath(file.FilePath);
+
+        var record = existingRecord ?? new MediaFileRecord
+        {
+            LocalPath = file.FilePath,
+            CreatedTime = DateTime.Now,
+            IsUploaded = false
+        };
+
+        record.IsUploaded = existingRecord?.IsUploaded ?? false;
+
+        record.FeatureCode = featureCode;
+        record.FileName = file.FileName;
+        record.RootPath = rootPath;
+
+        DatabaseService.Instance.SaveMediaFileRecord(record);
     }
 
     /// <summary>
     /// 加载最近打开的文件夹列表
     /// </summary>
-    private void LoadRecentFolders()
+    private void LoadRecentFolders(bool tryAutoLoad = false)
     {
         try
         {
@@ -179,6 +204,12 @@ public partial class MainWindowViewModel : ViewModelBase
             foreach (var folder in recentFolders)
             {
                 RecentFolders.Add(folder);
+            }
+
+            if (tryAutoLoad && string.IsNullOrWhiteSpace(SelectedFolderPath) && RecentFolders.Count > 0)
+            {
+                var latestFolder = RecentFolders.First();
+                ScanFolder(latestFolder.FolderPath);
             }
         }
         catch (Exception ex)
@@ -352,15 +383,97 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
+    private MediaFile CreateMediaFileFromRecord(MediaFileRecord record)
+    {
+        var mediaFile = new MediaFile
+        {
+            FilePath = record.LocalPath,
+            FileName = record.FileName,
+            FileType = ResolveFileType(record.LocalPath),
+            ModifiedTime = record.UpdatedTime,
+            FileSize = 0
+        };
+
+        if (File.Exists(record.LocalPath))
+        {
+            var info = new FileInfo(record.LocalPath);
+            mediaFile.ModifiedTime = info.LastWriteTime;
+            mediaFile.FileSize = info.Length;
+        }
+
+        return mediaFile;
+    }
+
+    private static string ResolveFileType(string filePath)
+    {
+        var extension = Path.GetExtension(filePath);
+        if (extension != null && ImageExtensions.Contains(extension))
+        {
+            return "图片";
+        }
+
+        return "视频";
+    }
+
+    private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".webp", ".svg", ".ico"
+    };
+
+    private async Task ScanAndUpdateDatabaseAsync(string folderPath)
+    {
+        var progress = new Progress<RefreshProgressChangedEventArgs>(args =>
+        {
+            RefreshProgressChanged?.Invoke(this, args);
+        });
+
+        await Task.Run(() => ScanAndUpdateDatabaseInternal(folderPath, progress));
+    }
+
+    private void ScanAndUpdateDatabaseInternal(string folderPath, IProgress<RefreshProgressChangedEventArgs> progress)
+    {
+        progress.Report(new RefreshProgressChangedEventArgs("正在扫描文件...", 0, 0, true));
+
+        var files = _fileScanService.ScanDirectory(folderPath);
+
+        if (files.Count == 0)
+        {
+            progress.Report(new RefreshProgressChangedEventArgs("扫描完成，未找到媒体文件", 0, 0, false));
+            return;
+        }
+
+        int total = files.Count;
+        int processed = 0;
+        progress.Report(new RefreshProgressChangedEventArgs($"正在更新数据库 0/{total}", 0, total, false));
+
+        SaveMediaFileRecords(files, folderPath, () =>
+        {
+            processed++;
+            progress.Report(new RefreshProgressChangedEventArgs($"正在更新数据库 {processed}/{total}", processed, total, false));
+        });
+
+        progress.Report(new RefreshProgressChangedEventArgs("扫描完成", total, total, false));
+    }
+
     /// <summary>
     /// 刷新当前文件夹
     /// </summary>
     [RelayCommand]
-    public void RefreshFolder()
+    public async Task RefreshFolder()
     {
-        if (!string.IsNullOrWhiteSpace(SelectedFolderPath))
+        if (string.IsNullOrWhiteSpace(SelectedFolderPath))
+            return;
+
+        RefreshStarted?.Invoke(this, EventArgs.Empty);
+
+        try
         {
-            ScanFolder(SelectedFolderPath);
+            await ScanAndUpdateDatabaseAsync(SelectedFolderPath);
+            await LoadFolderFromDatabaseAsync(SelectedFolderPath);
+        }
+        finally
+        {
+            RefreshCompleted?.Invoke(this, EventArgs.Empty);
         }
     }
 

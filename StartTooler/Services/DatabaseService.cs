@@ -43,6 +43,7 @@ public class DatabaseService : IDisposable
         
         // 创建媒体文件记录表
         _connection.CreateTable<MediaFileRecord>();
+        EnsureMediaFileRecordSchema();
         
         // 创建 AI 设置表
         _connection.CreateTable<AiSetting>();
@@ -167,6 +168,7 @@ public class DatabaseService : IDisposable
                 existing.FeatureCode = record.FeatureCode;
                 existing.FileName = record.FileName;
                 existing.IsUploaded = record.IsUploaded;
+                existing.RootPath = record.RootPath;
                 existing.UpdatedTime = record.UpdatedTime;
                 _connection.Update(existing);
             }
@@ -179,6 +181,24 @@ public class DatabaseService : IDisposable
         catch (Exception ex)
         {
             Console.WriteLine($"保存媒体文件记录失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 根据根目录获取记录
+    /// </summary>
+    public List<MediaFileRecord> GetMediaFileRecordsByRootPath(string rootPath)
+    {
+        try
+        {
+            return _connection.Table<MediaFileRecord>()
+                .Where(r => r.RootPath == rootPath)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"查询媒体文件记录失败: {ex.Message}");
+            return new List<MediaFileRecord>();
         }
     }
 
@@ -304,6 +324,22 @@ public class DatabaseService : IDisposable
     }
 
     #endregion
+
+    private void EnsureMediaFileRecordSchema()
+    {
+        try
+        {
+            var columns = _connection.GetTableInfo("MediaFileRecords");
+            if (columns.All(c => c.Name != "RootPath"))
+            {
+                _connection.Execute("ALTER TABLE MediaFileRecords ADD COLUMN RootPath TEXT DEFAULT ''");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"更新媒体文件记录表结构失败: {ex.Message}");
+        }
+    }
 
     #region AiSetting Operations
 

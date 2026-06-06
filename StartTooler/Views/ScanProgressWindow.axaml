@@ -1,0 +1,22 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="StartTooler.Views.ScanProgressWindow"
+        Width="320"
+        Height="160"
+        CanResize="False"
+        ShowInTaskbar="False"
+        SystemDecorations="BorderOnly"
+        WindowStartupLocation="CenterOwner"
+        Title="正在扫描">
+    <Border Padding="20" Background="#1B1D24" CornerRadius="10">
+        <StackPanel Spacing="12">
+            <TextBlock x:Name="StatusText"
+                       Text="正在扫描文件..."
+                       Foreground="#FFFFFF"
+                       FontSize="14"/>
+            <ProgressBar x:Name="ProgressBar"
+                         Height="12"
+                         IsIndeterminate="True"/>
+        </StackPanel>
+    </Border>
+</Window>

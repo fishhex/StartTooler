@@ -18,6 +18,9 @@ public class MediaFileRecord
     [Indexed]
     public string LocalPath { get; set; } = string.Empty;
 
+    [Indexed]
+    public string RootPath { get; set; } = string.Empty;
+
     public bool IsUploaded { get; set; }
 
     public DateTime CreatedTime { get; set; } = DateTime.Now;

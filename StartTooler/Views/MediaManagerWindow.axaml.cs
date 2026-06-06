@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using StartTooler.Models;
 using StartTooler.ViewModels;
 using System;
@@ -12,14 +13,43 @@ namespace StartTooler.Views;
 
 public partial class MediaManagerWindow : Window
 {
+    private MainWindowViewModel? _viewModel;
+    private ScanProgressWindow? _scanProgressWindow;
+
     public MediaManagerWindow()
     {
         InitializeComponent();
+        AttachViewModel(DataContext as MainWindowViewModel);
+        DataContextChanged += OnDataContextChanged;
     }
 
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);
+    }
+
+    private void OnDataContextChanged(object? sender, EventArgs e)
+    {
+        AttachViewModel(DataContext as MainWindowViewModel);
+    }
+
+    private void AttachViewModel(MainWindowViewModel? viewModel)
+    {
+        if (_viewModel != null)
+        {
+            _viewModel.RefreshStarted -= OnRefreshStarted;
+            _viewModel.RefreshProgressChanged -= OnRefreshProgressChanged;
+            _viewModel.RefreshCompleted -= OnRefreshCompleted;
+        }
+
+        _viewModel = viewModel;
+
+        if (_viewModel != null)
+        {
+            _viewModel.RefreshStarted += OnRefreshStarted;
+            _viewModel.RefreshProgressChanged += OnRefreshProgressChanged;
+            _viewModel.RefreshCompleted += OnRefreshCompleted;
+        }
     }
 
     private async void OnSelectFolderButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -38,6 +68,37 @@ public partial class MediaManagerWindow : Window
             var folderPath = folders[0].Path.LocalPath;
             viewModel.ScanFolder(folderPath);
         }
+    }
+
+    private void OnRefreshStarted(object? sender, EventArgs e)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            _scanProgressWindow?.Complete();
+            _scanProgressWindow = new ScanProgressWindow
+            {
+                Topmost = true
+            };
+            _scanProgressWindow.UpdateStatus("正在扫描文件...", 0, 0, true);
+            _scanProgressWindow.Show(this);
+        });
+    }
+
+    private void OnRefreshProgressChanged(object? sender, RefreshProgressChangedEventArgs e)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            _scanProgressWindow?.UpdateStatus(e.Message, e.Current, e.Total, e.IsIndeterminate);
+        });
+    }
+
+    private void OnRefreshCompleted(object? sender, EventArgs e)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            _scanProgressWindow?.Complete();
+            _scanProgressWindow = null;
+        });
     }
 
     private void OnCardDoubleTapped(object? sender, TappedEventArgs e)
