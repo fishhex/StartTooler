@@ -252,6 +252,13 @@
                                                         CornerRadius="14"
                                                         BoxShadow="0 12 30 0 #12000000"
                                                         DoubleTapped="OnGroupCardDoubleTapped">
+                                                    <Border.ContextMenu>
+                                                        <ContextMenu>
+                                                            <MenuItem Header="删除"
+                                                                      Command="{Binding ElementName=Root, Path=DataContext.DeleteBurstGroupCommand}"
+                                                                      CommandParameter="{Binding}"/>
+                                                        </ContextMenu>
+                                                    </Border.ContextMenu>
                                                     <StackPanel>
                                                         <Grid>
                                                             <Border Height="150"

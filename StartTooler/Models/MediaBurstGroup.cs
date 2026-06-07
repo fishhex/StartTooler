@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace StartTooler.Models;
 
@@ -24,6 +25,12 @@ public partial class MediaBurstGroup : ObservableObject
     public string BadgeText => $"📂 {Files.Count} 张连拍";
 
     public bool HasMultiple => Files.Count > 1;
+
+    [RelayCommand]
+    private void ToggleExpanded()
+    {
+        IsExpanded = !IsExpanded;
+    }
 
     private void OnFilesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {

@@ -237,7 +237,7 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 删除文件
+    /// 删除单个文件
     /// </summary>
     [RelayCommand]
     public void DeleteFile(string filePath)
@@ -269,6 +269,63 @@ public partial class MainWindowViewModel : ViewModelBase
         catch (Exception ex)
         {
             StatusMessage = $"删除失败：{ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// 删除整个连拍组
+    /// </summary>
+    [RelayCommand]
+    public void DeleteBurstGroup(MediaBurstGroup burstGroup)
+    {
+        if (burstGroup == null || burstGroup.Files.Count == 0)
+            return;
+
+        try
+        {
+            int deletedCount = 0;
+            int failedCount = 0;
+
+            // 删除组内的所有文件
+            var filesToDelete = burstGroup.Files.ToList();
+            foreach (var file in filesToDelete)
+            {
+                try
+                {
+                    // 从数据库中查找并删除记录
+                    var record = DatabaseService.Instance.GetMediaFileRecordByPath(file.FilePath);
+                    if (record != null)
+                    {
+                        DatabaseService.Instance.DeleteMediaFileRecord(record.Id);
+                    }
+
+                    // 删除物理文件
+                    if (System.IO.File.Exists(file.FilePath))
+                    {
+                        System.IO.File.Delete(file.FilePath);
+                    }
+
+                    RemoveFileFromCollections(file);
+                    deletedCount++;
+                }
+                catch (Exception)
+                {
+                    failedCount++;
+                }
+            }
+
+            if (failedCount == 0)
+            {
+                StatusMessage = $"已删除连拍组：{deletedCount} 个文件";
+            }
+            else
+            {
+                StatusMessage = $"删除连拍组完成：成功 {deletedCount} 个，失败 {failedCount} 个";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"删除连拍组失败：{ex.Message}";
         }
     }
 
