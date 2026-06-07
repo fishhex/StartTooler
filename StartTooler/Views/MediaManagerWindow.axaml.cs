@@ -141,8 +141,12 @@ public partial class MediaManagerWindow : Window
 
         if (sender is Border { DataContext: MediaBurstGroup group })
         {
-            ToggleGroupExpansion(group);
-            e.Handled = true;
+            // 只有多个文件的组才允许展开/折叠
+            if (group.HasMultiple)
+            {
+                ToggleGroupExpansion(group);
+                e.Handled = true;
+            }
         }
     }
 
@@ -150,8 +154,12 @@ public partial class MediaManagerWindow : Window
     {
         if (sender is Button { DataContext: MediaBurstGroup group })
         {
-            ToggleGroupExpansion(group);
-            e.Handled = true;
+            // 只有多个文件的组才允许展开/折叠
+            if (group.HasMultiple)
+            {
+                ToggleGroupExpansion(group);
+                e.Handled = true;
+            }
         }
     }
 
