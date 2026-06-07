@@ -5,6 +5,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using StartTooler.Models;
+using StartTooler.Services;
 using StartTooler.ViewModels;
 using System;
 using System.Diagnostics;
@@ -22,6 +23,7 @@ public partial class MediaManagerWindow : Window
         InitializeComponent();
         AttachViewModel(DataContext as MainWindowViewModel);
         DataContextChanged += OnDataContextChanged;
+        UpdateThemeGlyph(ThemeManager.CurrentMode);
     }
 
     private void InitializeComponent()
@@ -156,6 +158,26 @@ public partial class MediaManagerWindow : Window
     private static void ToggleGroupExpansion(MediaBurstGroup group)
     {
         group.IsExpanded = !group.IsExpanded;
+    }
+
+    private void OnThemeToggleClick(object? sender, RoutedEventArgs e)
+    {
+        var newMode = ThemeManager.CurrentMode == ThemeMode.Light ? ThemeMode.Dark : ThemeMode.Light;
+        ThemeManager.ApplyTheme(newMode);
+        UpdateThemeGlyph(newMode);
+
+        if (sender is Button button)
+        {
+            ToolTip.SetTip(button, newMode == ThemeMode.Dark ? "切换为浅色模式" : "切换为深色模式");
+        }
+    }
+
+    private void UpdateThemeGlyph(ThemeMode mode)
+    {
+        if (this.FindControl<TextBlock>("ThemeToggleGlyph") is { } glyph)
+        {
+            glyph.Text = mode == ThemeMode.Dark ? "☀️" : "🌙";
+        }
     }
 
     private void OpenWithDefaultPlayer(string filePath)

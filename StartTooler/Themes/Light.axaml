@@ -1,0 +1,18 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <SolidColorBrush x:Key="AppBackgroundBrush" Color="#F3F3F5"/>
+  <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="InputBrush" Color="#FAFAFA"/>
+  <SolidColorBrush x:Key="PrimaryTextBrush" Color="#1A1A1A"/>
+  <SolidColorBrush x:Key="SecondaryTextBrush" Color="#71717A"/>
+  <SolidColorBrush x:Key="AccentBrush" Color="#C2410C"/>
+  <SolidColorBrush x:Key="AccentVariantBrush" Color="#B91C1C"/>
+  <SolidColorBrush x:Key="AccentSoftBrush" Color="#FFE9DC"/>
+  <SolidColorBrush x:Key="DividerBrush" Color="#E4E4E7"/>
+  <SolidColorBrush x:Key="ThemeGlyphBrush" Color="#1A1A1A"/>
+  <SolidColorBrush x:Key="ProgressDialogBackgroundBrush" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="ProgressDialogBorderBrush" Color="#E4E4E7"/>
+  <SolidColorBrush x:Key="ProgressDialogTextBrush" Color="#1A1A1A"/>
+  <SolidColorBrush x:Key="ProgressDialogTrackBrush" Color="#F3F3F5"/>
+  <SolidColorBrush x:Key="ProgressDialogBarBrush" Color="#C2410C"/>
+</ResourceDictionary>
