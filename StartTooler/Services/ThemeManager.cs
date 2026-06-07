@@ -1,19 +1,12 @@
 using System;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Markup.Xaml;
+using Avalonia.Styling;
 
 namespace StartTooler.Services;
 
 public static class ThemeManager
 {
-    private static readonly Uri LightThemeUri = new("avares://StartTooler/Themes/Light.axaml");
-    private static readonly Uri DarkThemeUri = new("avares://StartTooler/Themes/Dark.axaml");
-
-    private static ResourceDictionary? _lightTheme;
-    private static ResourceDictionary? _darkTheme;
-    private static ResourceDictionary? _current;
-
     public static ThemeMode CurrentMode { get; private set; } = ThemeMode.Light;
 
     public static void Initialize()
@@ -23,18 +16,9 @@ public static class ThemeManager
             return;
         }
 
-        _lightTheme ??= (ResourceDictionary)AvaloniaXamlLoader.Load(LightThemeUri);
-        _darkTheme ??= (ResourceDictionary)AvaloniaXamlLoader.Load(DarkThemeUri);
-
-        if (_current == null)
-        {
-            _current = _lightTheme;
-            if (_current != null)
-            {
-                app.Resources.MergedDictionaries.Add(_current);
-            }
-            CurrentMode = ThemeMode.Light;
-        }
+        // 默认使用 Light 主题
+        app.RequestedThemeVariant = ThemeVariant.Light;
+        CurrentMode = ThemeMode.Light;
     }
 
     public static void ApplyTheme(ThemeMode mode)
@@ -44,30 +28,10 @@ public static class ThemeManager
             return;
         }
 
-        Initialize();
-
-        var target = mode == ThemeMode.Dark ? _darkTheme : _lightTheme;
-        if (target == null)
-        {
-            return;
-        }
-
-        if (ReferenceEquals(_current, target))
-        {
-            CurrentMode = mode;
-            return;
-        }
-
-        if (_current != null)
-        {
-            app.Resources.MergedDictionaries.Remove(_current);
-        }
-
-        app.Resources.MergedDictionaries.Add(target);
-        _current = target;
+        var themeVariant = mode == ThemeMode.Dark ? ThemeVariant.Dark : ThemeVariant.Light;
+        app.RequestedThemeVariant = themeVariant;
         CurrentMode = mode;
     }
-
 }
 
 public enum ThemeMode

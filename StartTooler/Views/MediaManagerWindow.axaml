@@ -62,6 +62,7 @@
                             <Button.Styles>
                                 <Style Selector="Button:pointerover">
                                     <Setter Property="Background" Value="{DynamicResource DividerBrush}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
                                 </Style>
                             </Button.Styles>
                         </Button>
@@ -96,6 +97,7 @@
                                 </Style>
                                 <Style Selector="ToggleButton:pointerover">
                                     <Setter Property="Background" Value="{DynamicResource DividerBrush}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
                                 </Style>
                             </ToggleButton.Styles>
                         </ToggleButton>
@@ -117,6 +119,7 @@
                             <Button.Styles>
                                 <Style Selector="Button:pointerover">
                                     <Setter Property="Background" Value="{DynamicResource DividerBrush}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
                                 </Style>
                             </Button.Styles>
                         </Button>
@@ -134,6 +137,7 @@
                             <Button.Styles>
                                 <Style Selector="Button:pointerover">
                                     <Setter Property="Background" Value="{DynamicResource DividerBrush}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
                                 </Style>
                             </Button.Styles>
                         </Button>
@@ -177,6 +181,9 @@
                                         <Button.Styles>
                                             <Style Selector="Button:pointerover /template/ Border#PART_ButtonBackgroundBorder">
                                                 <Setter Property="Background" Value="#E8F4FD"/>
+                                            </Style>
+                                            <Style Selector="Button:pointerover">
+                                                <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
                                             </Style>
                                             <Style Selector="Button:pressed /template/ Border#PART_ButtonBackgroundBorder">
                                                 <Setter Property="Background" Value="#D0E8F7"/>

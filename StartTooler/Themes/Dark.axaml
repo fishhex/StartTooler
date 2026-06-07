@@ -15,4 +15,5 @@
   <SolidColorBrush x:Key="ProgressDialogTextBrush" Color="#E1E1E3"/>
   <SolidColorBrush x:Key="ProgressDialogTrackBrush" Color="#2A2C33"/>
   <SolidColorBrush x:Key="ProgressDialogBarBrush" Color="#A53E42"/>
+  <Thickness x:Key="ProgressDialogBorderThickness">0</Thickness>
 </ResourceDictionary>
