@@ -152,15 +152,9 @@ public partial class MediaManagerWindow : Window
 
     private void OnGroupBadgeClick(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { DataContext: MediaBurstGroup group })
-        {
-            // 只有多个文件的组才允许展开/折叠
-            if (group.HasMultiple)
-            {
-                ToggleGroupExpansion(group);
-                e.Handled = true;
-            }
-        }
+        // 这个方法不再使用，因为徽章按钮现在直接绑定到 OpenBurstDetailDrawerCommand
+        // 保留此方法以防其他地方调用
+        e.Handled = true;
     }
 
     private static void ToggleGroupExpansion(MediaBurstGroup group)

@@ -22,7 +22,7 @@ public partial class MediaBurstGroup : ObservableObject
 
     public MediaFile? Cover => Files.FirstOrDefault();
 
-    public string BadgeText => $"📂 {Files.Count} 张连拍";
+    public string BadgeText => $"📂 {Files.Count} 张";
 
     public bool HasMultiple => Files.Count > 1;
 

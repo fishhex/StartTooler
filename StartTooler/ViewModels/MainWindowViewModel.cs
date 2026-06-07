@@ -51,6 +51,12 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private SettingsViewModel _settingsViewModel = new();
 
+    [ObservableProperty]
+    private MediaBurstGroup? _selectedBurstGroup;
+
+    [ObservableProperty]
+    private bool _isBurstDetailDrawerVisible;
+
     public event EventHandler? RefreshStarted;
     public event EventHandler<RefreshProgressChangedEventArgs>? RefreshProgressChanged;
     public event EventHandler? RefreshCompleted;
@@ -577,6 +583,29 @@ public partial class MainWindowViewModel : ViewModelBase
     public void CancelSettings()
     {
         IsSettingsPanelVisible = false;
+    }
+
+    /// <summary>
+    /// 打开连拍详情抽屉
+    /// </summary>
+    [RelayCommand]
+    public void OpenBurstDetailDrawer(MediaBurstGroup burstGroup)
+    {
+        if (burstGroup == null)
+            return;
+        
+        SelectedBurstGroup = burstGroup;
+        IsBurstDetailDrawerVisible = true;
+    }
+
+    /// <summary>
+    /// 关闭连拍详情抽屉
+    /// </summary>
+    [RelayCommand]
+    public void CloseBurstDetailDrawer()
+    {
+        IsBurstDetailDrawerVisible = false;
+        SelectedBurstGroup = null;
     }
 
     private void BuildDateGroups(List<MediaFile> files)

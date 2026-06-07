@@ -198,7 +198,132 @@
             </Border>
 
             <!-- Main content -->
-            <Grid RowDefinitions="Auto,*">
+            <DockPanel>
+                <!-- Burst detail drawer -->
+                <Grid DockPanel.Dock="Right"
+                      Width="400"
+                      Margin="0,0,10,10"
+                      IsVisible="{Binding IsBurstDetailDrawerVisible}">
+                    <Grid.Styles>
+                        <Style Selector="Border.drawer">
+                            <Setter Property="Opacity" Value="1"/>
+                        </Style>
+                    </Grid.Styles>
+                    <Border Classes="drawer"
+                            Background="{DynamicResource SurfaceBrush}"
+                            BorderBrush="{DynamicResource DividerBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            BoxShadow="0 0 20 0 #26000000">
+                        <Grid RowDefinitions="Auto,*">
+                            <Border Grid.Row="0" 
+                                    Background="{DynamicResource SurfaceBrush}" 
+                                    Padding="15" 
+                                    BorderBrush="{DynamicResource DividerBrush}" 
+                                    BorderThickness="0,0,0,1">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" 
+                                               Text="连拍详情" 
+                                               FontSize="16" 
+                                               FontWeight="Medium" 
+                                               VerticalAlignment="Center" 
+                                               Foreground="{DynamicResource PrimaryTextBrush}"/>
+                                    <Button Grid.Column="1" 
+                                            Command="{Binding CloseBurstDetailDrawerCommand}"
+                                            Background="{DynamicResource SurfaceBrush}"
+                                            Width="30" Height="30" Padding="0">
+                                        <Path Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                                              Fill="{DynamicResource SecondaryTextBrush}"
+                                              Stretch="Uniform"
+                                              Width="14" Height="14"/>
+                                    </Button>
+                                </Grid>
+                            </Border>
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding SelectedBurstGroup.Files}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal" ItemWidth="180" ItemHeight="220"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:MediaFile">
+                                            <Border Width="164" 
+                                                    Height="204"
+                                                    Margin="8" 
+                                                    CornerRadius="4"
+                                                    DoubleTapped="OnCardDoubleTapped"
+                                                    Cursor="Hand"
+                                                    PointerPressed="OnCardPointerPressed">
+                                                <Border.ContextMenu>
+                                                    <ContextMenu>
+                                                        <MenuItem Header="删除"
+                                                                  Command="{Binding ElementName=Root, Path=DataContext.DeleteFileCommand}"
+                                                                  CommandParameter="{Binding FilePath}"/>
+                                                        <Separator/>
+                                                        <MenuItem Header="全选" 
+                                                                  Command="{Binding ElementName=Root, Path=DataContext.SelectAllCommand}"
+                                                                  IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                        <MenuItem Header="取消全选" 
+                                                                  Command="{Binding ElementName=Root, Path=DataContext.DeselectAllCommand}"
+                                                                  IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                        <MenuItem Header="反选" 
+                                                                  Command="{Binding ElementName=Root, Path=DataContext.InvertSelectionCommand}"
+                                                                  IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                        <Separator IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                        <MenuItem Header="批量删除" 
+                                                                  Command="{Binding ElementName=Root, Path=DataContext.BatchDeleteCommand}"
+                                                                  IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                    </ContextMenu>
+                                                </Border.ContextMenu>
+                                                <Grid RowDefinitions="Auto, Auto, *, Auto, Auto">
+                                                    <CheckBox Grid.Row="0"
+                                                              IsChecked="{Binding IsSelected}"
+                                                              Margin="8,8,8,4"
+                                                              HorizontalAlignment="Right"
+                                                              IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                    <Border Grid.Row="1"
+                                                            Height="120"
+                                                            Margin="10,10,10,5"
+                                                            Background="Transparent"
+                                                            ClipToBounds="True">
+                                                        <Image Stretch="UniformToFill"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center">
+                                                            <Image.Source>
+                                                                <Binding Path="ThumbnailPath" Converter="{StaticResource ThumbnailConverter}"/>
+                                                            </Image.Source>
+                                                        </Image>
+                                                    </Border>
+                                                    <TextBlock Grid.Row="2"
+                                                               Text="{Binding FileName}" 
+                                                               FontSize="11"
+                                                               FontWeight="Medium"
+                                                               TextWrapping="Wrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               MaxHeight="30"
+                                                               Margin="8,5,8,2"
+                                                               Foreground="{DynamicResource PrimaryTextBrush}"/>
+                                                    <TextBlock Grid.Row="3"
+                                                               Text="{Binding FileType}" 
+                                                               FontSize="9"
+                                                               Foreground="{DynamicResource SecondaryTextBrush}"
+                                                               Margin="8,0,8,2"/>
+                                                    <TextBlock Grid.Row="4"
+                                                               Text="{Binding FormattedFileSize}" 
+                                                               FontSize="9"
+                                                               Foreground="{DynamicResource SecondaryTextBrush}"
+                                                               Margin="8,0,8,5"/>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </Grid>
+                <Grid RowDefinitions="Auto,*">
                 <Grid.ContextMenu>
                     <ContextMenu x:DataType="vm:MainWindowViewModel"
                                  DataContext="{Binding ElementName=Root, Path=DataContext}">
@@ -275,7 +400,8 @@
                                                                 </Image>
                                                             </Border>
                                                             <Button Content="{Binding BadgeText}"
-                                                                    Click="OnGroupBadgeClick"
+                                                                    Command="{Binding ElementName=Root, Path=DataContext.OpenBurstDetailDrawerCommand}"
+                                                                    CommandParameter="{Binding}"
                                                                     HorizontalAlignment="Right"
                                                                     VerticalAlignment="Top"
                                                                     Margin="0,10,10,0"
@@ -295,7 +421,7 @@
                                                                    Margin="4,8,4,0"
                                                                    TextTrimming="CharacterEllipsis"
                                                                    Foreground="{DynamicResource PrimaryTextBrush}"/>
-                                                        <TextBlock Text="双击卡片或点击徽章展开"
+                                                        <TextBlock Text="点击徽章查看详情"
                                                                    FontSize="10"
                                                                    Foreground="{DynamicResource SecondaryTextBrush}"
                                                                    Margin="4,2,4,0"
@@ -391,8 +517,9 @@
                 </ScrollViewer>
             </Grid>
         </DockPanel>
+    </DockPanel>
 
-        <Border IsVisible="{Binding IsSettingsPanelVisible}"
+    <Border IsVisible="{Binding IsSettingsPanelVisible}"
                 Background="{DynamicResource SurfaceBrush}"
                 Width="500"
                 HorizontalAlignment="Right"
