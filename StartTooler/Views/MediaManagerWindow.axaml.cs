@@ -134,20 +134,8 @@ public partial class MediaManagerWindow : Window
 
     private void OnGroupCardDoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (e.Source is Control { DataContext: MediaFile })
-        {
-            return;
-        }
-
-        if (sender is Border { DataContext: MediaBurstGroup group })
-        {
-            // 只有多个文件的组才允许展开/折叠
-            if (group.HasMultiple)
-            {
-                ToggleGroupExpansion(group);
-                e.Handled = true;
-            }
-        }
+        // 不再需要展开逻辑，双击事件保留但不再处理
+        e.Handled = true;
     }
 
     private void OnGroupBadgeClick(object? sender, RoutedEventArgs e)
@@ -155,11 +143,6 @@ public partial class MediaManagerWindow : Window
         // 这个方法不再使用，因为徽章按钮现在直接绑定到 OpenBurstDetailDrawerCommand
         // 保留此方法以防其他地方调用
         e.Handled = true;
-    }
-
-    private static void ToggleGroupExpansion(MediaBurstGroup group)
-    {
-        group.IsExpanded = !group.IsExpanded;
     }
 
     private void OnThemeToggleClick(object? sender, RoutedEventArgs e)
