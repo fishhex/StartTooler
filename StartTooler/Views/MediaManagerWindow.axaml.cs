@@ -108,15 +108,23 @@ public partial class MediaManagerWindow : Window
     {
         if (sender is Border border && border.DataContext is MediaFile mediaFile)
         {
-            if (mediaFile.FileType == "视频")
+            if (DataContext is MainWindowViewModel viewModel)
             {
-                OpenWithDefaultPlayer(mediaFile.FilePath);
-            }
-            else
-            {
-                var previewWindow = new PreviewWindow();
-                previewWindow.ShowFile(mediaFile);
-                previewWindow.Show(this);
+                if (viewModel.IsMultiSelectMode)
+                {
+                    // 多选模式下不执行预览，只切换选中状态
+                    mediaFile.IsSelected = !mediaFile.IsSelected;
+                }
+                else if (mediaFile.FileType == "视频")
+                {
+                    OpenWithDefaultPlayer(mediaFile.FilePath);
+                }
+                else
+                {
+                    var previewWindow = new PreviewWindow();
+                    previewWindow.ShowFile(mediaFile);
+                    previewWindow.Show(this);
+                }
             }
         }
     }

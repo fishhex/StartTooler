@@ -21,6 +21,9 @@ public class MediaFileRecord
     [Indexed]
     public string RootPath { get; set; } = string.Empty;
 
+    [Indexed]
+    public string? GroupId { get; set; }
+
     public long PerceptualHash { get; set; }
 
     public bool IsUploaded { get; set; }

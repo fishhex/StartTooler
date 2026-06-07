@@ -57,6 +57,16 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isBurstDetailDrawerVisible;
 
+    /// <summary>
+    /// 当前选中的文件列表（用于多选操作）
+    /// </summary>
+    public ObservableCollection<MediaFile> SelectedFiles { get; } = new();
+
+    /// <summary>
+    /// 用于在刷新后保留选中状态的文件路径集合
+    /// </summary>
+    private HashSet<string>? _pendingSelectionPaths;
+
     public event EventHandler? RefreshStarted;
     public event EventHandler<RefreshProgressChangedEventArgs>? RefreshProgressChanged;
     public event EventHandler? RefreshCompleted;
@@ -66,6 +76,30 @@ public partial class MainWindowViewModel : ViewModelBase
         _fileScanService = new FileScanService();
         _thumbnailService = new ThumbnailService();
         LoadRecentFolders(tryAutoLoad: true);
+    }
+
+    /// <summary>
+    /// 订阅 MediaFile 的 IsSelected 属性变化事件，自动同步 SelectedFiles 集合
+    /// </summary>
+    private void AttachSelectionTracking(MediaFile file)
+    {
+        file.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName != nameof(MediaFile.IsSelected))
+                return;
+
+            if (file.IsSelected)
+            {
+                if (!SelectedFiles.Contains(file))
+                {
+                    SelectedFiles.Add(file);
+                }
+            }
+            else
+            {
+                SelectedFiles.Remove(file);
+            }
+        };
     }
 
     public async void ScanFolder(string folderPath)
@@ -86,6 +120,9 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private async Task LoadFolderFromDatabaseAsync(string folderPath)
     {
+        // 在刷新前保存当前选中状态
+        _pendingSelectionPaths = new HashSet<string>(SelectedFiles.Select(f => f.FilePath));
+
         IsScanning = true;
         StatusMessage = "正在从数据库加载媒体记录...";
         MediaFiles.Clear();
@@ -98,8 +135,23 @@ public partial class MainWindowViewModel : ViewModelBase
             foreach (var record in records)
             {
                 var mediaFile = CreateMediaFileFromRecord(record);
+                AttachSelectionTracking(mediaFile);
                 files.Add(mediaFile);
                 MediaFiles.Add(mediaFile);
+            }
+
+            // 恢复刷新前的选中状态
+            SelectedFiles.Clear();
+            if (_pendingSelectionPaths != null)
+            {
+                foreach (var file in files)
+                {
+                    if (_pendingSelectionPaths.Contains(file.FilePath))
+                    {
+                        file.IsSelected = true;
+                    }
+                }
+                _pendingSelectionPaths = null;
             }
 
             if (files.Count == 0)
@@ -434,6 +486,8 @@ public partial class MainWindowViewModel : ViewModelBase
         if (file == null)
             return;
 
+        SelectedFiles.Remove(file);
+
         var dateGroup = DateGroups.FirstOrDefault(g => g.Date == file.ModifiedTime.Date);
         if (dateGroup != null)
         {
@@ -467,7 +521,8 @@ public partial class MainWindowViewModel : ViewModelBase
             FileType = ResolveFileType(record.LocalPath),
             ModifiedTime = record.UpdatedTime,
             FileSize = 0,
-            PerceptualHash = record.PerceptualHash
+            PerceptualHash = record.PerceptualHash,
+            GroupId = record.GroupId
         };
 
         if (File.Exists(record.LocalPath))
@@ -608,6 +663,76 @@ public partial class MainWindowViewModel : ViewModelBase
         SelectedBurstGroup = null;
     }
 
+    /// <summary>
+    /// 将指定文件从当前组中移出
+    /// </summary>
+    [RelayCommand]
+    public async Task RemoveFromGroup(MediaFile? file)
+    {
+        if (file == null) return;
+        // 规则 3：移出时分配一个全新的、只属于它自己的唯一 GUID
+        UpdateFileGroupId(file, Guid.NewGuid().ToString());
+        await RefreshCurrentViewAsync();
+    }
+
+    /// <summary>
+    /// 解散指定的连拍组
+    /// </summary>
+    [RelayCommand]
+    public async Task DissolveGroup(MediaBurstGroup? group)
+    {
+        if (group == null) return;
+    
+        // 关键修复：不要设为 null，而是给每张照片分配专属的"单身身份证"
+        // 防止 pHash 算法再次自动聚类
+        foreach (var file in group.Files)
+        {
+            UpdateFileGroupId(file, Guid.NewGuid().ToString());
+        }
+    
+        IsBurstDetailDrawerVisible = false;
+        SelectedBurstGroup = null;
+        await RefreshCurrentViewAsync();
+    }
+
+    /// <summary>
+    /// 合并选中的文件为一个新的连拍组
+    /// </summary>
+    [RelayCommand]
+    public async Task MergeToBurstGroup()
+    {
+        if (SelectedFiles.Count < 2) return;
+
+        var newGroupId = Guid.NewGuid().ToString();
+        foreach (var file in SelectedFiles)
+        {
+            UpdateFileGroupId(file, newGroupId);
+        }
+
+        SelectedFiles.Clear();
+        await RefreshCurrentViewAsync();
+    }
+
+    private void UpdateFileGroupId(MediaFile file, string? groupId)
+    {
+        var record = DatabaseService.Instance.GetMediaFileRecordByPath(file.FilePath);
+        if (record != null)
+        {
+            record.GroupId = groupId;
+            DatabaseService.Instance.SaveMediaFileRecord(record);
+        }
+        // 同步更新内存中的 MediaFile 对象，避免刷新闪烁
+        file.GroupId = groupId;
+    }
+
+    private async Task RefreshCurrentViewAsync()
+    {
+        if (!string.IsNullOrEmpty(SelectedFolderPath))
+        {
+            await LoadFolderFromDatabaseAsync(SelectedFolderPath);
+        }
+    }
+
     private void BuildDateGroups(List<MediaFile> files)
     {
         DateGroups.Clear();
@@ -658,8 +783,24 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private List<MediaBurstGroup> BuildBurstGroups(List<MediaFile> files)
     {
-        var remaining = files.OrderByDescending(f => f.ModifiedTime).ToList();
         var burstGroups = new List<MediaBurstGroup>();
+
+        // 1. 优先处理已有 GroupId 的文件（人工干预组）
+        var groupedFiles = files.Where(f => !string.IsNullOrEmpty(f.GroupId)).GroupBy(f => f.GroupId);
+        foreach (var group in groupedFiles)
+        {
+            if (group.Count() > 0)
+            {
+                burstGroups.Add(new MediaBurstGroup(group.OrderByDescending(f => f.ModifiedTime)));
+            }
+        }
+
+        // 2. 处理剩余没有 GroupId 的文件（算法自动聚类）
+        // 注意：此时所有 GroupId 不为空的图片（包括独立的和成组的）都已在第一步处理完毕
+        var remaining = files
+            .Where(f => string.IsNullOrEmpty(f.GroupId))
+            .OrderByDescending(f => f.ModifiedTime)
+            .ToList();
 
         while (remaining.Count > 0)
         {

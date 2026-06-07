@@ -260,6 +260,12 @@
                                                         <MenuItem Header="删除"
                                                                   Command="{Binding ElementName=Root, Path=DataContext.DeleteFileCommand}"
                                                                   CommandParameter="{Binding FilePath}"/>
+                                                        <MenuItem Header="移出当前组" 
+                                                                  Command="{Binding ElementName=Root, Path=DataContext.RemoveFromGroupCommand}"
+                                                                  CommandParameter="{Binding}"/>
+                                                        <Separator/>
+                                                        <MenuItem Header="合并为连拍组" 
+                                                                  Command="{Binding ElementName=Root, Path=DataContext.MergeToBurstGroupCommand}"/>
                                                         <Separator/>
                                                         <MenuItem Header="全选" 
                                                                   Command="{Binding ElementName=Root, Path=DataContext.SelectAllCommand}"
@@ -278,7 +284,7 @@
                                                 </Border.ContextMenu>
                                                 <Grid RowDefinitions="Auto, Auto, *, Auto, Auto">
                                                     <CheckBox Grid.Row="0"
-                                                              IsChecked="{Binding IsSelected}"
+                                                              IsChecked="{Binding IsSelected, Mode=TwoWay}"
                                                               Margin="8,8,8,4"
                                                               HorizontalAlignment="Right"
                                                               IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
@@ -381,6 +387,9 @@
                                                             <MenuItem Header="删除"
                                                                       Command="{Binding ElementName=Root, Path=DataContext.DeleteBurstGroupCommand}"
                                                                       CommandParameter="{Binding}"/>
+                                                            <MenuItem Header="解散该连拍组" Foreground="Red"
+                                                                      Command="{Binding ElementName=Root, Path=DataContext.DissolveGroupCommand}"
+                                                                      CommandParameter="{Binding}"/>
                                                         </ContextMenu>
                                                     </Border.ContextMenu>
                                                     <StackPanel>
@@ -389,6 +398,15 @@
                                                                     CornerRadius="10"
                                                                     Background="#111111"
                                                                     ClipToBounds="True">
+                                                                <Border.ContextMenu>
+                                                                    <ContextMenu>
+                                                                        <MenuItem Header="合并为连拍组" 
+                                                                                  Command="{Binding ElementName=Root, Path=DataContext.MergeToBurstGroupCommand}"/>
+                                                                        <MenuItem Header="移出当前组" 
+                                                                                  Command="{Binding ElementName=Root, Path=DataContext.RemoveFromGroupCommand}"
+                                                                                  CommandParameter="{Binding Cover}"/>
+                                                                    </ContextMenu>
+                                                                </Border.ContextMenu>
                                                                 <Image Stretch="UniformToFill"
                                                                        HorizontalAlignment="Center"
                                                                        VerticalAlignment="Center">
@@ -398,6 +416,19 @@
                                                                     </Image.Source>
                                                                 </Image>
                                                             </Border>
+                                                            <CheckBox HorizontalAlignment="Left"
+                                                                      VerticalAlignment="Top"
+                                                                      Margin="10,10,0,0"
+                                                                      IsChecked="{Binding Cover.IsSelected, Mode=TwoWay}"
+                                                                      IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"
+                                                                      ZIndex="1"
+                                                                      Background="{DynamicResource SurfaceBrush}">
+                                                                <CheckBox.Styles>
+                                                                    <Style Selector="CheckBox /template/ Border#PART_Border">
+                                                                        <Setter Property="BoxShadow" Value="0 2 8 0 #26000000"/>
+                                                                    </Style>
+                                                                </CheckBox.Styles>
+                                                            </CheckBox>
                                                             <Button Content="{Binding BadgeText}"
                                                                     Command="{Binding ElementName=Root, Path=DataContext.OpenBurstDetailDrawerCommand}"
                                                                     CommandParameter="{Binding}"
@@ -412,7 +443,15 @@
                                                                     BorderThickness="0"
                                                                     CornerRadius="999"
                                                                     Cursor="Hand"
-                                                                    IsVisible="{Binding HasMultiple}"/>
+                                                                    IsVisible="{Binding HasMultiple}">
+                                                                <Button.ContextMenu>
+                                                                    <ContextMenu>
+                                                                        <MenuItem Header="解散该连拍组" Foreground="Red"
+                                                                                  Command="{Binding ElementName=Root, Path=DataContext.DissolveGroupCommand}"
+                                                                                  CommandParameter="{Binding}"/>
+                                                                    </ContextMenu>
+                                                                </Button.ContextMenu>
+                                                            </Button>
                                                         </Grid>
                                                         <TextBlock Text="{Binding Cover.FileName}"
                                                                    FontSize="12"

@@ -170,6 +170,7 @@ public class DatabaseService : IDisposable
                 existing.IsUploaded = record.IsUploaded;
                 existing.RootPath = record.RootPath;
                 existing.PerceptualHash = record.PerceptualHash;
+                existing.GroupId = record.GroupId;
                 existing.UpdatedTime = record.UpdatedTime;
                 _connection.Update(existing);
             }
@@ -339,6 +340,11 @@ public class DatabaseService : IDisposable
             if (columns.All(c => c.Name != "PerceptualHash"))
             {
                 _connection.Execute("ALTER TABLE MediaFileRecords ADD COLUMN PerceptualHash INTEGER DEFAULT 0");
+            }
+
+            if (columns.All(c => c.Name != "GroupId"))
+            {
+                _connection.Execute("ALTER TABLE MediaFileRecords ADD COLUMN GroupId TEXT");
             }
         }
         catch (Exception ex)

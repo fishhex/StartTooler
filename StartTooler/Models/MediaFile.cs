@@ -12,6 +12,7 @@ public partial class MediaFile : ObservableObject
     public long FileSize { get; set; }
     public string? ThumbnailPath { get; set; } // 缩略图路径
     public long PerceptualHash { get; set; }
+    public string? GroupId { get; set; }
     
     [ObservableProperty]
     private bool _isSelected;
@@ -29,5 +30,15 @@ public partial class MediaFile : ObservableObject
             else
                 return $"{FileSize / (1024.0 * 1024 * 1024):F2} GB";
         }
+    }
+
+    public override bool Equals(object? obj)
+    {
+        return obj is MediaFile other && string.Equals(FilePath, other.FilePath, StringComparison.Ordinal);
+    }
+
+    public override int GetHashCode()
+    {
+        return StringComparer.Ordinal.GetHashCode(FilePath);
     }
 }
