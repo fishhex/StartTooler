@@ -9,7 +9,6 @@ using StartTooler.Services;
 using StartTooler.ViewModels;
 using System;
 using System.Diagnostics;
-using System.Linq;
 
 namespace StartTooler.Views;
 
@@ -115,15 +114,9 @@ public partial class MediaManagerWindow : Window
                     // 多选模式下不执行预览，只切换选中状态
                     mediaFile.IsSelected = !mediaFile.IsSelected;
                 }
-                else if (mediaFile.FileType == "视频")
-                {
-                    OpenWithDefaultPlayer(mediaFile.FilePath);
-                }
                 else
                 {
-                    var previewWindow = new PreviewWindow();
-                    previewWindow.ShowFile(mediaFile);
-                    previewWindow.Show(this);
+                    OpenWithDefaultPlayer(mediaFile.FilePath);
                 }
             }
         }
@@ -142,7 +135,14 @@ public partial class MediaManagerWindow : Window
 
     private void OnGroupCardDoubleTapped(object? sender, TappedEventArgs e)
     {
-        // 不再需要展开逻辑，双击事件保留但不再处理
+        if (sender is Border border && border.DataContext is MediaBurstGroup group)
+        {
+            // 仅单个媒体资源时支持双击打开
+            if (group.Files.Count == 1)
+            {
+                OpenWithDefaultPlayer(group.Files[0].FilePath);
+            }
+        }
         e.Handled = true;
     }
 
