@@ -101,6 +101,57 @@
                                 </Style>
                             </ToggleButton.Styles>
                         </ToggleButton>
+                        
+                        <Button Content="合并为组"
+                                Command="{Binding MergeToBurstGroupCommand}"
+                                Padding="12,6"
+                                FontSize="13"
+                                Background="{DynamicResource SurfaceBrush}"
+                                BorderBrush="{DynamicResource DividerBrush}"
+                                Foreground="{DynamicResource PrimaryTextBrush}"
+                                IsVisible="{Binding CanMergeSelectedFiles}">
+                            <Button.Styles>
+                                <Style Selector="Button:pointerover">
+                                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
+                                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                </Style>
+                            </Button.Styles>
+                        </Button>
+                        
+                        <Button Content="移出当前组"
+                                Command="{Binding RemoveFromGroupAllSelectedCommand}"
+                                Padding="12,6"
+                                FontSize="13"
+                                Background="{DynamicResource SurfaceBrush}"
+                                BorderBrush="{DynamicResource DividerBrush}"
+                                Foreground="{DynamicResource PrimaryTextBrush}"
+                                IsVisible="{Binding CanRemoveSelectedFromGroup}">
+                            <Button.Styles>
+                                <Style Selector="Button:pointerover">
+                                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
+                                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                </Style>
+                            </Button.Styles>
+                        </Button>
+
+                        <Button Content="批量删除"
+                                Command="{Binding BatchDeleteCommand}"
+                                Padding="12,6"
+                                FontSize="13"
+                                Background="{DynamicResource SurfaceBrush}"
+                                BorderBrush="{DynamicResource DividerBrush}"
+                                Foreground="Red"
+                                IsVisible="{Binding HasSelectedFiles}">
+                            <Button.Styles>
+                                <Style Selector="Button:pointerover">
+                                    <Setter Property="Background" Value="#FFCCCC"/>
+                                    <Setter Property="Foreground" Value="#CC0000"/>
+                                    <Setter Property="BorderBrush" Value="Red"/>
+                                </Style>
+                            </Button.Styles>
+                        </Button>
                     </StackPanel>
                     
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -248,13 +299,17 @@
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="models:MediaFile">
-                                            <Border Width="164" 
+                                            <Border Classes="MediaCard"
+                                                    Width="164" 
                                                     Height="204"
                                                     Margin="8" 
                                                     CornerRadius="4"
                                                     DoubleTapped="OnCardDoubleTapped"
                                                     Cursor="Hand"
-                                                    PointerPressed="OnCardPointerPressed">
+                                                    PointerPressed="OnCardPointerPressed"
+                                                    Background="{DynamicResource SurfaceBrush}"
+                                                    BorderBrush="{DynamicResource DividerBrush}"
+                                                    BorderThickness="1">
                                                 <Border.ContextMenu>
                                                     <ContextMenu>
                                                         <MenuItem Header="删除"
@@ -284,8 +339,8 @@
                                                 </Border.ContextMenu>
                                                 <Grid RowDefinitions="Auto, Auto, *, Auto, Auto">
                                                     <CheckBox Grid.Row="0"
+                                                              Classes="CardCheck"
                                                               IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                                              Margin="8,8,8,4"
                                                               HorizontalAlignment="Right"
                                                               IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
                                                     <Border Grid.Row="1"
@@ -376,7 +431,8 @@
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="models:MediaBurstGroup">
-                                                <Border Width="240"
+                                                <Border Classes="MediaCard"
+                                                        Width="240"
                                                         Margin="8"
                                                         Padding="12"
                                                         Background="{DynamicResource SurfaceBrush}"
@@ -416,19 +472,10 @@
                                                                     </Image.Source>
                                                                 </Image>
                                                             </Border>
-                                                            <CheckBox HorizontalAlignment="Left"
-                                                                      VerticalAlignment="Top"
-                                                                      Margin="10,10,0,0"
+                                                            <CheckBox Classes="CardCheck"
                                                                       IsChecked="{Binding Cover.IsSelected, Mode=TwoWay}"
                                                                       IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"
-                                                                      ZIndex="1"
-                                                                      Background="{DynamicResource SurfaceBrush}">
-                                                                <CheckBox.Styles>
-                                                                    <Style Selector="CheckBox /template/ Border#PART_Border">
-                                                                        <Setter Property="BoxShadow" Value="0 2 8 0 #26000000"/>
-                                                                    </Style>
-                                                                </CheckBox.Styles>
-                                                            </CheckBox>
+                                                                      ZIndex="1"/>
                                                             <Button Content="{Binding BadgeText}"
                                                                     Command="{Binding ElementName=Root, Path=DataContext.OpenBurstDetailDrawerCommand}"
                                                                     CommandParameter="{Binding}"

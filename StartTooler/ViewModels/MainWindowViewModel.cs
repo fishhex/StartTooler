@@ -63,6 +63,29 @@ public partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<MediaFile> SelectedFiles { get; } = new();
 
     /// <summary>
+    /// 选中文件的路径集合（用于跨刷新保留选中状态）
+    /// </summary>
+    private readonly HashSet<string> _selectedFilePaths = new();
+
+    /// <summary>
+    /// 选中的文件是否属于不同组或未分组（显示"合并为组"）
+    /// </summary>
+    [ObservableProperty]
+    private bool _canMergeSelectedFiles;
+
+    /// <summary>
+    /// 选中的文件是否属于同一个连拍组（显示"移出当前组"）
+    /// </summary>
+    [ObservableProperty]
+    private bool _canRemoveSelectedFromGroup;
+
+    /// <summary>
+    /// 是否有选中的文件（显示"批量删除"）
+    /// </summary>
+    [ObservableProperty]
+    private bool _hasSelectedFiles;
+
+    /// <summary>
     /// 用于在刷新后保留选中状态的文件路径集合
     /// </summary>
     private HashSet<string>? _pendingSelectionPaths;
@@ -99,7 +122,37 @@ public partial class MainWindowViewModel : ViewModelBase
             {
                 SelectedFiles.Remove(file);
             }
+
+            UpdateSelectionGroupState();
         };
+    }
+
+    /// <summary>
+    /// 根据当前选中的文件更新分组状态
+    /// </summary>
+    private void UpdateSelectionGroupState()
+    {
+        HasSelectedFiles = SelectedFiles.Count > 0;
+
+        if (SelectedFiles.Count < 2)
+        {
+            CanMergeSelectedFiles = false;
+            CanRemoveSelectedFromGroup = false;
+            return;
+        }
+
+        var groupIds = SelectedFiles
+            .Select(f => f.GroupId)
+            .Where(g => !string.IsNullOrEmpty(g))
+            .Distinct()
+            .ToList();
+
+        var hasUngrouped = SelectedFiles.Any(f => string.IsNullOrEmpty(f.GroupId));
+
+        // 所有选中的文件都属于同一个连拍组（且都不是未分组）→ 显示"移出当前组"
+        CanRemoveSelectedFromGroup = groupIds.Count == 1 && !hasUngrouped;
+        // 选中的文件属于不同组，或包含未分组的文件 → 显示"合并为组"
+        CanMergeSelectedFiles = hasUngrouped || groupIds.Count > 1;
     }
 
     public async void ScanFolder(string folderPath)
@@ -670,8 +723,24 @@ public partial class MainWindowViewModel : ViewModelBase
     public async Task RemoveFromGroup(MediaFile? file)
     {
         if (file == null) return;
-        // 规则 3：移出时分配一个全新的、只属于它自己的唯一 GUID
         UpdateFileGroupId(file, Guid.NewGuid().ToString());
+        await RefreshCurrentViewAsync();
+    }
+
+    /// <summary>
+    /// 将所有选中的文件移出当前组（每个文件分配新的唯一 GUID）
+    /// </summary>
+    [RelayCommand]
+    public async Task RemoveFromGroupAllSelected()
+    {
+        if (SelectedFiles.Count == 0) return;
+
+        foreach (var file in SelectedFiles.ToList())
+        {
+            UpdateFileGroupId(file, Guid.NewGuid().ToString());
+        }
+
+        SelectedFiles.Clear();
         await RefreshCurrentViewAsync();
     }
 
@@ -701,16 +770,83 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     public async Task MergeToBurstGroup()
     {
+        Console.WriteLine($"[Merge] START - SelectedFiles count: {SelectedFiles.Count}");
         if (SelectedFiles.Count < 2) return;
 
-        var newGroupId = Guid.NewGuid().ToString();
+        // 展开选中文件所属的所有连拍组，获取所有文件
+        var allFilePathsToMerge = new HashSet<string>();
         foreach (var file in SelectedFiles)
         {
-            UpdateFileGroupId(file, newGroupId);
+            if (!string.IsNullOrEmpty(file.GroupId))
+            {
+                // 该文件属于某个连拍组，将该组所有文件都加入合并
+                foreach (var dateGroup in DateGroups)
+                {
+                    foreach (var burst in dateGroup.BurstGroups)
+                    {
+                        if (burst.Files.Any(f => f.GroupId == file.GroupId))
+                        {
+                            foreach (var f in burst.Files)
+                            {
+                                allFilePathsToMerge.Add(f.FilePath);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // 未分组的独立文件，直接加入
+                allFilePathsToMerge.Add(file.FilePath);
+            }
         }
 
+        Console.WriteLine($"[Merge] Expanded to {allFilePathsToMerge.Count} files to merge");
+
+        var mergeCount = allFilePathsToMerge.Count;
+        if (mergeCount < 2)
+        {
+            StatusMessage = "没有足够的文件可以合并";
+            return;
+        }
+
+        var newGroupId = Guid.NewGuid().ToString();
+        Console.WriteLine($"[Merge] New GroupId: {newGroupId}");
+
+        // 更新所有文件的 GroupId（通过数据库和内存中的文件对象）
+        foreach (var dateGroup in DateGroups)
+        {
+            foreach (var burst in dateGroup.BurstGroups)
+            {
+                foreach (var file in burst.Files)
+                {
+                    if (allFilePathsToMerge.Contains(file.FilePath))
+                    {
+                        UpdateFileGroupId(file, newGroupId);
+                    }
+                }
+            }
+        }
+
+        // 处理没有分组的独立文件
+        foreach (var dateGroup in DateGroups)
+        {
+            foreach (var file in dateGroup.Files)
+            {
+                if (allFilePathsToMerge.Contains(file.FilePath))
+                {
+                    UpdateFileGroupId(file, newGroupId);
+                }
+            }
+        }
+
+        Console.WriteLine($"[Merge] Clearing selection and refreshing...");
         SelectedFiles.Clear();
         await RefreshCurrentViewAsync();
+
+        Console.WriteLine($"[Merge] END - BurstGroups count: {DateGroups.Sum(d => d.BurstGroups.Count)}");
+        StatusMessage = $"已将 {mergeCount} 个文件合并为一个新的连拍组";
     }
 
     private void UpdateFileGroupId(MediaFile file, string? groupId)
@@ -720,8 +856,12 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             record.GroupId = groupId;
             DatabaseService.Instance.SaveMediaFileRecord(record);
+            System.Console.WriteLine($"[UpdateGroupId] Saved to DB: {file.FileName} -> {groupId}");
         }
-        // 同步更新内存中的 MediaFile 对象，避免刷新闪烁
+        else
+        {
+            System.Console.WriteLine($"[UpdateGroupId] Record NOT FOUND for: {file.FilePath}");
+        }
         file.GroupId = groupId;
     }
 
@@ -785,14 +925,16 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         var burstGroups = new List<MediaBurstGroup>();
 
+        System.Console.WriteLine($"[BuildBurstGroups] Total files: {files.Count}");
+
         // 1. 优先处理已有 GroupId 的文件（人工干预组）
         var groupedFiles = files.Where(f => !string.IsNullOrEmpty(f.GroupId)).GroupBy(f => f.GroupId);
         foreach (var group in groupedFiles)
         {
-            if (group.Count() > 0)
-            {
-                burstGroups.Add(new MediaBurstGroup(group.OrderByDescending(f => f.ModifiedTime)));
-            }
+            var groupId = group.Key;
+            var count = group.Count();
+            System.Console.WriteLine($"[BuildBurstGroups] GroupId '{groupId}' -> {count} files");
+            burstGroups.Add(new MediaBurstGroup(group.OrderByDescending(f => f.ModifiedTime)));
         }
 
         // 2. 处理剩余没有 GroupId 的文件（算法自动聚类）
