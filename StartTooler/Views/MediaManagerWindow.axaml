@@ -317,10 +317,12 @@
                                                                   CommandParameter="{Binding FilePath}"/>
                                                         <MenuItem Header="移出当前组" 
                                                                   Command="{Binding ElementName=Root, Path=DataContext.RemoveFromGroupCommand}"
-                                                                  CommandParameter="{Binding}"/>
-                                                        <Separator/>
-                                                        <MenuItem Header="合并为连拍组" 
-                                                                  Command="{Binding ElementName=Root, Path=DataContext.MergeToBurstGroupCommand}"/>
+                                                                  CommandParameter="{Binding}"
+                                                                  IsVisible="{Binding HasMultiple}"/>
+                                                        <MenuItem Header="解散该连拍组" Foreground="Red"
+                                                                  Command="{Binding ElementName=Root, Path=DataContext.DissolveGroupCommand}"
+                                                                  CommandParameter="{Binding ElementName=Root, Path=DataContext.SelectedBurstGroup}"
+                                                                  IsVisible="{Binding HasMultiple}"/>
                                                         <Separator/>
                                                         <MenuItem Header="全选" 
                                                                   Command="{Binding ElementName=Root, Path=DataContext.SelectAllCommand}"
@@ -447,7 +449,8 @@
                                                                       CommandParameter="{Binding}"/>
                                                             <MenuItem Header="解散该连拍组" Foreground="Red"
                                                                       Command="{Binding ElementName=Root, Path=DataContext.DissolveGroupCommand}"
-                                                                      CommandParameter="{Binding}"/>
+                                                                      CommandParameter="{Binding}"
+                                                                      IsVisible="{Binding HasMultiple}"/>
                                                         </ContextMenu>
                                                     </Border.ContextMenu>
                                                     <StackPanel>
@@ -458,11 +461,18 @@
                                                                     ClipToBounds="True">
                                                                 <Border.ContextMenu>
                                                                     <ContextMenu>
-                                                                        <MenuItem Header="合并为连拍组" 
-                                                                                  Command="{Binding ElementName=Root, Path=DataContext.MergeToBurstGroupCommand}"/>
                                                                         <MenuItem Header="移出当前组" 
                                                                                   Command="{Binding ElementName=Root, Path=DataContext.RemoveFromGroupCommand}"
-                                                                                  CommandParameter="{Binding Cover}"/>
+                                                                                  CommandParameter="{Binding Cover}"
+                                                                                  IsVisible="{Binding HasMultiple}"/>
+                                                                        <MenuItem Header="解散该连拍组" Foreground="Red"
+                                                                                  Command="{Binding ElementName=Root, Path=DataContext.DissolveGroupCommand}"
+                                                                                  CommandParameter="{Binding}"
+                                                                                  IsVisible="{Binding HasMultiple}"/>
+                                                                        <Separator/>
+                                                                        <MenuItem Header="删除"
+                                                                                  Command="{Binding ElementName=Root, Path=DataContext.DeleteBurstGroupCommand}"
+                                                                                  CommandParameter="{Binding}"/>
                                                                     </ContextMenu>
                                                                 </Border.ContextMenu>
                                                                 <Image Stretch="UniformToFill"

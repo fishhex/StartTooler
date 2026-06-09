@@ -22,6 +22,8 @@ public partial class MediaBurstGroup : ObservableObject
 
     public bool HasMultiple => Files.Count > 1;
 
+    public bool HasGroupId => Cover != null && !string.IsNullOrEmpty(Cover.GroupId);
+
     private void OnFilesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         OnPropertyChanged(nameof(BadgeText));

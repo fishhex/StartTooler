@@ -931,14 +931,19 @@ public partial class MainWindowViewModel : ViewModelBase
         var groupedFiles = files.Where(f => !string.IsNullOrEmpty(f.GroupId)).GroupBy(f => f.GroupId);
         foreach (var group in groupedFiles)
         {
+            var ordered = group.OrderByDescending(f => f.ModifiedTime).ToList();
+            var hasMultiple = ordered.Count > 1;
+            foreach (var f in ordered)
+            {
+                f.HasMultiple = hasMultiple;
+            }
             var groupId = group.Key;
-            var count = group.Count();
+            var count = ordered.Count;
             System.Console.WriteLine($"[BuildBurstGroups] GroupId '{groupId}' -> {count} files");
-            burstGroups.Add(new MediaBurstGroup(group.OrderByDescending(f => f.ModifiedTime)));
+            burstGroups.Add(new MediaBurstGroup(ordered));
         }
 
         // 2. 处理剩余没有 GroupId 的文件（算法自动聚类）
-        // 注意：此时所有 GroupId 不为空的图片（包括独立的和成组的）都已在第一步处理完毕
         var remaining = files
             .Where(f => string.IsNullOrEmpty(f.GroupId))
             .OrderByDescending(f => f.ModifiedTime)
@@ -968,7 +973,13 @@ public partial class MainWindowViewModel : ViewModelBase
                 }
             }
 
-            burstGroups.Add(new MediaBurstGroup(cluster.OrderByDescending(f => f.ModifiedTime)));
+            var ordered = cluster.OrderByDescending(f => f.ModifiedTime).ToList();
+            var hasMultiple = ordered.Count > 1;
+            foreach (var f in ordered)
+            {
+                f.HasMultiple = hasMultiple;
+            }
+            burstGroups.Add(new MediaBurstGroup(ordered));
         }
 
         return burstGroups;

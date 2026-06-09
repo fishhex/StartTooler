@@ -13,7 +13,11 @@ public partial class MediaFile : ObservableObject
     public string? ThumbnailPath { get; set; } // 缩略图路径
     public long PerceptualHash { get; set; }
     public string? GroupId { get; set; }
-    
+
+    public bool HasGroupId => !string.IsNullOrEmpty(GroupId);
+
+    public bool HasMultiple { get; set; }
+
     [ObservableProperty]
     private bool _isSelected;
     
