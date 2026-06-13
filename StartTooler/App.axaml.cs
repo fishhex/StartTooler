@@ -25,7 +25,7 @@ public partial class App : Application
             // More info: https://docs.avaloniaui.net/docs/guides/development-guides/data-validation#manage-validationplugins
             DisableAvaloniaDataAnnotationValidation();
             ThemeManager.Initialize();
-            desktop.MainWindow = new MediaManagerWindow
+            desktop.MainWindow = new MainWindow
             {
                 DataContext = new MainWindowViewModel()
             };

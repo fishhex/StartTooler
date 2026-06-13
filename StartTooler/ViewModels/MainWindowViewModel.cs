@@ -12,11 +12,26 @@ using StartTooler.Services;
 
 namespace StartTooler.ViewModels;
 
+public enum MainPageType
+{
+    MediaManager,
+    Settings
+}
+
 public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly FileScanService _fileScanService;
     private readonly ThumbnailService _thumbnailService;
     private const int SimilarityThreshold = 10;
+
+    [ObservableProperty]
+    private MainPageType _currentPage = MainPageType.MediaManager;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CurrentPageTitle))]
+    private string _currentPageSubtitle = "媒体管理器";
+
+    public string CurrentPageTitle => CurrentPageSubtitle;
 
     [ObservableProperty]
     private string _selectedFolderPath = string.Empty;
@@ -44,9 +59,6 @@ public partial class MainWindowViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _isMultiSelectMode;
-
-    [ObservableProperty]
-    private bool _isSettingsPanelVisible;
 
     [ObservableProperty]
     private SettingsViewModel _settingsViewModel = new();
@@ -674,23 +686,37 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    public void NavigateToPage(string pageName)
+    {
+        if (Enum.TryParse<MainPageType>(pageName, out var page))
+        {
+            CurrentPage = page;
+            CurrentPageSubtitle = page switch
+            {
+                MainPageType.MediaManager => "媒体管理器",
+                MainPageType.Settings => "设置",
+                _ => "媒体管理器"
+            };
+        }
+    }
+
+    [RelayCommand]
     public void ToggleSettingsPanel()
     {
-        IsSettingsPanelVisible = !IsSettingsPanelVisible;
+        NavigateToPage("Settings");
     }
 
     [RelayCommand]
     public void SaveSettings()
     {
         SettingsViewModel.Save();
-        IsSettingsPanelVisible = false;
         StatusMessage = "设置已保存";
     }
 
     [RelayCommand]
     public void CancelSettings()
     {
-        IsSettingsPanelVisible = false;
+        NavigateToPage("MediaManager");
     }
 
     /// <summary>

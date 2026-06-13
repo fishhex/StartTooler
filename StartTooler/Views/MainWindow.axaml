@@ -2,66 +2,657 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+        xmlns:vm="using:StartTooler.ViewModels"
+        xmlns:models="using:StartTooler.Models"
+        xmlns:converters="using:StartTooler.Converters"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="StartTooler.Views.MainWindow"
-        Title="StartTooler 控制中心"
-        Width="900"
-        Height="600"
-        WindowStartupLocation="CenterScreen">
+        x:Name="Root"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="StartTooler"
+        Width="1200"
+        Height="800"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource AppBackgroundBrush}">
 
-    <Border Background="#101218" Padding="30">
-        <Grid RowDefinitions="Auto, *">
-            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                <Image Source="/Assets/avalonia-logo.ico" Width="32" Height="32" Stretch="Uniform"/>
-                <StackPanel>
-                    <TextBlock Text="StartTooler" FontSize="22" FontWeight="SemiBold" Foreground="#F5F6FA"/>
-                    <TextBlock Text="工具面板" FontSize="13" Foreground="#A0A4B5"/>
-                </StackPanel>
-            </StackPanel>
+    <Window.Resources>
+        <converters:PageTypeToBoolConverter x:Key="PageTypeConverter"/>
+        <converters:ThumbnailPathToBitmapConverter x:Key="ThumbnailConverter"/>
+        <converters:BoolToStringConverter x:Key="MultiSelectTextConverter" 
+                                          TrueValue="取消多选" 
+                                          FalseValue="多选"/>
+    </Window.Resources>
 
-            <Border Grid.Row="1" CornerRadius="16" Background="#181B25" Padding="24">
-                <Grid ColumnDefinitions="250,*" ColumnSpacing="24">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="模块" FontSize="14" Foreground="#7D84A0" Margin="0,0,0,4"/>
-                        <Border Background="#22283A" CornerRadius="10" Padding="16" Margin="0,0,0,10">
-                            <StackPanel Spacing="8">
-                                <TextBlock Text="媒体管理器" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF"/>
-                                <TextBlock Text="扫描、分组并管理本地媒体文件" TextWrapping="Wrap" Foreground="#B4BAD4" FontSize="12"/>
-                                <Button Content="打开"
-                                        HorizontalAlignment="Left"
-                                        Padding="18,6"
-                                        Background="#A53E42"
-                                        Foreground="White"
-                                        CornerRadius="6"
-                                        Click="OnOpenMediaManagerClick"/>
-                            </StackPanel>
-                        </Border>
+    <Grid>
+        <!-- ========== 媒体管理器页面 ========== -->
+        <Grid IsVisible="{Binding CurrentPage, Converter={StaticResource PageTypeConverter}, ConverterParameter=MediaManager}">
+            <DockPanel>
+                <Border DockPanel.Dock="Top"
+                        Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource DividerBrush}"
+                        BorderThickness="0,0,0,1"
+                        Height="52"
+                        Padding="18,0">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <StackPanel Grid.Column="0" 
+                                    Orientation="Horizontal" 
+                                    Spacing="8" 
+                                    VerticalAlignment="Center">
+                            <Button Content="选择文件夹" 
+                                    Click="OnSelectFolderButton_Click"
+                                    Padding="14,6"
+                                    FontSize="13"
+                                    Background="{DynamicResource SurfaceBrush}"
+                                    BorderBrush="{DynamicResource DividerBrush}"
+                                    Foreground="{DynamicResource PrimaryTextBrush}"/>
+                            
+                            <Button Content="刷新" 
+                                    Command="{Binding RefreshFolderCommand}"
+                                    Padding="14,6"
+                                    FontSize="13"
+                                    Background="{DynamicResource SurfaceBrush}"
+                                    BorderBrush="{DynamicResource DividerBrush}"
+                                    Foreground="{DynamicResource PrimaryTextBrush}"/>
+                            
+                            <Button Content="设置" 
+                                    Command="{Binding NavigateToPageCommand}"
+                                    CommandParameter="Settings"
+                                    Padding="12,6"
+                                    FontSize="13"
+                                    Background="{DynamicResource SurfaceBrush}"
+                                    BorderBrush="{DynamicResource DividerBrush}"
+                                    Foreground="{DynamicResource PrimaryTextBrush}"/>
 
-                        <Border Background="#1F2331" CornerRadius="10" Padding="16">
-                            <StackPanel Spacing="6">
-                                <TextBlock Text="快速说明" FontSize="13" Foreground="#EBEDF5"/>
-                                <TextBlock FontSize="11" TextWrapping="Wrap" Foreground="#8E93AC">
-                                    默认会自动打开媒体管理器窗口，您可以在此面板再次启动或在未来接入更多模块。
-                                </TextBlock>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
+                            <ToggleButton Content="{Binding IsMultiSelectMode, Converter={StaticResource MultiSelectTextConverter}}" 
+                                          IsChecked="{Binding IsMultiSelectMode, Mode=TwoWay}"
+                                          Padding="12,6"
+                                          FontSize="13"
+                                          Foreground="{DynamicResource PrimaryTextBrush}"
+                                          BorderBrush="{DynamicResource DividerBrush}"
+                                          Background="{DynamicResource SurfaceBrush}">
+                                <ToggleButton.Styles>
+                                    <Style Selector="ToggleButton:checked">
+                                        <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+                                        <Setter Property="Foreground" Value="White"/>
+                                    </Style>
+                                    <Style Selector="ToggleButton:pointerover">
+                                        <Setter Property="Background" Value="{DynamicResource DividerBrush}"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
+                                    </Style>
+                                </ToggleButton.Styles>
+                            </ToggleButton>
+                            
+                            <Button Content="合并为组"
+                                    Command="{Binding MergeToBurstGroupCommand}"
+                                    Padding="12,6"
+                                    FontSize="13"
+                                    Background="{DynamicResource SurfaceBrush}"
+                                    BorderBrush="{DynamicResource DividerBrush}"
+                                    Foreground="{DynamicResource PrimaryTextBrush}"
+                                    IsVisible="{Binding CanMergeSelectedFiles}">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
+                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                            
+                            <Button Content="移出当前组"
+                                    Command="{Binding RemoveFromGroupAllSelectedCommand}"
+                                    Padding="12,6"
+                                    FontSize="13"
+                                    Background="{DynamicResource SurfaceBrush}"
+                                    BorderBrush="{DynamicResource DividerBrush}"
+                                    Foreground="{DynamicResource PrimaryTextBrush}"
+                                    IsVisible="{Binding CanRemoveSelectedFromGroup}">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
+                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
 
-                    <Border Background="#1F2331" CornerRadius="12" Padding="20" Grid.Column="1">
-                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-                            <TextBlock Text="欢迎使用 StartTooler" FontSize="20" FontWeight="SemiBold" Foreground="#FFFFFF" HorizontalAlignment="Center"/>
-                            <TextBlock Text="媒体管理器正在单独窗口中运行" Foreground="#9CA2BE" FontSize="13" HorizontalAlignment="Center"/>
-                            <Button Content="重新打开媒体管理器"
-                                    Padding="22,8"
-                                    Background="#A53E42"
-                                    Foreground="White"
-                                    CornerRadius="8"
-                                    Click="OnOpenMediaManagerClick"/>
+                            <Button Content="批量删除"
+                                    Command="{Binding BatchDeleteCommand}"
+                                    Padding="12,6"
+                                    FontSize="13"
+                                    Background="{DynamicResource SurfaceBrush}"
+                                    BorderBrush="{DynamicResource DividerBrush}"
+                                    Foreground="Red"
+                                    IsVisible="{Binding HasSelectedFiles}">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover">
+                                        <Setter Property="Background" Value="#FFCCCC"/>
+                                        <Setter Property="Foreground" Value="#CC0000"/>
+                                        <Setter Property="BorderBrush" Value="Red"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
                         </StackPanel>
+                        
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button x:Name="ThemeToggleButton"
+                                    Width="36"
+                                    Height="36"
+                                    Background="{DynamicResource SurfaceBrush}"
+                                    ToolTip.Tip="切换主题"
+                                    Click="OnThemeToggleClick">
+                                <TextBlock x:Name="ThemeToggleGlyph"
+                                           FontSize="14"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource PrimaryTextBrush}"
+                                           Text="🌙"/>
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover">
+                                        <Setter Property="Background" Value="{DynamicResource DividerBrush}"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Left sidebar -->
+                <Border DockPanel.Dock="Left"
+                        Width="250"
+                        Margin="10,0,5,10" 
+                        Padding="12"
+                        Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource DividerBrush}"
+                        BorderThickness="1"
+                        CornerRadius="12"
+                        IsVisible="{Binding IsSidebarExpanded}">
+                    <Grid RowDefinitions="Auto,*">
+                        <TextBlock Grid.Row="0" Text="最近打开的文件夹:" 
+                                   FontSize="13" 
+                                   FontWeight="Medium"
+                                   Foreground="{DynamicResource PrimaryTextBrush}"
+                                   Margin="0,0,0,10"/>
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding RecentFolders}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="models:RecentFolder">
+                                        <Button Content="{Binding FolderName}" 
+                                                ToolTip.Tip="{Binding FolderPath}"
+                                                Margin="0,0,0,6"
+                                                Padding="8,6"
+                                                FontSize="12"
+                                                HorizontalContentAlignment="Left"
+                                                HorizontalAlignment="Stretch"
+                                                Command="{Binding ElementName=Root, Path=DataContext.SelectRecentFolderCommand}"
+                                                CommandParameter="{Binding FolderPath}"
+                                                Background="{DynamicResource SurfaceBrush}"
+                                                Foreground="{DynamicResource PrimaryTextBrush}"
+                                                BorderThickness="0"
+                                                CornerRadius="3">
+                                            <Button.Styles>
+                                                <Style Selector="Button:pointerover /template/ Border#PART_ButtonBackgroundBorder">
+                                                    <Setter Property="Background" Value="#E8F4FD"/>
+                                                </Style>
+                                                <Style Selector="Button:pointerover">
+                                                    <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
+                                                </Style>
+                                                <Style Selector="Button:pressed /template/ Border#PART_ButtonBackgroundBorder">
+                                                    <Setter Property="Background" Value="#D0E8F7"/>
+                                                </Style>
+                                            </Button.Styles>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <!-- Main content -->
+                <DockPanel>
+                    <!-- Burst detail drawer -->
+                    <Grid DockPanel.Dock="Right"
+                          Width="400"
+                          Margin="0,0,10,10"
+                          IsVisible="{Binding IsBurstDetailDrawerVisible}">
+                        <Grid.Styles>
+                            <Style Selector="Border.drawer">
+                                <Setter Property="Opacity" Value="1"/>
+                            </Style>
+                        </Grid.Styles>
+                        <Border Classes="drawer"
+                                Background="{DynamicResource SurfaceBrush}"
+                                BorderBrush="{DynamicResource DividerBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                BoxShadow="0 0 20 0 #26000000">
+                            <Grid RowDefinitions="Auto,*">
+                                <Border Grid.Row="0" 
+                                        Background="{DynamicResource SurfaceBrush}" 
+                                        Padding="15" 
+                                        BorderBrush="{DynamicResource DividerBrush}" 
+                                        BorderThickness="0,0,0,1">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0" 
+                                                   Text="连拍详情" 
+                                                   FontSize="16" 
+                                                   FontWeight="Medium" 
+                                                   VerticalAlignment="Center" 
+                                                   Foreground="{DynamicResource PrimaryTextBrush}"/>
+                                        <Button Grid.Column="1" 
+                                                Command="{Binding CloseBurstDetailDrawerCommand}"
+                                                Background="{DynamicResource SurfaceBrush}"
+                                                Width="30" Height="30" Padding="0">
+                                            <Path Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                                                  Fill="{DynamicResource SecondaryTextBrush}"
+                                                  Stretch="Uniform"
+                                                  Width="14" Height="14"/>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding SelectedBurstGroup.Files}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel Orientation="Horizontal" ItemWidth="180" ItemHeight="220"/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="models:MediaFile">
+                                                <Border Classes="MediaCard"
+                                                        Width="164" 
+                                                        Height="204"
+                                                        Margin="8" 
+                                                        CornerRadius="4"
+                                                        DoubleTapped="OnCardDoubleTapped"
+                                                        Cursor="Hand"
+                                                        PointerPressed="OnCardPointerPressed"
+                                                        Background="{DynamicResource SurfaceBrush}"
+                                                        BorderBrush="{DynamicResource DividerBrush}"
+                                                        BorderThickness="1">
+                                                    <Border.ContextMenu>
+                                                        <ContextMenu>
+                                                            <MenuItem Header="删除"
+                                                                      Command="{Binding ElementName=Root, Path=DataContext.DeleteFileCommand}"
+                                                                      CommandParameter="{Binding FilePath}"/>
+                                                            <MenuItem Header="移出当前组" 
+                                                                      Command="{Binding ElementName=Root, Path=DataContext.RemoveFromGroupCommand}"
+                                                                      CommandParameter="{Binding}"
+                                                                      IsVisible="{Binding HasMultiple}"/>
+                                                            <MenuItem Header="解散该连拍组" Foreground="Red"
+                                                                      Command="{Binding ElementName=Root, Path=DataContext.DissolveGroupCommand}"
+                                                                      CommandParameter="{Binding ElementName=Root, Path=DataContext.SelectedBurstGroup}"
+                                                                      IsVisible="{Binding HasMultiple}"/>
+                                                            <Separator IsVisible="{Binding HasMultiple}"/>
+                                                            <MenuItem Header="全选" 
+                                                                      Command="{Binding ElementName=Root, Path=DataContext.SelectAllCommand}"
+                                                                      IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                            <MenuItem Header="取消全选" 
+                                                                      Command="{Binding ElementName=Root, Path=DataContext.DeselectAllCommand}"
+                                                                      IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                            <MenuItem Header="反选" 
+                                                                      Command="{Binding ElementName=Root, Path=DataContext.InvertSelectionCommand}"
+                                                                      IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                            <Separator IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                            <MenuItem Header="批量删除" 
+                                                                      Command="{Binding ElementName=Root, Path=DataContext.BatchDeleteCommand}"
+                                                                      IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                        </ContextMenu>
+                                                    </Border.ContextMenu>
+                                                    <Grid RowDefinitions="Auto, Auto, *, Auto, Auto">
+                                                        <CheckBox Grid.Row="0"
+                                                                  Classes="CardCheck"
+                                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                                  HorizontalAlignment="Right"
+                                                                  IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                        <Border Grid.Row="1"
+                                                                Height="120"
+                                                                Margin="10,10,10,5"
+                                                                Background="Transparent"
+                                                                ClipToBounds="True">
+                                                            <Image Stretch="UniformToFill"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center">
+                                                                <Image.Source>
+                                                                    <Binding Path="ThumbnailPath" Converter="{StaticResource ThumbnailConverter}"/>
+                                                                </Image.Source>
+                                                            </Image>
+                                                        </Border>
+                                                        <TextBlock Grid.Row="2"
+                                                                   Text="{Binding FileName}" 
+                                                                   FontSize="11"
+                                                                   FontWeight="Medium"
+                                                                   TextWrapping="Wrap"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   MaxHeight="30"
+                                                                   Margin="8,5,8,2"
+                                                                   Foreground="{DynamicResource PrimaryTextBrush}"/>
+                                                        <TextBlock Grid.Row="3"
+                                                                   Text="{Binding FileType}" 
+                                                                   FontSize="9"
+                                                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                                                   Margin="8,0,8,2"/>
+                                                        <TextBlock Grid.Row="4"
+                                                                   Text="{Binding FormattedFileSize}" 
+                                                                   FontSize="9"
+                                                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                                                   Margin="8,0,8,5"/>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                    <Grid RowDefinitions="Auto,*">
+                        <Grid.ContextMenu>
+                            <ContextMenu x:DataType="vm:MainWindowViewModel"
+                                         DataContext="{Binding ElementName=Root, Path=DataContext}">
+                                <MenuItem Header="全选" 
+                                          Command="{Binding SelectAllCommand}"
+                                          IsVisible="{Binding IsMultiSelectMode}"/>
+                                <MenuItem Header="取消全选" 
+                                          Command="{Binding DeselectAllCommand}"
+                                          IsVisible="{Binding IsMultiSelectMode}"/>
+                                <MenuItem Header="反选" 
+                                          Command="{Binding InvertSelectionCommand}"
+                                          IsVisible="{Binding IsMultiSelectMode}"/>
+                                <Separator IsVisible="{Binding IsMultiSelectMode}"/>
+                                <MenuItem Header="批量删除" 
+                                          Command="{Binding BatchDeleteCommand}"
+                                          IsVisible="{Binding IsMultiSelectMode}"/>
+                            </ContextMenu>
+                        </Grid.ContextMenu>
+                        <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" Padding="12,6" Margin="0,0,10,10"
+                                BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1" CornerRadius="10">
+                            <TextBlock Text="{Binding StatusMessage}" 
+                                       FontSize="12"
+                                       Foreground="{DynamicResource SecondaryTextBrush}"/>
+                        </Border>
+
+                        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding DateGroups}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="models:MediaFileDateGroup">
+                                        <StackPanel Margin="0,0,0,20">
+                                            <!-- 日期标题 -->
+                                            <Border Background="{DynamicResource AccentSoftBrush}" Padding="15,8" CornerRadius="8" Margin="5,0,5,8">
+                                                <TextBlock Text="{Binding DateHeader}" 
+                                                           FontSize="14" 
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource AccentBrush}"/>
+                                            </Border>
+                                            <!-- 该日期下的连拍分组 -->
+                                            <ItemsControl ItemsSource="{Binding BurstGroups}" HorizontalAlignment="Left">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel Orientation="Horizontal" ItemWidth="260"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="models:MediaBurstGroup">
+                                                        <Border Classes="MediaCard"
+                                                                Width="240"
+                                                                Margin="8"
+                                                                Padding="12"
+                                                                Background="{DynamicResource SurfaceBrush}"
+                                                                CornerRadius="14"
+                                                                BoxShadow="0 12 30 0 #12000000"
+                                                                DoubleTapped="OnGroupCardDoubleTapped"
+                                                                Cursor="Hand">
+                                                            <Border.ContextMenu>
+                                                                <ContextMenu>
+                                                                    <MenuItem Header="删除"
+                                                                              Command="{Binding ElementName=Root, Path=DataContext.DeleteBurstGroupCommand}"
+                                                                              CommandParameter="{Binding}"/>
+                                                                    <MenuItem Header="解散该连拍组" Foreground="Red"
+                                                                              Command="{Binding ElementName=Root, Path=DataContext.DissolveGroupCommand}"
+                                                                              CommandParameter="{Binding}"
+                                                                              IsVisible="{Binding HasMultiple}"/>
+                                                                </ContextMenu>
+                                                            </Border.ContextMenu>
+                                                            <StackPanel>
+                                                                <Grid>
+                                                                    <Border Height="150"
+                                                                            CornerRadius="10"
+                                                                            Background="#111111"
+                                                                            ClipToBounds="True">
+                                                                        <Border.ContextMenu>
+                                                                            <ContextMenu>
+                                                                                <MenuItem Header="解散该连拍组" Foreground="Red"
+                                                                                          Command="{Binding ElementName=Root, Path=DataContext.DissolveGroupCommand}"
+                                                                                          CommandParameter="{Binding}"
+                                                                                          IsVisible="{Binding HasMultiple}"/>
+                                                                                <Separator/>
+                                                                                <MenuItem Header="删除"
+                                                                                          Command="{Binding ElementName=Root, Path=DataContext.DeleteBurstGroupCommand}"
+                                                                                          CommandParameter="{Binding}"/>
+                                                                            </ContextMenu>
+                                                                        </Border.ContextMenu>
+                                                                        <Image Stretch="UniformToFill"
+                                                                               HorizontalAlignment="Center"
+                                                                               VerticalAlignment="Center">
+                                                                            <Image.Source>
+                                                                                <Binding Path="Cover.ThumbnailPath"
+                                                                                         Converter="{StaticResource ThumbnailConverter}"/>
+                                                                            </Image.Source>
+                                                                        </Image>
+                                                                    </Border>
+                                                                    <CheckBox Classes="CardCheck"
+                                                                              IsChecked="{Binding Cover.IsSelected, Mode=TwoWay}"
+                                                                              IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"
+                                                                              ZIndex="1"/>
+                                                                    <Button Content="{Binding BadgeText}"
+                                                                            Command="{Binding ElementName=Root, Path=DataContext.OpenBurstDetailDrawerCommand}"
+                                                                            CommandParameter="{Binding}"
+                                                                            HorizontalAlignment="Right"
+                                                                            VerticalAlignment="Top"
+                                                                            Margin="0,10,10,0"
+                                                                            FontSize="11"
+                                                                            Padding="12,4"
+                                                                            Background="{DynamicResource AccentSoftBrush}"
+                                                                            Foreground="{DynamicResource AccentBrush}"
+                                                                            BorderBrush="{DynamicResource DividerBrush}"
+                                                                            BorderThickness="0"
+                                                                            CornerRadius="999"
+                                                                            Cursor="Hand"
+                                                                            IsVisible="{Binding HasMultiple}">
+                                                                        <Button.ContextMenu>
+                                                                            <ContextMenu>
+                                                                                <MenuItem Header="解散该连拍组" Foreground="Red"
+                                                                                          Command="{Binding ElementName=Root, Path=DataContext.DissolveGroupCommand}"
+                                                                                          CommandParameter="{Binding}"/>
+                                                                            </ContextMenu>
+                                                                        </Button.ContextMenu>
+                                                                    </Button>
+                                                                </Grid>
+                                                                <TextBlock Text="{Binding Cover.FileName}"
+                                                                           FontSize="12"
+                                                                           FontWeight="SemiBold"
+                                                                           Margin="4,8,4,0"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Foreground="{DynamicResource PrimaryTextBrush}"/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </DockPanel>
+            </DockPanel>
+        </Grid>
+
+        <!-- ========== 设置页面 ========== -->
+        <Grid IsVisible="{Binding CurrentPage, Converter={StaticResource PageTypeConverter}, ConverterParameter=Settings}">
+            <Border Background="{DynamicResource AppBackgroundBrush}">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top"
+                            Background="{DynamicResource SurfaceBrush}"
+                            BorderBrush="{DynamicResource DividerBrush}"
+                            BorderThickness="0,0,0,1"
+                            Height="52"
+                            Padding="18,0">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Button Content="← 返回媒体管理器"
+                                        Command="{Binding CancelSettingsCommand}"
+                                        Padding="14,6"
+                                        FontSize="13"
+                                        Background="{DynamicResource SurfaceBrush}"
+                                        BorderBrush="{DynamicResource DividerBrush}"
+                                        Foreground="{DynamicResource PrimaryTextBrush}"/>
+                                <TextBlock Text="设置" 
+                                           FontSize="16" 
+                                           FontWeight="SemiBold" 
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource PrimaryTextBrush}"/>
+                            </StackPanel>
+                        </Grid>
                     </Border>
-                </Grid>
+
+                    <Border Padding="30">
+                        <Grid RowDefinitions="*,Auto">
+                            <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" 
+                                    CornerRadius="12" 
+                                    BorderBrush="{DynamicResource DividerBrush}"
+                                    BorderThickness="1">
+                            <Grid ColumnDefinitions="180,*" DataContext="{Binding SettingsViewModel}">
+                                <Border Grid.Column="0" 
+                                        Background="{DynamicResource InputBrush}" 
+                                        Padding="12" 
+                                        BorderBrush="{DynamicResource DividerBrush}" 
+                                        BorderThickness="0,0,1,0" 
+                                        CornerRadius="12,0,0,12">
+                                    <ListBox ItemsSource="{Binding Pages}"
+                                             SelectedItem="{Binding SelectedPage}"
+                                             Background="Transparent"
+                                             BorderThickness="0">
+                                        <ListBox.Styles>
+                                            <Style Selector="ListBoxItem">
+                                                <Setter Property="Background" Value="Transparent"/>
+                                                <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}"/>
+                                                <Setter Property="Padding" Value="12,10"/>
+                                                <Setter Property="CornerRadius" Value="6"/>
+                                                <Setter Property="Margin" Value="0,2"/>
+                                            </Style>
+                                            <Style Selector="ListBoxItem:pointerover">
+                                                <Setter Property="Background" Value="{DynamicResource DividerBrush}"/>
+                                            </Style>
+                                            <Style Selector="ListBoxItem:selected">
+                                                <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+                                                <Setter Property="Foreground" Value="White"/>
+                                            </Style>
+                                        </ListBox.Styles>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Title}"
+                                                           FontSize="14"
+                                                           Padding="4,2"/>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Border>
+
+                                <Border Grid.Column="1" 
+                                        Background="{DynamicResource SurfaceBrush}" 
+                                        Padding="30" 
+                                        CornerRadius="0,12,12,0">
+                                    <ContentControl Content="{Binding SelectedPage.Content}"
+                                                    VerticalAlignment="Top">
+                                        <ContentControl.DataTemplates>
+                                            <DataTemplate DataType="{x:Type vm:AiSettingsViewModel}">
+                                                <StackPanel Spacing="20">
+                                                    <StackPanel>
+                                                        <TextBlock Text="AI 配置" 
+                                                                   FontSize="18" 
+                                                                   FontWeight="SemiBold" 
+                                                                   Margin="0,0,0,20"
+                                                                   Foreground="{DynamicResource PrimaryTextBrush}"/>
+                                                        <TextBlock Text="API 地址" 
+                                                                   FontSize="12" 
+                                                                   Margin="0,0,0,8" 
+                                                                   Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                                        <TextBox Text="{Binding ApiUrl}" 
+                                                                 Watermark="例如：https://api.openai.com/v1"
+                                                                 Padding="10,8"
+                                                                 Background="{DynamicResource InputBrush}"
+                                                                 Foreground="{DynamicResource PrimaryTextBrush}"
+                                                                 BorderBrush="{DynamicResource DividerBrush}"
+                                                                 CornerRadius="6"/>
+                                                    </StackPanel>
+                                                    <StackPanel>
+                                                        <TextBlock Text="API Token" 
+                                                                   FontSize="12" 
+                                                                   Margin="0,0,0,8" 
+                                                                   Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                                        <TextBox Text="{Binding ApiToken}" 
+                                                                 Watermark="输入你的 API Token"
+                                                                 PasswordChar="*"
+                                                                 Padding="10,8"
+                                                                 Background="{DynamicResource InputBrush}"
+                                                                 Foreground="{DynamicResource PrimaryTextBrush}"
+                                                                 BorderBrush="{DynamicResource DividerBrush}"
+                                                                 CornerRadius="6"/>
+                                                    </StackPanel>
+                                                    <StackPanel>
+                                                        <TextBlock Text="模型名称" 
+                                                                   FontSize="12" 
+                                                                   Margin="0,0,0,8" 
+                                                                   Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                                        <TextBox Text="{Binding ModelName}" 
+                                                                 Watermark="例如：gpt-4"
+                                                                 Padding="10,8"
+                                                                 Background="{DynamicResource InputBrush}"
+                                                                 Foreground="{DynamicResource PrimaryTextBrush}"
+                                                                 BorderBrush="{DynamicResource DividerBrush}"
+                                                                 CornerRadius="6"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ContentControl.DataTemplates>
+                                    </ContentControl>
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="1" 
+                                Padding="15" 
+                                BorderBrush="{DynamicResource DividerBrush}" 
+                                BorderThickness="0,1,0,0" 
+                                Background="{DynamicResource SurfaceBrush}"
+                                CornerRadius="0,0,12,12"
+                                Margin="0,-1,0,0">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                                <Button Content="取消" 
+                                        Command="{Binding $parent[Window].DataContext.CancelSettingsCommand}"
+                                        Padding="24,8"
+                                        Background="{DynamicResource InputBrush}"
+                                        Foreground="{DynamicResource PrimaryTextBrush}"
+                                        BorderBrush="{DynamicResource DividerBrush}"
+                                        CornerRadius="6"/>
+                                <Button Content="保存" 
+                                        Command="{Binding $parent[Window].DataContext.SaveSettingsCommand}"
+                                        Padding="24,8"
+                                        Background="{DynamicResource AccentBrush}"
+                                        Foreground="White"
+                                        CornerRadius="6"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                    </Border>
+                </DockPanel>
             </Border>
         </Grid>
-    </Border>
+    </Grid>
 
 </Window>
