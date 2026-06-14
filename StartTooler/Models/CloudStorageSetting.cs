@@ -45,6 +45,11 @@ public class CloudStorageSetting
     public string Endpoint { get; set; } = string.Empty;
 
     /// <summary>
+    /// 默认存储目录
+    /// </summary>
+    public string Dir { get; set; } = string.Empty;
+
+    /// <summary>
     /// 扩展字段（JSON 格式，用于未来新增提供商的自定义配置）
     /// </summary>
     public string ExtraConfig { get; set; } = string.Empty;

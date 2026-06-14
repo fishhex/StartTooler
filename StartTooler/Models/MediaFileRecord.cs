@@ -28,6 +28,21 @@ public class MediaFileRecord
 
     public bool IsUploaded { get; set; }
 
+    /// <summary>
+    /// 云存储类型（对应 CloudStorageProvider 枚举值）
+    /// </summary>
+    public int CloudStorage { get; set; }
+
+    /// <summary>
+    /// 存储桶名称
+    /// </summary>
+    public string Bucket { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 存储桶内的路径
+    /// </summary>
+    public string BucketPath { get; set; } = string.Empty;
+
     public DateTime CreatedTime { get; set; } = DateTime.Now;
 
     public DateTime UpdatedTime { get; set; } = DateTime.Now;

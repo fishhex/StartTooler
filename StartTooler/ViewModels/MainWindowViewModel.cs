@@ -1015,4 +1015,83 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         return BitOperations.PopCount((ulong)(hash1 ^ hash2));
     }
+
+    /// <summary>
+    /// 上传文件到 OSS
+    /// 上传路径: {dir}/{文件修改日期}/{md5}.{后缀}
+    /// </summary>
+    [RelayCommand]
+    public async Task UploadToOss()
+    {
+        var setting = DatabaseService.Instance.GetCloudStorageSetting(CloudStorageProvider.AliyunOss);
+        if (setting == null || string.IsNullOrWhiteSpace(setting.AccessKeyId))
+        {
+            StatusMessage = "请先在设置中配置阿里云 OSS 信息";
+            return;
+        }
+
+        var selected = GetSelectedFiles().ToList();
+        if (selected.Count == 0)
+        {
+            StatusMessage = "请先选择要上传的文件";
+            return;
+        }
+
+        StatusMessage = $"正在上传 {selected.Count} 个文件...";
+        var uploadService = new OssUploadService(setting);
+        int successCount = 0;
+
+        foreach (var file in selected)
+        {
+            try
+            {
+                var objectKey = await uploadService.UploadAsync(file.FilePath, file.ModifiedTime);
+                
+                // 更新数据库记录
+                var record = DatabaseService.Instance.GetMediaFileRecordByPath(file.FilePath);
+                if (record != null)
+                {
+                    record.CloudStorage = setting.Provider;
+                    record.Bucket = setting.BucketName;
+                    record.BucketPath = objectKey;
+                    record.IsUploaded = true;
+                    DatabaseService.Instance.SaveMediaFileRecord(record);
+                }
+
+                successCount++;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"上传失败 [{file.FileName}]: {ex.Message}");
+            }
+        }
+
+        StatusMessage = $"上传完成: {successCount}/{selected.Count} 成功";
+    }
+
+    private IEnumerable<MediaFile> GetSelectedFiles()
+    {
+        var selected = new List<MediaFile>();
+        foreach (var dateGroup in DateGroups)
+        {
+            foreach (var file in dateGroup.Files)
+            {
+                if (file.IsSelected)
+                {
+                    selected.Add(file);
+                }
+            }
+            foreach (var burst in dateGroup.BurstGroups)
+            {
+                foreach (var file in burst.Files)
+                {
+                    if (file.IsSelected)
+                    {
+                        selected.Add(file);
+                    }
+                }
+            }
+        }
+        return selected;
+    }
 }

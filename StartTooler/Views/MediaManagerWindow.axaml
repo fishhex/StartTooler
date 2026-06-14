@@ -319,6 +319,10 @@
                                                         <MenuItem Header="批量删除" 
                                                                   Command="{Binding ElementName=Root, Path=DataContext.BatchDeleteCommand}"
                                                                   IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                        <Separator IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                        <MenuItem Header="上传" 
+                                                                  Command="{Binding ElementName=Root, Path=DataContext.UploadToOssCommand}"
+                                                                  IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
                                                     </ContextMenu>
                                                 </Border.ContextMenu>
                                                 <Grid RowDefinitions="Auto, Auto, *, Auto, Auto">
@@ -384,6 +388,10 @@
                         <Separator IsVisible="{Binding IsMultiSelectMode}"/>
                         <MenuItem Header="批量删除" 
                                   Command="{Binding BatchDeleteCommand}"
+                                  IsVisible="{Binding IsMultiSelectMode}"/>
+                        <Separator IsVisible="{Binding IsMultiSelectMode}"/>
+                        <MenuItem Header="上传" 
+                                  Command="{Binding UploadToOssCommand}"
                                   IsVisible="{Binding IsMultiSelectMode}"/>
                     </ContextMenu>
                 </Grid.ContextMenu>

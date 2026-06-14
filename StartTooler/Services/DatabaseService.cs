@@ -50,6 +50,7 @@ public class DatabaseService : IDisposable
         
         // 创建云存储设置表
         _connection.CreateTable<CloudStorageSetting>();
+        EnsureCloudStorageSettingSchema();
     }
 
     /// <summary>
@@ -174,6 +175,9 @@ public class DatabaseService : IDisposable
                 existing.RootPath = record.RootPath;
                 existing.PerceptualHash = record.PerceptualHash;
                 existing.GroupId = record.GroupId;
+                existing.CloudStorage = record.CloudStorage;
+                existing.Bucket = record.Bucket;
+                existing.BucketPath = record.BucketPath;
                 existing.UpdatedTime = record.UpdatedTime;
                 _connection.Update(existing);
             }
@@ -349,10 +353,41 @@ public class DatabaseService : IDisposable
             {
                 _connection.Execute("ALTER TABLE MediaFileRecords ADD COLUMN GroupId TEXT");
             }
+
+            if (columns.All(c => c.Name != "CloudStorage"))
+            {
+                _connection.Execute("ALTER TABLE MediaFileRecords ADD COLUMN CloudStorage INTEGER DEFAULT 0");
+            }
+
+            if (columns.All(c => c.Name != "Bucket"))
+            {
+                _connection.Execute("ALTER TABLE MediaFileRecords ADD COLUMN Bucket TEXT DEFAULT ''");
+            }
+
+            if (columns.All(c => c.Name != "BucketPath"))
+            {
+                _connection.Execute("ALTER TABLE MediaFileRecords ADD COLUMN BucketPath TEXT DEFAULT ''");
+            }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"更新媒体文件记录表结构失败: {ex.Message}");
+        }
+    }
+
+    private void EnsureCloudStorageSettingSchema()
+    {
+        try
+        {
+            var columns = _connection.GetTableInfo("CloudStorageSettings");
+            if (columns.All(c => c.Name != "Dir"))
+            {
+                _connection.Execute("ALTER TABLE CloudStorageSettings ADD COLUMN Dir TEXT DEFAULT ''");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"更新云存储设置表结构失败: {ex.Message}");
         }
     }
 
@@ -431,6 +466,7 @@ public class DatabaseService : IDisposable
                 existing.AccessKeySecret = setting.AccessKeySecret;
                 existing.BucketName = setting.BucketName;
                 existing.Endpoint = setting.Endpoint;
+                existing.Dir = setting.Dir;
                 existing.ExtraConfig = setting.ExtraConfig;
                 existing.IsEnabled = setting.IsEnabled;
                 existing.UpdatedTime = setting.UpdatedTime;

@@ -300,6 +300,10 @@
                                                             <MenuItem Header="批量删除" 
                                                                       Command="{Binding ElementName=Root, Path=DataContext.BatchDeleteCommand}"
                                                                       IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                            <Separator IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                            <MenuItem Header="上传" 
+                                                                      Command="{Binding ElementName=Root, Path=DataContext.UploadToOssCommand}"
+                                                                      IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
                                                         </ContextMenu>
                                                     </Border.ContextMenu>
                                                     <Grid RowDefinitions="Auto, Auto, *, Auto, Auto">
@@ -365,6 +369,10 @@
                                 <Separator IsVisible="{Binding IsMultiSelectMode}"/>
                                 <MenuItem Header="批量删除" 
                                           Command="{Binding BatchDeleteCommand}"
+                                          IsVisible="{Binding IsMultiSelectMode}"/>
+                                <Separator IsVisible="{Binding IsMultiSelectMode}"/>
+                                <MenuItem Header="上传" 
+                                          Command="{Binding UploadToOssCommand}"
                                           IsVisible="{Binding IsMultiSelectMode}"/>
                             </ContextMenu>
                         </Grid.ContextMenu>
@@ -673,6 +681,19 @@
                                                                    Foreground="{DynamicResource SecondaryTextBrush}"/>
                                                         <TextBox Text="{Binding Endpoint}" 
                                                                  Watermark="例如：oss-cn-hangzhou.aliyuncs.com"
+                                                                 Padding="10,8"
+                                                                 Background="{DynamicResource InputBrush}"
+                                                                 Foreground="{DynamicResource PrimaryTextBrush}"
+                                                                 BorderBrush="{DynamicResource DividerBrush}"
+                                                                 CornerRadius="6"/>
+                                                    </StackPanel>
+                                                    <StackPanel>
+                                                        <TextBlock Text="默认存储目录" 
+                                                                   FontSize="12" 
+                                                                   Margin="0,0,0,8" 
+                                                                   Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                                        <TextBox Text="{Binding Dir}" 
+                                                                 Watermark="例如：images/"
                                                                  Padding="10,8"
                                                                  Background="{DynamicResource InputBrush}"
                                                                  Foreground="{DynamicResource PrimaryTextBrush}"

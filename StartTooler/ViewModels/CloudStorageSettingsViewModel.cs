@@ -18,6 +18,9 @@ public partial class CloudStorageSettingsViewModel : ViewModelBase
     [ObservableProperty]
     private string _endpoint = string.Empty;
 
+    [ObservableProperty]
+    private string _dir = string.Empty;
+
     public CloudStorageSettingsViewModel()
     {
         LoadSettings();
@@ -32,6 +35,7 @@ public partial class CloudStorageSettingsViewModel : ViewModelBase
             AccessKeySecret = setting.AccessKeySecret;
             BucketName = setting.BucketName;
             Endpoint = setting.Endpoint;
+            Dir = setting.Dir;
         }
     }
 
@@ -43,7 +47,8 @@ public partial class CloudStorageSettingsViewModel : ViewModelBase
             AccessKeyId = AccessKeyId,
             AccessKeySecret = AccessKeySecret,
             BucketName = BucketName,
-            Endpoint = Endpoint
+            Endpoint = Endpoint,
+            Dir = Dir
         };
 
         DatabaseService.Instance.SaveCloudStorageSetting(setting);
