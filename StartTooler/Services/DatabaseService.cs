@@ -47,6 +47,9 @@ public class DatabaseService : IDisposable
         
         // 创建 AI 设置表
         _connection.CreateTable<AiSetting>();
+        
+        // 创建云存储设置表
+        _connection.CreateTable<CloudStorageSetting>();
     }
 
     /// <summary>
@@ -401,6 +404,79 @@ public class DatabaseService : IDisposable
         {
             Console.WriteLine($"获取 AI 设置失败: {ex.Message}");
             return null;
+        }
+    }
+
+    #endregion
+
+    #region CloudStorageSetting Operations
+
+    /// <summary>
+    /// 保存云存储设置
+    /// </summary>
+    public void SaveCloudStorageSetting(CloudStorageSetting setting)
+    {
+        if (setting == null)
+            return;
+
+        try
+        {
+            setting.UpdatedTime = DateTime.Now;
+
+            var existing = _connection.Table<CloudStorageSetting>()
+                .FirstOrDefault(s => s.Provider == setting.Provider);
+            if (existing != null)
+            {
+                existing.AccessKeyId = setting.AccessKeyId;
+                existing.AccessKeySecret = setting.AccessKeySecret;
+                existing.BucketName = setting.BucketName;
+                existing.Endpoint = setting.Endpoint;
+                existing.ExtraConfig = setting.ExtraConfig;
+                existing.IsEnabled = setting.IsEnabled;
+                existing.UpdatedTime = setting.UpdatedTime;
+                _connection.Update(existing);
+            }
+            else
+            {
+                _connection.Insert(setting);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"保存云存储设置失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 获取指定提供商的云存储设置
+    /// </summary>
+    public CloudStorageSetting? GetCloudStorageSetting(CloudStorageProvider provider)
+    {
+        try
+        {
+            return _connection.Table<CloudStorageSetting>()
+                .FirstOrDefault(s => s.Provider == (int)provider);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"获取云存储设置失败: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 获取所有云存储设置
+    /// </summary>
+    public List<CloudStorageSetting> GetAllCloudStorageSettings()
+    {
+        try
+        {
+            return _connection.Table<CloudStorageSetting>().ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"获取云存储设置列表失败: {ex.Message}");
+            return [];
         }
     }
 

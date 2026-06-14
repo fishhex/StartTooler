@@ -619,6 +619,68 @@
                                                     </StackPanel>
                                                 </StackPanel>
                                             </DataTemplate>
+                                            <DataTemplate DataType="{x:Type vm:CloudStorageSettingsViewModel}">
+                                                <StackPanel Spacing="20">
+                                                    <StackPanel>
+                                                        <TextBlock Text="阿里云 OSS 配置" 
+                                                                   FontSize="18" 
+                                                                   FontWeight="SemiBold" 
+                                                                   Margin="0,0,0,20"
+                                                                   Foreground="{DynamicResource PrimaryTextBrush}"/>
+                                                        <TextBlock Text="AccessKey ID" 
+                                                                   FontSize="12" 
+                                                                   Margin="0,0,0,8" 
+                                                                   Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                                        <TextBox Text="{Binding AccessKeyId}" 
+                                                                 Watermark="输入 AccessKey ID"
+                                                                 Padding="10,8"
+                                                                 Background="{DynamicResource InputBrush}"
+                                                                 Foreground="{DynamicResource PrimaryTextBrush}"
+                                                                 BorderBrush="{DynamicResource DividerBrush}"
+                                                                 CornerRadius="6"/>
+                                                    </StackPanel>
+                                                    <StackPanel>
+                                                        <TextBlock Text="AccessKey Secret" 
+                                                                   FontSize="12" 
+                                                                   Margin="0,0,0,8" 
+                                                                   Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                                        <TextBox Text="{Binding AccessKeySecret}" 
+                                                                 Watermark="输入 AccessKey Secret"
+                                                                 PasswordChar="*"
+                                                                 Padding="10,8"
+                                                                 Background="{DynamicResource InputBrush}"
+                                                                 Foreground="{DynamicResource PrimaryTextBrush}"
+                                                                 BorderBrush="{DynamicResource DividerBrush}"
+                                                                 CornerRadius="6"/>
+                                                    </StackPanel>
+                                                    <StackPanel>
+                                                        <TextBlock Text="存储桶名称" 
+                                                                   FontSize="12" 
+                                                                   Margin="0,0,0,8" 
+                                                                   Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                                        <TextBox Text="{Binding BucketName}" 
+                                                                 Watermark="输入 Bucket Name"
+                                                                 Padding="10,8"
+                                                                 Background="{DynamicResource InputBrush}"
+                                                                 Foreground="{DynamicResource PrimaryTextBrush}"
+                                                                 BorderBrush="{DynamicResource DividerBrush}"
+                                                                 CornerRadius="6"/>
+                                                    </StackPanel>
+                                                    <StackPanel>
+                                                        <TextBlock Text="区域节点 (Endpoint)" 
+                                                                   FontSize="12" 
+                                                                   Margin="0,0,0,8" 
+                                                                   Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                                        <TextBox Text="{Binding Endpoint}" 
+                                                                 Watermark="例如：oss-cn-hangzhou.aliyuncs.com"
+                                                                 Padding="10,8"
+                                                                 Background="{DynamicResource InputBrush}"
+                                                                 Foreground="{DynamicResource PrimaryTextBrush}"
+                                                                 BorderBrush="{DynamicResource DividerBrush}"
+                                                                 CornerRadius="6"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </DataTemplate>
                                         </ContentControl.DataTemplates>
                                     </ContentControl>
                                 </Border>

@@ -1,4 +1,3 @@
-using System;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -21,6 +20,7 @@ public partial class SettingsViewModel : ViewModelBase
     private void InitializePages()
     {
         Pages.Add(new SettingsPageViewModel("AI 配置", new AiSettingsViewModel()));
+        Pages.Add(new SettingsPageViewModel("云存储", new CloudStorageSettingsViewModel()));
         // 可在此添加更多子配置页，例如：
         // Pages.Add(new SettingsPageViewModel("通用", new GeneralSettingsViewModel()));
         SelectedPage = Pages[0];
@@ -34,6 +34,10 @@ public partial class SettingsViewModel : ViewModelBase
             if (page.Content is AiSettingsViewModel aiVm)
             {
                 aiVm.Save();
+            }
+            if (page.Content is CloudStorageSettingsViewModel cloudVm)
+            {
+                cloudVm.Save();
             }
             // 在此添加其他子页面的保存逻辑
         }
