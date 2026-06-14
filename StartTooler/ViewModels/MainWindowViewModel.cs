@@ -60,6 +60,11 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isMultiSelectMode;
 
+    partial void OnIsMultiSelectModeChanged(bool value)
+    {
+        OnMultiSelectModeChanged(value);
+    }
+
     [ObservableProperty]
     private SettingsViewModel _settingsViewModel = new();
 
@@ -68,6 +73,25 @@ public partial class MainWindowViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _isBurstDetailDrawerVisible;
+
+    // 上传状态
+    [ObservableProperty]
+    private bool _isUploading;
+
+    [ObservableProperty]
+    private string _uploadStatusText = "正在上传...";
+
+    [ObservableProperty]
+    private int _uploadProgress;
+
+    [ObservableProperty]
+    private int _uploadCurrentFile;
+
+    [ObservableProperty]
+    private int _uploadTotalFiles;
+
+    [ObservableProperty]
+    private string _uploadCurrentFileName = "";
 
     /// <summary>
     /// 当前选中的文件列表（用于多选操作）
@@ -98,6 +122,18 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool _hasSelectedFiles;
 
     /// <summary>
+    /// 是否有选中的未上传文件（显示"上传"按钮）
+    /// </summary>
+    [ObservableProperty]
+    private bool _hasUnuploadedFiles;
+
+    /// <summary>
+    /// 已选中文件数量
+    /// </summary>
+    [ObservableProperty]
+    private int _selectedCount;
+
+    /// <summary>
     /// 用于在刷新后保留选中状态的文件路径集合
     /// </summary>
     private HashSet<string>? _pendingSelectionPaths;
@@ -105,6 +141,8 @@ public partial class MainWindowViewModel : ViewModelBase
     public event EventHandler? RefreshStarted;
     public event EventHandler<RefreshProgressChangedEventArgs>? RefreshProgressChanged;
     public event EventHandler? RefreshCompleted;
+
+    public event EventHandler? UploadCompleted;
 
     public MainWindowViewModel()
     {
@@ -145,6 +183,8 @@ public partial class MainWindowViewModel : ViewModelBase
     private void UpdateSelectionGroupState()
     {
         HasSelectedFiles = SelectedFiles.Count > 0;
+        HasUnuploadedFiles = SelectedFiles.Any(f => !f.IsUploaded);
+        SelectedCount = SelectedFiles.Count;
 
         if (SelectedFiles.Count < 2)
         {
@@ -587,7 +627,10 @@ public partial class MainWindowViewModel : ViewModelBase
             ModifiedTime = record.UpdatedTime,
             FileSize = 0,
             PerceptualHash = record.PerceptualHash,
-            GroupId = record.GroupId
+            GroupId = record.GroupId,
+            IsUploaded = record.IsUploaded,
+            CloudStorage = record.CloudStorage.ToString(),
+            BucketPath = record.BucketPath
         };
 
         if (File.Exists(record.LocalPath))
@@ -710,6 +753,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public void SaveSettings()
     {
         SettingsViewModel.Save();
+        ToastService.Instance.Success("设置已保存");
         StatusMessage = "设置已保存";
     }
 
@@ -1026,27 +1070,50 @@ public partial class MainWindowViewModel : ViewModelBase
         var setting = DatabaseService.Instance.GetCloudStorageSetting(CloudStorageProvider.AliyunOss);
         if (setting == null || string.IsNullOrWhiteSpace(setting.AccessKeyId))
         {
-            StatusMessage = "请先在设置中配置阿里云 OSS 信息";
+            ToastService.Instance.Error("请先在设置中配置阿里云 OSS 信息");
             return;
         }
 
         var selected = GetSelectedFiles().ToList();
         if (selected.Count == 0)
         {
-            StatusMessage = "请先选择要上传的文件";
+            ToastService.Instance.Info("请先选择要上传的文件");
             return;
         }
 
         StatusMessage = $"正在上传 {selected.Count} 个文件...";
         var uploadService = new OssUploadService(setting);
         int successCount = 0;
+        int failCount = 0;
+        int currentIndex = 0;
+
+        // 开始上传，设置状态
+        IsUploading = true;
+        UploadTotalFiles = selected.Count;
 
         foreach (var file in selected)
         {
+            currentIndex++;
+
+            // 更新上传状态
+            UploadCurrentFile = currentIndex;
+            UploadCurrentFileName = file.FileName;
+            UploadStatusText = $"正在上传 {file.FileName}";
+            UploadProgress = 0;
+
+            // 订阅上传进度事件
+            uploadService.ProgressChanged += (sender, args) =>
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    UploadProgress = args.FileProgress;
+                });
+            };
+
             try
             {
                 var objectKey = await uploadService.UploadAsync(file.FilePath, file.ModifiedTime);
-                
+
                 // 更新数据库记录
                 var record = DatabaseService.Instance.GetMediaFileRecordByPath(file.FilePath);
                 if (record != null)
@@ -1058,36 +1125,65 @@ public partial class MainWindowViewModel : ViewModelBase
                     DatabaseService.Instance.SaveMediaFileRecord(record);
                 }
 
+                // 更新内存中的文件对象
+                file.IsUploaded = true;
+                file.CloudStorage = setting.Provider.ToString();
+                file.BucketPath = objectKey;
+
                 successCount++;
+                UploadProgress = 100;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"上传失败 [{file.FileName}]: {ex.Message}");
+                failCount++;
             }
         }
 
+        // 上传完成
+        IsUploading = false;
         StatusMessage = $"上传完成: {successCount}/{selected.Count} 成功";
+        if (failCount == 0)
+            ToastService.Instance.Success($"上传成功: {successCount} 个文件");
+        else
+            ToastService.Instance.Info($"上传完成: {successCount} 成功, {failCount} 失败");
+
+        UploadCompleted?.Invoke(this, EventArgs.Empty);
     }
 
     private IEnumerable<MediaFile> GetSelectedFiles()
     {
         var selected = new List<MediaFile>();
+        var processedBurstGroups = new HashSet<MediaBurstGroup>();
+
         foreach (var dateGroup in DateGroups)
         {
-            foreach (var file in dateGroup.Files)
-            {
-                if (file.IsSelected)
-                {
-                    selected.Add(file);
-                }
-            }
             foreach (var burst in dateGroup.BurstGroups)
             {
-                foreach (var file in burst.Files)
+                // 如果组被选中（通过封面文件判断），上传组内所有未上传的文件
+                if (burst.Cover?.IsSelected == true)
                 {
-                    if (file.IsSelected)
+                    if (processedBurstGroups.Contains(burst))
+                        continue;
+                    processedBurstGroups.Add(burst);
+
+                    foreach (var file in burst.Files)
                     {
-                        selected.Add(file);
+                        if (!file.IsUploaded)
+                        {
+                            selected.Add(file);
+                        }
+                    }
+                }
+                else
+                {
+                    // 否则只上传选中的单个文件
+                    foreach (var file in burst.Files)
+                    {
+                        if (file.IsSelected && !file.IsUploaded)
+                        {
+                            selected.Add(file);
+                        }
                     }
                 }
             }

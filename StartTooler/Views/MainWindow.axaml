@@ -22,6 +22,7 @@
         <converters:BoolToStringConverter x:Key="MultiSelectTextConverter" 
                                           TrueValue="取消多选" 
                                           FalseValue="多选"/>
+        <converters:ToastTypeToBackgroundConverter x:Key="ToastTypeToBackgroundConverter"/>
     </Window.Resources>
 
     <Grid>
@@ -63,6 +64,20 @@
                                     Background="{DynamicResource SurfaceBrush}"
                                     BorderBrush="{DynamicResource DividerBrush}"
                                     Foreground="{DynamicResource PrimaryTextBrush}"/>
+
+                            <Button Content="上传"
+                                    Command="{Binding UploadToOssCommand}"
+                                    Padding="12,6"
+                                    FontSize="13"
+                                    Background="{DynamicResource AccentBrush}"
+                                    Foreground="White"
+                                    IsVisible="{Binding HasUnuploadedFiles}">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover">
+                                        <Setter Property="Opacity" Value="0.85"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
 
                             <ToggleButton Content="{Binding IsMultiSelectMode, Converter={StaticResource MultiSelectTextConverter}}" 
                                           IsChecked="{Binding IsMultiSelectMode, Mode=TwoWay}"
@@ -118,7 +133,7 @@
                             </Button>
 
                             <Button Content="批量删除"
-                                    Command="{Binding BatchDeleteCommand}"
+                                    Click="OnBatchDeleteButton_Click"
                                     Padding="12,6"
                                     FontSize="13"
                                     Background="{DynamicResource SurfaceBrush}"
@@ -339,11 +354,21 @@
                                                                    FontSize="9"
                                                                    Foreground="{DynamicResource SecondaryTextBrush}"
                                                                    Margin="8,0,8,2"/>
-                                                        <TextBlock Grid.Row="4"
-                                                                   Text="{Binding FormattedFileSize}" 
-                                                                   FontSize="9"
-                                                                   Foreground="{DynamicResource SecondaryTextBrush}"
-                                                                   Margin="8,0,8,5"/>
+                                                        <Grid Grid.Row="4" ColumnDefinitions="*,Auto">
+                                                            <TextBlock Grid.Column="0"
+                                                                       Text="{Binding FormattedFileSize}" 
+                                                                       FontSize="9"
+                                                                       Foreground="{DynamicResource SecondaryTextBrush}"
+                                                                       Margin="8,0,0,5"/>
+                                                            <TextBlock Grid.Column="1"
+                                                                       Text="☁"
+                                                                       FontSize="12"
+                                                                       Foreground="{DynamicResource AccentBrush}"
+                                                                       VerticalAlignment="Center"
+                                                                       Margin="0,0,8,5"
+                                                                       IsVisible="{Binding IsUploaded}"
+                                                                       ToolTip.Tip="已上传"/>
+                                                        </Grid>
                                                     </Grid>
                                                 </Border>
                                             </DataTemplate>
@@ -378,9 +403,25 @@
                         </Grid.ContextMenu>
                         <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" Padding="12,6" Margin="0,0,10,10"
                                 BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1" CornerRadius="10">
-                            <TextBlock Text="{Binding StatusMessage}" 
-                                       FontSize="12"
-                                       Foreground="{DynamicResource SecondaryTextBrush}"/>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding StatusMessage}" 
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SecondaryTextBrush}"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource AccentBrush}"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"
+                                           IsVisible="{Binding IsMultiSelectMode}">
+                                    <TextBlock.Text>
+                                        <MultiBinding StringFormat="已选中 {0} 个">
+                                            <Binding Path="SelectedCount"/>
+                                        </MultiBinding>
+                                    </TextBlock.Text>
+                                </TextBlock>
+                            </Grid>
                         </Border>
 
                         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
@@ -455,6 +496,19 @@
                                                                               IsChecked="{Binding Cover.IsSelected, Mode=TwoWay}"
                                                                               IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"
                                                                               ZIndex="1"/>
+                                                                    <Border Background="{DynamicResource AccentBrush}"
+                                                                            CornerRadius="999"
+                                                                            Padding="6,3"
+                                                                            HorizontalAlignment="Left"
+                                                                            VerticalAlignment="Top"
+                                                                            Margin="10,10,0,0"
+                                                                            ZIndex="1"
+                                                                            IsVisible="{Binding IsUploaded}"
+                                                                            ToolTip.Tip="已上传">
+                                                                        <TextBlock Text="☁ 已上传"
+                                                                                   FontSize="10"
+                                                                                   Foreground="White"/>
+                                                                    </Border>
                                                                     <Button Content="{Binding BadgeText}"
                                                                             Command="{Binding ElementName=Root, Path=DataContext.OpenBurstDetailDrawerCommand}"
                                                                             CommandParameter="{Binding}"
@@ -736,6 +790,67 @@
                 </DockPanel>
             </Border>
         </Grid>
+
+        <!-- Toast 通知 -->
+        <Border x:Name="ToastOverlay"
+                Background="#DD181B25"
+                CornerRadius="8"
+                Padding="16,10"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="0,0,0,30"
+                ZIndex="999"
+                Opacity="0"
+                IsHitTestVisible="False">
+            <TextBlock x:Name="ToastMessage"
+                       Text=""
+                       FontSize="13"
+                       Foreground="White"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"/>
+        </Border>
+
+        <!-- 上传进度指示器 (右下角) -->
+        <Border x:Name="UploadProgressOverlay"
+                Background="{DynamicResource SurfaceBrush}"
+                CornerRadius="12"
+                Padding="16,12"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Margin="0,0,20,20"
+                ZIndex="1000"
+                BoxShadow="0 4 20 0 #40000000"
+                IsVisible="{Binding IsUploading}">
+            <StackPanel Spacing="8" MinWidth="250">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0"
+                               Text="{Binding UploadStatusText}"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource PrimaryTextBrush}"/>
+                    <TextBlock Grid.Column="1"
+                               FontSize="12"
+                               Foreground="{DynamicResource SecondaryTextBrush}">
+                        <TextBlock.Text>
+                            <MultiBinding StringFormat="文件 {0}/{1}">
+                                <Binding Path="UploadCurrentFile"/>
+                                <Binding Path="UploadTotalFiles"/>
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                </Grid>
+                <ProgressBar Height="6"
+                            Minimum="0"
+                            Maximum="100"
+                            Value="{Binding UploadProgress}"
+                            Foreground="{DynamicResource AccentBrush}"
+                            Background="{DynamicResource DividerBrush}"/>
+                <TextBlock Text="{Binding UploadCurrentFileName}"
+                           FontSize="11"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
+                           TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+        </Border>
     </Grid>
 
 </Window>

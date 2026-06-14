@@ -24,10 +24,13 @@ public partial class MediaBurstGroup : ObservableObject
 
     public bool HasGroupId => Cover != null && !string.IsNullOrEmpty(Cover.GroupId);
 
+    public bool IsUploaded => Cover?.IsUploaded ?? false;
+
     private void OnFilesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         OnPropertyChanged(nameof(BadgeText));
         OnPropertyChanged(nameof(HasMultiple));
         OnPropertyChanged(nameof(Cover));
+        OnPropertyChanged(nameof(IsUploaded));
     }
 }
