@@ -6,3 +6,5 @@ riderModule.iml
 
 .idea/
 PROJECT_README.md
+publish/
+dist/

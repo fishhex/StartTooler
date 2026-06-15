@@ -7,11 +7,21 @@
         <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
         <CompileAvaloniaXaml>true</CompileAvaloniaXaml>
         <AvaloniaDisableBuildStats>true</AvaloniaDisableBuildStats>
+        <ApplicationIcon>Assets\avalonia-logo.ico</ApplicationIcon>
+        <AssemblyName>StartTooler</AssemblyName>
+        <Product>StartTooler</Product>
+        <Version>1.0.0</Version>
     </PropertyGroup>
 
     <ItemGroup>
         <Folder Include="Models\" />
         <AvaloniaResource Include="Assets\**" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(RuntimeIdentifier)' == 'osx-x64' OR '$(RuntimeIdentifier)' == 'osx-arm64'">
+        <Content Include="Assets\orion_nebula_icon.icns">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
 
     <ItemGroup>
