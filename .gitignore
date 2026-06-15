@@ -8,3 +8,5 @@ riderModule.iml
 PROJECT_README.md
 publish/
 dist/
+.DS_Store
+.vscode/
