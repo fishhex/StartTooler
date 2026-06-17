@@ -66,7 +66,7 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     [ObservableProperty]
-    private SettingsViewModel _settingsViewModel = new();
+    private SettingsViewModel _settingsViewModel;
 
     [ObservableProperty]
     private MediaBurstGroup? _selectedBurstGroup;
@@ -92,6 +92,18 @@ public partial class MainWindowViewModel : ViewModelBase
 
     [ObservableProperty]
     private string _uploadCurrentFileName = "";
+
+    // 内网服务状态
+    [ObservableProperty]
+    private bool _isHttpServerRunning;
+
+    [ObservableProperty]
+    private int _httpServerPort = 9527;
+
+    [ObservableProperty]
+    private RecentFolder? _httpServerFolder;
+
+    public HttpServerService HttpServer { get; } = new();
 
     /// <summary>
     /// 当前选中的文件列表（用于多选操作）
@@ -148,6 +160,7 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         _fileScanService = new FileScanService();
         _thumbnailService = new ThumbnailService();
+        _settingsViewModel = new SettingsViewModel(this);
         LoadRecentFolders(tryAutoLoad: true);
     }
 
@@ -376,6 +389,9 @@ public partial class MainWindowViewModel : ViewModelBase
             {
                 RecentFolders.Add(folder);
             }
+
+            // 刷新内网服务的文件夹列表
+            SettingsViewModel.RefreshInternalServerFolders();
 
             if (tryAutoLoad && string.IsNullOrWhiteSpace(SelectedFolderPath) && RecentFolders.Count > 0)
             {
@@ -1189,5 +1205,47 @@ public partial class MainWindowViewModel : ViewModelBase
             }
         }
         return selected;
+    }
+
+    /// <summary>
+    /// 切换内网服务状态
+    /// </summary>
+    [RelayCommand]
+    public async Task ToggleHttpServer()
+    {
+        if (HttpServerFolder == null || string.IsNullOrWhiteSpace(HttpServerFolder.FolderPath))
+        {
+            ToastService.Instance.Info("请先选择内网服务的目标文件夹");
+            return;
+        }
+
+        if (!Directory.Exists(HttpServerFolder.FolderPath))
+        {
+            ToastService.Instance.Error("目标文件夹不存在，请重新选择");
+            return;
+        }
+
+        try
+        {
+            if (IsHttpServerRunning)
+            {
+                await HttpServer.StopAsync();
+                IsHttpServerRunning = false;
+            }
+            else
+            {
+                HttpServer.SetStatusCallback(msg => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    StatusMessage = msg;
+                }));
+                await HttpServer.StartAsync(HttpServerPort, HttpServerFolder.FolderPath);
+                IsHttpServerRunning = true;
+                ToastService.Instance.Success($"内网服务已启动 http://localhost:{HttpServerPort}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Instance.Error($"服务启动失败: {ex.Message}");
+        }
     }
 }

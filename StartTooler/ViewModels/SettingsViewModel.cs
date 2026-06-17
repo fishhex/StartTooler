@@ -12,8 +12,13 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private SettingsPageViewModel? _selectedPage;
 
-    public SettingsViewModel()
+    private readonly MainWindowViewModel _mainWindowViewModel;
+
+    public InternalServerSettingsViewModel? InternalServerSettings { get; private set; }
+
+    public SettingsViewModel(MainWindowViewModel mainWindowViewModel)
     {
+        _mainWindowViewModel = mainWindowViewModel;
         InitializePages();
     }
 
@@ -21,8 +26,8 @@ public partial class SettingsViewModel : ViewModelBase
     {
         Pages.Add(new SettingsPageViewModel("AI 配置", new AiSettingsViewModel()));
         Pages.Add(new SettingsPageViewModel("云存储", new CloudStorageSettingsViewModel()));
-        // 可在此添加更多子配置页，例如：
-        // Pages.Add(new SettingsPageViewModel("通用", new GeneralSettingsViewModel()));
+        InternalServerSettings = new InternalServerSettingsViewModel(_mainWindowViewModel);
+        Pages.Add(new SettingsPageViewModel("内网服务", InternalServerSettings));
         SelectedPage = Pages[0];
     }
 
@@ -39,8 +44,12 @@ public partial class SettingsViewModel : ViewModelBase
             {
                 cloudVm.Save();
             }
-            // 在此添加其他子页面的保存逻辑
         }
+    }
+
+    public void RefreshInternalServerFolders()
+    {
+        InternalServerSettings?.RefreshRecentFolders();
     }
 }
 
