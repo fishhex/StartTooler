@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -267,12 +268,14 @@ public partial class MainWindow : Window
                 return;
 
             msg.Text = e.Message;
-            toast.Background = e.Type switch
+            var brushKey = e.Type switch
             {
-                ToastType.Success => new SolidColorBrush(Color.Parse("#2ECC71")),
-                ToastType.Error => new SolidColorBrush(Color.Parse("#E74C3C")),
-                _ => new SolidColorBrush(Color.Parse("#DD181B25"))
+                ToastType.Success => "AlertSuccessBrush",
+                ToastType.Error => "AlertErrorBrush",
+                _ => "AlertInfoBrush"
             };
+            toast.Background = Application.Current?.FindResource(brushKey) as Avalonia.Media.Brush
+                ?? new SolidColorBrush(Color.Parse("#DD181B25"));
             toast.Opacity = 1;
             toast.IsHitTestVisible = false;
 

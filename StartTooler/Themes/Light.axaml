@@ -16,4 +16,9 @@
   <SolidColorBrush x:Key="ProgressDialogTrackBrush" Color="#F3F3F5"/>
   <SolidColorBrush x:Key="ProgressDialogBarBrush" Color="#C2410C"/>
   <Thickness x:Key="ProgressDialogBorderThickness">1</Thickness>
+
+  <!-- Alert 颜色 -->
+  <SolidColorBrush x:Key="AlertSuccessBrush" Color="#CC000000"/>
+  <SolidColorBrush x:Key="AlertErrorBrush" Color="#E74C3C"/>
+  <SolidColorBrush x:Key="AlertInfoBrush" Color="#DD181B25"/>
 </ResourceDictionary>

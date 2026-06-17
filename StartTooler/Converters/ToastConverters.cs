@@ -1,3 +1,5 @@
+using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Data.Converters;
 using Avalonia.Media;
 using StartTooler.Services;
@@ -12,12 +14,14 @@ public class ToastTypeToBackgroundConverter : IValueConverter
     {
         if (value is ToastType type)
         {
-            return type switch
+            var key = type switch
             {
-                ToastType.Success => new SolidColorBrush(Color.Parse("#2ECC71")),
-                ToastType.Error => new SolidColorBrush(Color.Parse("#E74C3C")),
-                _ => new SolidColorBrush(Color.Parse("#DD181B25"))
+                ToastType.Success => "AlertSuccessBrush",
+                ToastType.Error => "AlertErrorBrush",
+                _ => "AlertInfoBrush"
             };
+            return Application.Current?.FindResource(key) as SolidColorBrush
+                ?? new SolidColorBrush(Color.Parse("#DD181B25"));
         }
         return new SolidColorBrush(Color.Parse("#DD181B25"));
     }
