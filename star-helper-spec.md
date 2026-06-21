@@ -11,9 +11,9 @@
 | 项 | 值 |
 |---|---|
 | 项目名 | 星助 / StarHelper |
-| 文档版本 | 1.0 |
+| 文档版本 | 1.1 |
 | 目标用户 | 天文摄影爱好者（astrophotographer） |
-| 技术栈 | **Avalonia UI 11.x** + C# + ReactiveUI / CommunityToolkit.Mvvm |
+| 技术栈 | **Avalonia UI 11.x** + C# + ReactiveUI / CommunityToolkit.Mvvm + **SQLite** |
 | 目标平台 | macOS（首要）、Windows 11、Linux（次要） |
 | 文档语言 | 中文 |
 | 设计风格 | Deep Space 深空主题（暗色优先） |
@@ -577,8 +577,10 @@ public class SettingsViewModel : ObservableObject
 - [ ] §8 两种主题可运行时切换，无残留样式
 - [ ] §9 三个平台均可启动并运行
 - [ ] §10 A11y 基础要求达成
+- [ ] §15 §15 数据持久化全部实现（含 4 个配置分区、UPSERT、缓存）
 - [ ] 所有交互元素在悬停 / 聚焦 / 按下时都有视觉反馈
 - [ ] 字体、间距、圆角全部走 token，禁止硬编码
+- [ ] 单元测试覆盖核心服务（SqliteConfigService 至少 5 个测试用例）
 
 ---
 
@@ -591,6 +593,7 @@ public class SettingsViewModel : ObservableObject
 - .NET 8
 - ReactiveUI **或** CommunityToolkit.Mvvm（二选一）
 - Lucide Icons SVG
+- **Microsoft.Data.Sqlite**（数据持久化唯一依赖）
 
 ### 12.2 禁止
 
@@ -599,6 +602,10 @@ public class SettingsViewModel : ObservableObject
 - ❌ 在 XAML 中写业务逻辑
 - ❌ 使用 `Code Behind` 处理 UI 逻辑（除初始化）
 - ❌ 引入未在本文档列出的第三方 UI 库
+- ❌ 使用 JSON / INI / XML 文件存配置
+- ❌ 使用注册表 / plist / Keychain 直存配置
+- ❌ 使用 EntityFramework Core / Dapper / 任何 ORM
+- ❌ 使用除 SQLite 外的任何数据库引擎
 
 ### 12.3 推荐
 
@@ -626,12 +633,37 @@ StarHelper/
 │   │   │   ├── MainWindowViewModel.cs
 │   │   │   ├── GalleryViewModel.cs
 │   │   │   └── SettingsViewModel.cs
+│   │   ├── Controls/
+│   │   │   ├── PhotoTile.axaml
+│   │   │   ├── TimelineRail.axaml
+│   │   │   └── ...
+│   │   ├── Converters/
+│   │   │   ├── StatusToIconConverter.cs
+│   │   │   ├── StatusToColorConverter.cs
+│   │   │   └── ...
 │   │   └── Assets/
+│   │       └── Icons.axaml
 │   └── StarHelper.Core/
 │       ├── Models/
+│       │   ├── Photo.cs
+│       │   ├── SyncStatus.cs
+│       │   └── TimelineEntry.cs
+│       ├── Config/                    ← 数据持久化层
+│       │   ├── IConfigService.cs
+│       │   ├── SqliteConfigService.cs
+│       │   ├── ConfigServiceExtensions.cs
+│       │   ├── ConfigKeys.cs
+│       │   ├── AppConfig.cs
+│       │   ├── ProjectConfig.cs
+│       │   ├── OssConfig.cs
+│       │   └── WindowConfig.cs
 │       └── Services/
-└── Themes/
-    └── Colors.axaml
+└── Tests/
+    └── StarHelper.Core.Tests/
+        └── Config/
+            └── SqliteConfigServiceTests.cs
+Themes/
+    ├── Colors.axaml
     ├── DeepSpace.axaml
     └── RedNightVision.axaml
 ```
@@ -641,17 +673,351 @@ StarHelper/
 ## 14. 实现优先级（建议执行顺序）
 
 1. **脚手架**：项目结构 + `App.axaml` + `MainWindow.axaml` + `Colors.axaml`
-2. **主题系统**：所有 token 落到 ResourceDictionary，验证 Deep Space 主题可见
-3. **C1 MacChrome**：标题栏 + 交通灯 + 设置按钮
-4. **C2 TimelineRail**：静态数据先跑通视觉
-5. **C3 PhotoTile**：含 C4 状态徽章
-6. **页面组装**：GalleryView 跑起来
-7. **C5~C9 控件**：TabBar / Select / FormRow / Button
-8. **SettingsView 页面**：跑通
-9. **主题切换**：Deep Space ↔ Red Night Vision
-10. **动效与微交互**：所有 Duration / Easing 应用
-11. **A11y 收尾**
+2. **数据层**：§15 配置服务（4 个 POCO + IConfigService + SqliteConfigService）
+3. **主题系统**：所有 token 落到 ResourceDictionary，验证 Deep Space 主题可见
+4. **C1 MacChrome**：标题栏 + 交通灯 + 设置按钮
+5. **C2 TimelineRail**：静态数据先跑通视觉
+6. **C3 PhotoTile**：含 C4 状态徽章
+7. **页面组装**：GalleryView 跑起来，绑定配置服务加载初始数据
+8. **C5~C9 控件**：TabBar / Select / FormRow / Button
+9. **SettingsView 页面**：表单绑定到 `ProjectConfig` / `OssConfig`，保存后写回 SQLite
+10. **主题切换**：Deep Space ↔ Red Night Vision，主题变更落库
+11. **动效与微交互**：所有 Duration / Easing 应用
+12. **单元测试**：§15.9 列出的 5 个核心测试用例
+13. **A11y 收尾**
 
 ---
 
-**End of Spec v1.0**
+---
+
+## 15. 数据持久化（SQLite）
+
+### 15.1 存储选型
+
+**SQLite**，单文件本地数据库。
+
+**范围限定：**
+
+> 本规范定义的「单表 + JSON」模式**仅适用于「设置（Settings）」的存储**。
+> 应用需要存储的其他类型数据（照片索引、缩略图缓存、任务队列等）**不**使用本模式，**必须**使用独立的关系表，详见 §15.13。
+
+**为什么设置项要用单表 + JSON：**
+- ✅ 设置项数量固定（当前 4 个分区），不会随用户数据增长
+- ✅ 整体大小 < 100KB，可以一次性全量加载到内存
+- ✅ JSON 序列化/反序列化对简单 POCO 足够
+- ✅ 避免「每个配置项一张表」的表爆炸
+- ✅ 新增配置分区只需改代码，不用改 schema
+
+**为什么选 SQLite：**
+- ✅ 零运维，数据库 = 一个 `.db` 文件
+- ✅ 跨平台一致（macOS / Windows / Linux 同源）
+- ✅ 应用包内嵌，无需独立进程
+- ✅ 备份简单（复制文件即可）
+
+**禁止使用：**
+- ❌ JSON / INI / XML / YAML 文件存配置
+- ❌ 注册表 / plist / system property
+- ❌ EntityFramework Core / Dapper / 任何 ORM
+- ❌ PostgreSQL / MySQL / SQL Server / 任何独立数据库进程
+- ❌ 为每个配置分区单独建表（这是本规范要专门避免的反模式）
+
+### 15.2 表结构（**设置表，唯一一张**）
+
+> ⚠️ **铁律**：无论未来增加多少配置分区，**始终只有这一张 `config` 表**。
+> 所有设置项（主题、OSS、窗口、项目目录...）都通过 `key` 字段区分，**严禁**为单个配置分区单独建表。
+
+```sql
+CREATE TABLE IF NOT EXISTS config (
+    key        TEXT PRIMARY KEY NOT NULL,
+    value      TEXT NOT NULL,           -- 完整 JSON 序列化字符串
+    updated_at TEXT NOT NULL,           -- ISO 8601 UTC
+    version    INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE INDEX IF NOT EXISTS idx_config_updated_at ON config(updated_at);
+```
+
+**关键决策：**
+- 一行 = 一个**配置分区**（section），不是单个 key-value 对
+- 所有设置项都通过 `key` 区分，**不**通过表名区分
+- `value` 字段是该分区完整配置对象的 JSON 序列化
+- `version` 每次更新自增，用于变更追踪
+- `updated_at` 记录最后一次写入时间
+
+### 15.3 配置分区（4 个）
+
+应用设置只有 4 个配置分区，**新增设置分区需先更新本文档**：
+
+| Key | 类型 | 字段 |
+|------|------|------|
+| `app` | `AppConfig` | Theme / Language / HardwareAcceleration |
+| `project` | `ProjectConfig` | CurrentDirectory / RecentDirectories / AutoSync / ConflictPolicy |
+| `oss` | `OssConfig` | Endpoint / Bucket / AccessKeyId / AccessKeySecret / PathPrefix / UseHttps / EnableCdn |
+| `window` | `WindowConfig` | Width / Height / X / Y / IsMaximized / LastView |
+
+#### 15.3.1 AppConfig
+
+```csharp
+public sealed class AppConfig
+{
+    public ThemeMode Theme { get; set; } = ThemeMode.DeepSpace;
+    public string Language { get; set; } = "zh-CN";
+    public bool HardwareAcceleration { get; set; } = true;
+}
+
+public enum ThemeMode { DeepSpace, RedNightVision, Light }
+```
+
+#### 15.3.2 ProjectConfig
+
+```csharp
+public sealed class ProjectConfig
+{
+    public string? CurrentDirectory { get; set; }
+    public List<string> RecentDirectories { get; set; } = new();  // MRU, max 10
+    public bool AutoSync { get; set; } = true;
+    public ConflictPolicy ConflictPolicy { get; set; } = ConflictPolicy.PreferLocal;
+}
+
+public enum ConflictPolicy { PreferLocal, PreferCloud, AlwaysAsk }
+```
+
+#### 15.3.3 OssConfig
+
+```csharp
+public sealed class OssConfig
+{
+    public string? Endpoint { get; set; }              // 如 oss-cn-hangzhou.aliyuncs.com
+    public string? Bucket { get; set; }
+    public string? AccessKeyId { get; set; }
+    public string? AccessKeySecret { get; set; }      // 敏感（§15.7）
+    public string? PathPrefix { get; set; } = "astrophotos/";
+    public bool UseHttps { get; set; } = true;
+    public bool EnableCdn { get; set; }
+}
+```
+
+#### 15.3.4 WindowConfig
+
+```csharp
+public sealed class WindowConfig
+{
+    public double Width { get; set; } = 1100;
+    public double Height { get; set; } = 720;
+    public double X { get; set; } = -1;       // -1 = 系统居中
+    public double Y { get; set; } = -1;
+    public bool IsMaximized { get; set; }
+    public string LastView { get; set; } = "Gallery";  // Gallery | Settings
+}
+```
+
+### 15.4 服务接口
+
+```csharp
+public interface IConfigService
+{
+    Task<T?> GetAsync<T>(string key, CancellationToken ct = default) where T : class;
+    Task SetAsync<T>(string key, T value, CancellationToken ct = default) where T : class;
+    Task<bool> ContainsAsync(string key, CancellationToken ct = default);
+    Task<bool> DeleteAsync(string key, CancellationToken ct = default);
+    Task<IReadOnlyList<string>> GetAllKeysAsync(CancellationToken ct = default);
+    Task ReloadAsync(CancellationToken ct = default);
+}
+```
+
+**使用示例：**
+
+```csharp
+public class SettingsViewModel(IConfigService config)
+{
+    public async Task SaveAsync()
+    {
+        var project = await config.GetAsync<ProjectConfig>(ConfigKeys.Project)
+                      ?? new ProjectConfig();
+        project.CurrentDirectory = "/new/path";
+        await config.SetAsync(ConfigKeys.Project, project);
+    }
+}
+```
+
+### 15.5 实现约束（SqliteConfigService）
+
+| 项 | 规格 |
+|---|---|
+| 写入方式 | `INSERT ... ON CONFLICT(key) DO UPDATE SET ... version = version + 1`（UPSERT） |
+| 缓存 | `ConcurrentDictionary<string, string>`（key → raw JSON） |
+| 缓存加载 | 首次访问时 `SELECT key, value FROM config` 全量加载 |
+| 写时缓存 | Set 后同步更新缓存 |
+| 读连接 | 每次 Get 用临时连接（不阻塞写） |
+| 写连接 | 单例长连接，`SqliteCacheMode.Shared` |
+| JSON 序列化 | `System.Text.Json`，CamelCase 命名，nullable 字段忽略 |
+| 枚举序列化 | `JsonStringEnumConverter(JsonNamingPolicy.CamelCase)` |
+| 并发 | 缓存用 ConcurrentDictionary；连接操作不跨线程复用 |
+| 初始化 | 首次访问时建表（`CREATE TABLE IF NOT EXISTS`）+ 全量加载到缓存 |
+| 释放 | `IAsyncDisposable`，释放长连接 |
+
+### 15.6 数据库路径
+
+| 平台 | 路径 |
+|------|------|
+| macOS | `~/Library/Application Support/StarHelper/config.db` |
+| Windows | `%LOCALAPPDATA%\StarHelper\config.db` |
+| Linux | `~/.local/share/StarHelper/config.db` |
+
+路径通过 `Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)` + 应用名拼接，应用启动时自动创建目录。
+
+**支持自定义路径**（用于测试或多数据库场景）：构造函数接收 `dbPath` 参数。
+
+### 15.7 安全要求
+
+#### 15.7.1 敏感字段加密
+
+`OssConfig.AccessKeySecret` **必须**加密存储，**禁止明文落库**。
+
+| 平台 | 加密方式 |
+|------|---------|
+| macOS | Keychain（通过 Security.framework） |
+| Windows | DPAPI（`ProtectedData.Protect`） |
+| Linux | libsecret（通过 Secret Service API） |
+
+简化方案：所有平台统一使用 **AES-256-GCM**，密钥派生自机器指纹 + 用户密码（如果设置了）。
+
+#### 15.7.2 数据库文件权限
+
+- 模式 `0600`（仅当前用户可读写）
+- 不要提交到 git（`.gitignore` 必须包含 `*.db`）
+
+### 15.8 性能目标
+
+| 操作 | 目标 |
+|------|------|
+| 启动加载（首次） | < 50ms |
+| 读命中缓存 | < 1ms |
+| 单次写 | < 5ms |
+| 配置文件大小 | < 100KB |
+| 启动全量读取 | 一次 `SELECT *` |
+
+### 15.9 单元测试（必跑）
+
+至少 5 个测试用例，全部通过：
+
+1. **RoundTrip**：Set → Get 数据完全一致
+2. **GetNonExistent**：不存在的 key 返回 `null`
+3. **Delete**：删除后 `Contains` 返回 false
+4. **CacheSurvives**：多次读不重复查 DB
+5. **Reload**：外部修改 DB 后，`ReloadAsync` 能拉到新值
+
+### 15.10 DI 注册
+
+```csharp
+// Program.cs
+var services = new ServiceCollection();
+services.AddSqliteConfig();  // 默认路径
+// 或
+services.AddSqliteConfig("/custom/path/config.db");
+
+var sp = services.BuildServiceProvider();
+var config = sp.GetRequiredService<IConfigService>();
+```
+
+### 15.11 调试方式
+
+```bash
+# macOS 直接看 DB
+sqlite3 ~/Library/Application\ Support/StarHelper/config.db
+
+# 常用命令
+sqlite> .schema config
+sqlite> SELECT key, length(value), updated_at, version FROM config;
+sqlite> SELECT key, value FROM config WHERE key = 'project';
+sqlite> UPDATE config SET version = version + 1 WHERE key = 'app';
+```
+
+### 15.12 未来扩展点（不在 v1.1 范围）
+
+- 加密层集成（§15.7）
+- 配置导入导出（JSON 备份）
+- 配置变更订阅（`event ConfigChanged<T>`）
+- 多 schema 迁移（`__migrations` 表 + version 字段）
+
+---
+
+### 15.13 数据 vs 设置（范围边界）
+
+> **关键范围说明**：「单表 + JSON」是**设置层**的存储方案。
+> 业务数据（与用户内容、运行时状态相关的）**必须**走独立的关系表，**不能**塞进 `config` 表的 JSON 里。
+
+#### 15.13.1 数据类型分流
+
+| 数据类型 | 存储方式 | 说明 |
+|---------|---------|------|
+| **用户偏好**（主题、语言） | `config.app`（JSON） | 设置项 |
+| **OSS 配置** | `config.oss`（JSON） | 设置项 |
+| **窗口状态** | `config.window`（JSON） | 设置项 |
+| **项目目录 / MRU** | `config.project`（JSON） | 设置项 |
+| **照片元数据**（未来） | 独立表 `photos` | ❌ 不能存 `config` JSON |
+| **缩略图缓存索引**（未来） | 独立表 `thumbnails` | ❌ 不能存 `config` JSON |
+| **时间轴索引**（未来） | 独立表 `timeline_entries` | ❌ 不能存 `config` JSON |
+| **上传任务队列**（未来） | 独立表 `upload_jobs` | ❌ 不能存 `config` JSON |
+| **EXIF 解析缓存**（未来） | 独立表 `exif_cache` | ❌ 不能存 `config` JSON |
+| **搜索历史**（未来） | 独立表 `search_history` | ❌ 不能存 `config` JSON |
+
+#### 15.13.2 判定标准：「这个数据该放哪」
+
+```
+是用户偏好（少量、慢变、跨会话需要）？
+  ├─ 是 → config 表 + JSON（§15）
+  └─ 否 → 是与用户内容相关的大量数据？
+              ├─ 是 → 独立关系表（§15.13.3）
+              └─ 否 → 是缓存/派生数据？
+                      ├─ 是 → 独立关系表 + 重建策略
+                      └─ 否 → 重新评估是否需要持久化
+```
+
+#### 15.13.3 业务数据表设计约束（未来 v1.2+）
+
+**严禁**的反模式：
+- ❌ 把照片列表塞进 `config.photos` JSON 字段
+- ❌ 用 `config.thumbnails` 存缩略图二进制 base64
+- ❌ 把上传任务列表塞进 `config.jobs` JSON
+- ❌ 用一张 `kv_store` 表代替所有业务表
+
+**必须**遵循：
+- ✅ 每个业务实体一张表
+- ✅ 主键、外键、索引按关系数据库规范设计
+- ✅ 大字段（BLOB、TEXT）独立列，不打包 JSON
+- ✅ 业务表与 `config` 表**物理上可以共存于同一个 .db 文件**，但**逻辑上严格分离**
+
+#### 15.13.4 数据库文件结构示例
+
+```sql
+-- 一个 .db 文件中可以有多个表
+-- 本规范仅约束 config 表的设计
+
+-- ✅ config 表（设置，单表 JSON）
+CREATE TABLE config ( ... );
+
+-- ✅ 未来可能存在的业务表（不在本规范范围）
+CREATE TABLE photos (
+    id TEXT PRIMARY KEY,
+    shot_at INTEGER NOT NULL,
+    file_path TEXT NOT NULL,
+    file_size INTEGER,
+    width INTEGER,
+    height INTEGER,
+    status TEXT NOT NULL,
+    -- ... 等等，按需设计
+);
+CREATE INDEX idx_photos_shot_at ON photos(shot_at);
+```
+
+#### 15.13.5 迁移策略
+
+当未来需要新增业务表时：
+1. 在 `config` 表旁新增业务表（DDL 写入迁移文件 `Migrations/001_*.sql`）
+2. 业务代码访问业务表**必须**用独立的 Repository / Service（如 `IPhotoRepository`），**不**走 `IConfigService`
+3. 业务表与 `config` 表可以 JOIN 查询，但**严禁**把业务数据反序列化到 `config` JSON 里
+
+---
+
+**End of Spec v1.1**
