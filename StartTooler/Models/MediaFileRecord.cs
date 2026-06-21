@@ -43,6 +43,11 @@ public class MediaFileRecord
     /// </summary>
     public string BucketPath { get; set; } = string.Empty;
 
+    /// <summary>
+    /// 是否本地已删除（物理文件已删除，但数据库记录保留）
+    /// </summary>
+    public bool IsLocalDeleted { get; set; }
+
     public DateTime CreatedTime { get; set; } = DateTime.Now;
 
     public DateTime UpdatedTime { get; set; } = DateTime.Now;

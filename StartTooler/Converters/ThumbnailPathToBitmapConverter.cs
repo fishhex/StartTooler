@@ -14,11 +14,22 @@ public class ThumbnailPathToBitmapConverter : IValueConverter
         {
             try
             {
-                // 尝试从文件加载图片
-                return new Bitmap(path);
+                // 检查文件是否存在
+                if (System.IO.File.Exists(path))
+                {
+                    // 尝试从文件加载图片
+                    return new Bitmap(path);
+                }
+                else
+                {
+                    // 如果文件不存在，返回 null
+                    return null;
+                }
             }
-            catch
+            catch (Exception ex)
             {
+                // 记录异常信息以便调试
+                System.Diagnostics.Debug.WriteLine($"Failed to load image from path: {path}, Error: {ex.Message}");
                 // 如果加载失败，返回 null
                 return null;
             }

@@ -166,4 +166,52 @@ public class OssUploadService
         var hash = md5.ComputeHash(stream);
         return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
     }
+
+    /// <summary>
+    /// 删除 OSS 上的文件
+    /// </summary>
+    public async Task DeleteAsync(string objectKey)
+    {
+        try
+        {
+            var request = new DeleteObjectRequest(_bucketName, objectKey);
+            await Task.Run(() => _ossClient.DeleteObject(request));
+            Console.WriteLine($"[OSS] 删除成功: {objectKey}");
+        }
+        catch (OssException ex)
+        {
+            Console.WriteLine($"[OSS] 删除失败 [{objectKey}]: {ex.Message}");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 下载 OSS 上的文件到本地
+    /// </summary>
+    public async Task DownloadAsync(string objectKey, string localPath)
+    {
+        try
+        {
+            // 确保目录存在
+            var directory = Path.GetDirectoryName(localPath);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            await Task.Run(() =>
+            {
+                var request = new GetObjectRequest(_bucketName, objectKey);
+                using var response = _ossClient.GetObject(request);
+                using var fs = File.OpenWrite(localPath);
+                response.ResponseStream.CopyTo(fs);
+            });
+            Console.WriteLine($"[OSS] 下载成功: {objectKey} -> {localPath}");
+        }
+        catch (OssException ex)
+        {
+            Console.WriteLine($"[OSS] 下载失败 [{objectKey}]: {ex.Message}");
+            throw;
+        }
+    }
 }

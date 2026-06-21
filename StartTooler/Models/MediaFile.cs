@@ -17,6 +17,11 @@ public partial class MediaFile : ObservableObject
     public string? CloudStorage { get; set; }
     public string? BucketPath { get; set; }
 
+    /// <summary>
+    /// 是否本地已删除（物理文件已删除，但记录保留）
+    /// </summary>
+    public bool IsLocalDeleted { get; set; }
+
     public bool HasGroupId => !string.IsNullOrEmpty(GroupId);
 
     public bool HasMultiple { get; set; }

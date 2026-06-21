@@ -560,10 +560,10 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 批量删除选中的文件
+    /// 批量删除选中的文件（仅删除本地，保留数据库记录）
     /// </summary>
     [RelayCommand]
-    public void BatchDelete()
+    public async Task BatchDeleteAsync()
     {
         var selectedFiles = MediaFiles.Where(f => f.IsSelected).ToList();
         if (selectedFiles.Count == 0)
@@ -576,17 +576,114 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             try
             {
-                // 从数据库中查找并删除记录
+                // 删除物理文件
+                if (System.IO.File.Exists(file.FilePath))
+                {
+                    System.IO.File.Delete(file.FilePath);
+                }
+
+                // 如果文件已上传到 OSS，从 OSS 下载封面到临时目录
+                if (file.IsUploaded && !string.IsNullOrEmpty(file.BucketPath))
+                {
+                    var setting = DatabaseService.Instance.GetCloudStorageSetting(CloudStorageProvider.AliyunOss);
+                    if (setting != null)
+                    {
+                        var ossService = new OssUploadService(setting);
+                        var tempDir = Path.GetTempPath();
+                        var thumbnailDir = Path.Combine(tempDir, "StartTooler_Thumbnails");
+                        if (!Directory.Exists(thumbnailDir))
+                        {
+                            Directory.CreateDirectory(thumbnailDir);
+                        }
+                        var thumbnailPath = Path.Combine(thumbnailDir, Path.GetFileName(file.BucketPath));
+                        if (!File.Exists(thumbnailPath))
+                        {
+                            try
+                            {
+                                await ossService.DownloadAsync(file.BucketPath, thumbnailPath);
+                                file.ThumbnailPath = thumbnailPath;
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"从 OSS 下载封面失败 [{file.FileName}]: {ex.Message}");
+                            }
+                        }
+                        else
+                        {
+                            file.ThumbnailPath = thumbnailPath;
+                        }
+                    }
+                }
+
+                // 标记数据库记录为已删除，不删除记录
                 var record = DatabaseService.Instance.GetMediaFileRecordByPath(file.FilePath);
                 if (record != null)
                 {
-                    DatabaseService.Instance.DeleteMediaFileRecord(record.Id);
+                    record.IsLocalDeleted = true;
+                    record.UpdatedTime = DateTime.Now;
+                    DatabaseService.Instance.SaveMediaFileRecord(record);
+                }
+
+                // 更新内存中的文件对象
+                file.IsLocalDeleted = true;
+
+                successCount++;
+            }
+            catch (Exception)
+            {
+                failCount++;
+            }
+        }
+
+        StatusMessage = $"批量删除完成：成功 {successCount} 个，失败 {failCount} 个";
+    }
+
+    /// <summary>
+    /// 批量删除并移除（删除本地文件和数据库记录，可选删除 OSS 文件）
+    /// </summary>
+    [RelayCommand]
+    public async Task BatchDeleteAndRemoveAsync()
+    {
+        var selectedFiles = MediaFiles.Where(f => f.IsSelected).ToList();
+        if (selectedFiles.Count == 0)
+            return;
+
+        int successCount = 0;
+        int failCount = 0;
+
+        foreach (var file in selectedFiles)
+        {
+            try
+            {
+                // 如果文件已上传到 OSS，先删除 OSS 文件
+                if (file.IsUploaded && !string.IsNullOrEmpty(file.BucketPath))
+                {
+                    var setting = DatabaseService.Instance.GetCloudStorageSetting(CloudStorageProvider.AliyunOss);
+                    if (setting != null)
+                    {
+                        var ossService = new OssUploadService(setting);
+                        try
+                        {
+                            await ossService.DeleteAsync(file.BucketPath);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"删除 OSS 文件失败 [{file.FileName}]: {ex.Message}");
+                        }
+                    }
                 }
 
                 // 删除物理文件
                 if (System.IO.File.Exists(file.FilePath))
                 {
                     System.IO.File.Delete(file.FilePath);
+                }
+
+                // 删除数据库记录
+                var record = DatabaseService.Instance.GetMediaFileRecordByPath(file.FilePath);
+                if (record != null)
+                {
+                    DatabaseService.Instance.DeleteMediaFileRecord(record.Id);
                 }
 
                 RemoveFileFromCollections(file);
@@ -599,7 +696,7 @@ public partial class MainWindowViewModel : ViewModelBase
             }
         }
 
-        StatusMessage = $"批量删除完成：成功 {successCount} 个，失败 {failCount} 个";
+        StatusMessage = $"删除并移除完成：成功 {successCount} 个，失败 {failCount} 个";
     }
 
     private void RemoveFileFromCollections(MediaFile? file)
@@ -646,7 +743,8 @@ public partial class MainWindowViewModel : ViewModelBase
             GroupId = record.GroupId,
             IsUploaded = record.IsUploaded,
             CloudStorage = record.CloudStorage.ToString(),
-            BucketPath = record.BucketPath
+            BucketPath = record.BucketPath,
+            IsLocalDeleted = record.IsLocalDeleted
         };
 
         if (File.Exists(record.LocalPath))
@@ -1165,6 +1263,65 @@ public partial class MainWindowViewModel : ViewModelBase
             ToastService.Instance.Info($"上传完成: {successCount} 成功, {failCount} 失败");
 
         UploadCompleted?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// 从 OSS 下载选中的已删除文件到本地
+    /// </summary>
+    [RelayCommand]
+    public async Task DownloadFromOssAsync()
+    {
+        var deletedFiles = MediaFiles.Where(f => f.IsSelected && f.IsLocalDeleted && f.IsUploaded).ToList();
+        if (deletedFiles.Count == 0)
+        {
+            ToastService.Instance.Info("请选择已上传到云端的已删除文件");
+            return;
+        }
+
+        var setting = DatabaseService.Instance.GetCloudStorageSetting(CloudStorageProvider.AliyunOss);
+        if (setting == null || string.IsNullOrWhiteSpace(setting.AccessKeyId))
+        {
+            ToastService.Instance.Error("请先在设置中配置阿里云 OSS 信息");
+            return;
+        }
+
+        StatusMessage = $"正在下载 {deletedFiles.Count} 个文件...";
+        var ossService = new OssUploadService(setting);
+        int successCount = 0;
+        int failCount = 0;
+
+        foreach (var file in deletedFiles)
+        {
+            try
+            {
+                await ossService.DownloadAsync(file.BucketPath!, file.FilePath);
+
+                // 恢复本地文件状态
+                file.IsLocalDeleted = false;
+
+                // 更新数据库
+                var record = DatabaseService.Instance.GetMediaFileRecordByPath(file.FilePath);
+                if (record != null)
+                {
+                    record.IsLocalDeleted = false;
+                    record.UpdatedTime = DateTime.Now;
+                    DatabaseService.Instance.SaveMediaFileRecord(record);
+                }
+
+                successCount++;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"下载失败 [{file.FileName}]: {ex.Message}");
+                failCount++;
+            }
+        }
+
+        StatusMessage = $"下载完成: {successCount}/{deletedFiles.Count} 成功";
+        if (successCount > 0)
+            ToastService.Instance.Success($"下载成功: {successCount} 个文件");
+        if (failCount > 0)
+            ToastService.Instance.Info($"下载完成: {successCount} 成功, {failCount} 失败");
     }
 
     private IEnumerable<MediaFile> GetSelectedFiles()

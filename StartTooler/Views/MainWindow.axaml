@@ -24,6 +24,7 @@
                                           FalseValue="多选"/>
         <converters:ToastTypeToBackgroundConverter x:Key="ToastTypeToBackgroundConverter"/>
         <converters:BoolToTextConverter x:Key="BoolToTextConverter"/>
+        <converters:DeletedOpacityConverter x:Key="DeletedOpacityConverter"/>
     </Window.Resources>
 
     <Grid>
@@ -133,22 +134,29 @@
                                 </Button.Styles>
                             </Button>
 
-                            <Button Content="批量删除"
-                                    Click="OnBatchDeleteButton_Click"
-                                    Padding="12,6"
-                                    FontSize="13"
-                                    Background="{DynamicResource SurfaceBrush}"
-                                    BorderBrush="{DynamicResource DividerBrush}"
-                                    Foreground="Red"
-                                    IsVisible="{Binding HasSelectedFiles}">
-                                <Button.Styles>
-                                    <Style Selector="Button:pointerover">
+                            <DropDownButton Content="删除"
+                                           Padding="12,6"
+                                           FontSize="13"
+                                           Background="{DynamicResource SurfaceBrush}"
+                                           BorderBrush="{DynamicResource DividerBrush}"
+                                           Foreground="Red"
+                                           IsVisible="{Binding HasSelectedFiles}">
+                                <DropDownButton.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                                        <MenuItem Header="🗑️ 删除 (保留云端)"
+                                                  Command="{Binding BatchDeleteCommand}"/>
+                                        <MenuItem Header="🗑️🗑️ 删除并移除 (同时删除云端)"
+                                                  Command="{Binding BatchDeleteAndRemoveCommand}"/>
+                                    </MenuFlyout>
+                                </DropDownButton.Flyout>
+                                <DropDownButton.Styles>
+                                    <Style Selector="DropDownButton:pointerover">
                                         <Setter Property="Background" Value="#FFCCCC"/>
                                         <Setter Property="Foreground" Value="#CC0000"/>
                                         <Setter Property="BorderBrush" Value="Red"/>
                                     </Style>
-                                </Button.Styles>
-                            </Button>
+                                </DropDownButton.Styles>
+                            </DropDownButton>
                         </StackPanel>
                         
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -313,8 +321,11 @@
                                                                       Command="{Binding ElementName=Root, Path=DataContext.InvertSelectionCommand}"
                                                                       IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
                                                             <Separator IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
-                                                            <MenuItem Header="批量删除" 
+                                                            <MenuItem Header="🗑️ 删除"
                                                                       Command="{Binding ElementName=Root, Path=DataContext.BatchDeleteCommand}"
+                                                                      IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
+                                                            <MenuItem Header="🗑️🗑️ 删除并移除"
+                                                                      Command="{Binding ElementName=Root, Path=DataContext.BatchDeleteAndRemoveCommand}"
                                                                       IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
                                                             <Separator IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
                                                             <MenuItem Header="上传" 
@@ -322,7 +333,8 @@
                                                                       IsVisible="{Binding ElementName=Root, Path=DataContext.IsMultiSelectMode}"/>
                                                         </ContextMenu>
                                                     </Border.ContextMenu>
-                                                    <Grid RowDefinitions="Auto, Auto, *, Auto, Auto">
+                                                    <Grid RowDefinitions="Auto, Auto, *, Auto, Auto"
+                                                          Opacity="{Binding IsLocalDeleted, Converter={StaticResource DeletedOpacityConverter}}">
                                                         <CheckBox Grid.Row="0"
                                                                   Classes="CardCheck"
                                                                   IsChecked="{Binding IsSelected, Mode=TwoWay}"
@@ -331,18 +343,32 @@
                                                         <Border Grid.Row="1"
                                                                 Height="120"
                                                                 Margin="10,10,10,5"
-                                                                Background="Transparent"
+                                                                Background="{DynamicResource SurfaceBrush}"
                                                                 ClipToBounds="True">
-                                                            <Image Stretch="UniformToFill"
-                                                                   HorizontalAlignment="Center"
-                                                                   VerticalAlignment="Center">
-                                                                <Image.Source>
-                                                                    <Binding Path="ThumbnailPath" Converter="{StaticResource ThumbnailConverter}"/>
-                                                                </Image.Source>
-                                                            </Image>
+                                                            <Grid>
+                                                                <Image Stretch="UniformToFill"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center">
+                                                                    <Image.Source>
+                                                                        <Binding Path="ThumbnailPath" Converter="{StaticResource ThumbnailConverter}"/>
+                                                                    </Image.Source>
+                                                                </Image>
+                                                                <!-- 已删除标记 -->
+                                                                <Border Background="#88000000"
+                                                                        CornerRadius="4"
+                                                                        Padding="6,2"
+                                                                        HorizontalAlignment="Left"
+                                                                        VerticalAlignment="Top"
+                                                                        Margin="4,4,0,0"
+                                                                        IsVisible="{Binding IsLocalDeleted}">
+                                                                    <TextBlock Text="已删除"
+                                                                               FontSize="10"
+                                                                               Foreground="White"/>
+                                                                </Border>
+                                                            </Grid>
                                                         </Border>
                                                         <TextBlock Grid.Row="2"
-                                                                   Text="{Binding FileName}" 
+                                                                   Text="{Binding FileName}"
                                                                    FontSize="11"
                                                                    FontWeight="Medium"
                                                                    TextWrapping="Wrap"
@@ -351,24 +377,38 @@
                                                                    Margin="8,5,8,2"
                                                                    Foreground="{DynamicResource PrimaryTextBrush}"/>
                                                         <TextBlock Grid.Row="3"
-                                                                   Text="{Binding FileType}" 
+                                                                   Text="{Binding FileType}"
                                                                    FontSize="9"
                                                                    Foreground="{DynamicResource SecondaryTextBrush}"
                                                                    Margin="8,0,8,2"/>
                                                         <Grid Grid.Row="4" ColumnDefinitions="*,Auto">
                                                             <TextBlock Grid.Column="0"
-                                                                       Text="{Binding FormattedFileSize}" 
+                                                                       Text="{Binding FormattedFileSize}"
                                                                        FontSize="9"
                                                                        Foreground="{DynamicResource SecondaryTextBrush}"
                                                                        Margin="8,0,0,5"/>
-                                                            <TextBlock Grid.Column="1"
-                                                                       Text="☁"
-                                                                       FontSize="12"
-                                                                       Foreground="{DynamicResource AccentBrush}"
-                                                                       VerticalAlignment="Center"
-                                                                       Margin="0,0,8,5"
-                                                                       IsVisible="{Binding IsUploaded}"
-                                                                       ToolTip.Tip="已上传"/>
+                                                            <StackPanel Grid.Column="1"
+                                                                        Orientation="Horizontal"
+                                                                        Margin="0,0,8,5">
+                                                                <!-- 已上传云图标 -->
+                                                                <TextBlock Text="☁"
+                                                                           FontSize="12"
+                                                                           Foreground="{DynamicResource AccentBrush}"
+                                                                           VerticalAlignment="Center"
+                                                                           Margin="0,0,6,0"
+                                                                           IsVisible="{Binding IsUploaded}"
+                                                                           ToolTip.Tip="已上传"/>
+                                                                <!-- 从云端下载按钮 -->
+                                                                <Button Content="↓"
+                                                                        FontSize="11"
+                                                                        Padding="4,0"
+                                                                        MinWidth="0"
+                                                                        ToolTip.Tip="从云端恢复"
+                                                                        Command="{Binding ElementName=Root, Path=DataContext.DownloadFromOssCommand}"
+                                                                        IsVisible="{Binding IsLocalDeleted}"
+                                                                        Background="Transparent"
+                                                                        BorderThickness="0"/>
+                                                            </StackPanel>
                                                         </Grid>
                                                     </Grid>
                                                 </Border>
@@ -393,8 +433,11 @@
                                           Command="{Binding InvertSelectionCommand}"
                                           IsVisible="{Binding IsMultiSelectMode}"/>
                                 <Separator IsVisible="{Binding IsMultiSelectMode}"/>
-                                <MenuItem Header="批量删除" 
+                                <MenuItem Header="🗑️ 删除"
                                           Command="{Binding BatchDeleteCommand}"
+                                          IsVisible="{Binding IsMultiSelectMode}"/>
+                                <MenuItem Header="🗑️🗑️ 删除并移除"
+                                          Command="{Binding BatchDeleteAndRemoveCommand}"
                                           IsVisible="{Binding IsMultiSelectMode}"/>
                                 <Separator IsVisible="{Binding IsMultiSelectMode}"/>
                                 <MenuItem Header="上传" 
@@ -470,7 +513,7 @@
                                                                 <Grid>
                                                                     <Border Height="150"
                                                                             CornerRadius="10"
-                                                                            Background="#111111"
+                                                                            Background="{DynamicResource SurfaceBrush}"
                                                                             ClipToBounds="True">
                                                                         <Border.ContextMenu>
                                                                             <ContextMenu>

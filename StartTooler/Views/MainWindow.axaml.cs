@@ -353,7 +353,7 @@ public partial class MainWindow : Window
 
         if (result == true)
         {
-            _viewModel.BatchDelete();
+            await _viewModel.BatchDeleteAsync();
         }
     }
 
