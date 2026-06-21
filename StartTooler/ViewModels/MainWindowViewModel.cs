@@ -1,8 +1,7 @@
 using System;
-using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using StartTooler.Models;
+using StartTooler.Services;
 
 namespace StartTooler.ViewModels;
 
@@ -17,7 +16,7 @@ public partial class MainWindowViewModel : ObservableObject
     public MainWindowViewModel()
     {
         GalleryViewModel = new GalleryViewModel();
-        SettingsViewModel = new SettingsViewModel();
+        SettingsViewModel = new SettingsViewModel(new DirectoryPickerService());
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;
     }

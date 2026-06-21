@@ -1,8 +1,15 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:StartTooler.ViewModels"
+             xmlns:converters="using:StartTooler.Converters"
              x:Class="StartTooler.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
+
+    <UserControl.Resources>
+        <converters:BoolToSaveTextConverter x:Key="BoolToSaveText"/>
+        <converters:StringNullOrEmptyToTextConverter x:Key="NullOrEmptyToPlaceholder"/>
+        <converters:StringNullOrEmptyToPlaceholderClassConverter x:Key="NullOrEmptyToPlaceholderClass"/>
+    </UserControl.Resources>
 
     <Grid RowDefinitions="Auto,*">
         <!-- Tab 栏 -->
@@ -14,58 +21,108 @@
         </Border>
 
         <!-- 表单内容 -->
-        <Border Grid.Row="1" Background="{DynamicResource Bg.Surface}" Padding="32">
-            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
-                <!-- 项目目录 -->
-                <Grid Grid.Row="0" ColumnDefinitions="120,*" Height="56" Margin="0,8">
-                    <TextBlock Grid.Column="0" Text="项目目录"
-                               FontSize="13" Foreground="{DynamicResource Text.Primary}"
-                               VerticalAlignment="Center"/>
-                    <ComboBox Grid.Column="1"
-                              ItemsSource="{Binding AvailableDirectories}"
-                              SelectedItem="{Binding SelectedProjectDirectory}"
-                              Height="36" MinWidth="240"
-                              HorizontalAlignment="Left"/>
-                </Grid>
+        <Border Grid.Row="1" Background="{DynamicResource Bg.Surface}">
+            <Grid RowDefinitions="Auto,Auto,*,Auto">
+                <!-- 项目目录 FormRow -->
+                <Border Grid.Row="0" Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*" Height="64">
+                        <!-- 标签 -->
+                        <TextBlock Grid.Column="0" Text="项目目录"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
 
-                <!-- 分割线 -->
-                <Border Grid.Row="1" Height="1" Background="{DynamicResource Bg.Divider}" Margin="0,8"/>
+                        <!-- Select + 浏览按钮 -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <!-- Select 按钮 -->
+                            <Button x:Name="SelectButton"
+                                    MinWidth="280" Height="36"
+                                    HorizontalAlignment="Left"
+                                    HorizontalContentAlignment="Stretch"
+                                    Classes="select-button">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <!-- 文字内容 -->
+                                    <TextBlock Grid.Column="0"
+                                               Text="{Binding SelectedProjectDirectory, Converter={StaticResource NullOrEmptyToPlaceholder}, ConverterParameter=选择项目目录}"
+                                               FontSize="13"
+                                               TextTrimming="CharacterEllipsis"
+                                               HorizontalAlignment="Left"
+                                               VerticalAlignment="Center"
+                                               Classes.placeholder="{Binding SelectedProjectDirectory, Converter={StaticResource NullOrEmptyToPlaceholderClass}}">
+                                        <TextBlock.Styles>
+                                            <Style Selector="TextBlock.placeholder">
+                                                <Setter Property="Foreground" Value="{DynamicResource Text.Tertiary}"/>
+                                            </Style>
+                                            <Style Selector="TextBlock:not(.placeholder)">
+                                                <Setter Property="Foreground" Value="{DynamicResource Text.Primary}"/>
+                                            </Style>
+                                        </TextBlock.Styles>
+                                    </TextBlock>
+                                    <!-- Chevron -->
+                                    <Path Grid.Column="1"
+                                          Data="{DynamicResource Icon.ChevronDown}"
+                                          Stretch="Uniform"
+                                          Width="12" Height="12"
+                                          Fill="{DynamicResource Text.Secondary}"
+                                          VerticalAlignment="Center"
+                                          Margin="8,0,0,0"/>
+                                </Grid>
+                                <Button.Flyout>
+                                    <MenuFlyout Placement="Bottom">
+                                        <MenuItem Header="浏览..."
+                                                  Command="{Binding BrowseDirectoryCommand}"/>
+                                        <Separator/>
+                                        <StackPanel IsVisible="{Binding RecentDirectories.Count}">
+                                            <TextBlock Text="最近使用" FontWeight="SemiBold" Foreground="{DynamicResource Text.Secondary}" Padding="8,4"/>
+                                            <!-- 动态渲染最近目录 -->
+                                            <MenuItem Header="/Users/hex/Pictures/Test"
+                                                     IsVisible="False"/>
+                                            <Separator/>
+                                        </StackPanel>
+                                        <MenuItem Header="清空最近"
+                                                  Command="{Binding ClearRecentDirectoriesCommand}"
+                                                  IsEnabled="{Binding RecentDirectories.Count}"/>
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
 
-                <!-- 主题切换 -->
-                <Grid Grid.Row="2" ColumnDefinitions="120,*" Height="56" Margin="0,8">
-                    <TextBlock Grid.Column="0" Text="主题模式"
-                               FontSize="13" Foreground="{DynamicResource Text.Primary}"
-                               VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                        <RadioButton Content="Deep Space" GroupName="Theme"
-                                     IsChecked="{Binding IsDeepSpaceTheme}"
-                                     Foreground="{DynamicResource Text.Primary}" FontSize="13"/>
-                        <RadioButton Content="Red Night Vision" GroupName="Theme"
-                                     IsChecked="{Binding IsRedNightTheme}"
-                                     Foreground="{DynamicResource Text.Primary}" FontSize="13"/>
-                    </StackPanel>
-                </Grid>
+                            <!-- 浏览按钮 -->
+                            <Button Content="浏览..."
+                                    Classes="secondary-button"
+                                    Command="{Binding BrowseDirectoryCommand}"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
 
-                <!-- 分割线 -->
-                <Border Grid.Row="3" Height="1" Background="{DynamicResource Bg.Divider}" Margin="0,8"/>
+                <!-- 底部分隔线 -->
+                <Border Grid.Row="1" Height="1" Background="{DynamicResource Bg.Divider}"/>
 
-                <!-- 状态消息 -->
-                <TextBlock Grid.Row="4" Text="{Binding StatusMessage}"
-                           FontSize="12" Foreground="{DynamicResource Text.Secondary}"
-                           VerticalAlignment="Bottom" Margin="0,16"/>
+                <!-- 空区域 -->
+                <Border Grid.Row="2" Background="{DynamicResource Bg.Surface}"/>
 
-                <!-- 保存按钮 -->
-                <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="12">
-                    <TextBlock Text="有未保存的修改"
-                               FontSize="11" Foreground="{DynamicResource Text.Secondary}"
-                               VerticalAlignment="Center"
-                               IsVisible="{Binding IsDirty}"/>
-                    <Button Content="保存"
-                            Classes="primary-button"
-                            Command="{Binding SaveCommand}"
-                            IsEnabled="{Binding IsDirty}"
-                            Height="36" Width="80"/>
-                </StackPanel>
+                <!-- 保存栏 -->
+                <Border Grid.Row="3" Background="{DynamicResource Bg.Outer}" Padding="40,16">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <!-- 左：提示 -->
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding StatusMessage}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource State.Warning}"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding StatusMessage}"/>
+
+                        <!-- 右：保存按钮 -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <TextBlock Text="有未保存的修改"
+                                       FontSize="12" Foreground="{DynamicResource State.Warning}"
+                                       VerticalAlignment="Center"
+                                       IsVisible="{Binding IsDirty}"/>
+                            <Button Classes="primary-button"
+                                    Content="{Binding IsSaving, Converter={StaticResource BoolToSaveText}}"
+                                    Command="{Binding SaveCommand}"
+                                    IsEnabled="{Binding IsDirty}"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
             </Grid>
         </Border>
     </Grid>
