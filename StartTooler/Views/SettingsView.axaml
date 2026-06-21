@@ -22,7 +22,7 @@
 
         <!-- 表单内容 -->
         <Border Grid.Row="1" Background="{DynamicResource Bg.Surface}">
-            <Grid RowDefinitions="Auto,Auto,*,Auto">
+            <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
                 <!-- 项目目录 FormRow -->
                 <Border Grid.Row="0" Padding="40,16" Background="{DynamicResource Bg.Surface}">
                     <Grid ColumnDefinitions="160,*" Height="64">
@@ -67,7 +67,7 @@
                                           Margin="8,0,0,0"/>
                                 </Grid>
                                 <Button.Flyout>
-                                    <MenuFlyout Placement="Bottom">
+                                    <MenuFlyout Placement="BottomEdgeAlignedLeft">
                                         <MenuItem Header="浏览..."
                                                   Command="{Binding BrowseDirectoryCommand}"/>
                                         <Separator/>
@@ -93,14 +93,30 @@
                     </Grid>
                 </Border>
 
+                <!-- 主题模式 FormRow -->
+                <Border Grid.Row="1" Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*" Height="64">
+                        <TextBlock Grid.Column="0" Text="主题模式"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="1"
+                                  Width="200"
+                                  SelectedIndex="{Binding SelectedTheme, Mode=TwoWay}"
+                                  VerticalAlignment="Center">
+                            <ComboBoxItem Content="Deep Space"/>
+                            <ComboBoxItem Content="Red Night Vision"/>
+                        </ComboBox>
+                    </Grid>
+                </Border>
+
                 <!-- 底部分隔线 -->
-                <Border Grid.Row="1" Height="1" Background="{DynamicResource Bg.Divider}"/>
+                <Border Grid.Row="2" Height="1" Background="{DynamicResource Bg.Divider}"/>
 
                 <!-- 空区域 -->
-                <Border Grid.Row="2" Background="{DynamicResource Bg.Surface}"/>
+                <Border Grid.Row="3" Background="{DynamicResource Bg.Surface}"/>
 
                 <!-- 保存栏 -->
-                <Border Grid.Row="3" Background="{DynamicResource Bg.Outer}" Padding="40,16">
+                <Border Grid.Row="4" Background="{DynamicResource Bg.Outer}" Padding="40,16">
                     <Grid ColumnDefinitions="*,Auto">
                         <!-- 左：提示 -->
                         <TextBlock Grid.Column="0"
