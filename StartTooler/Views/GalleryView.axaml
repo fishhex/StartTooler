@@ -29,31 +29,25 @@
                                     CommandParameter="{Binding}">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
-                                        <Grid ColumnDefinitions="40,*" RowDefinitions="Auto,Auto">
-                                            <!-- 连接线 -->
-                                            <Border Grid.Column="0" Grid.Row="0"
-                                                    Width="1"
-                                                    Background="{DynamicResource Bg.Divider}"
-                                                    Margin="0,0,0,0"/>
-                                            <!-- 圆点和日期 -->
-                                            <StackPanel Grid.Column="0" Grid.Row="0" Orientation="Vertical" HorizontalAlignment="Center">
+                                        <Grid ColumnDefinitions="20,*" Height="48">
+                                            <!-- 圆点和连接线 -->
+                                            <Canvas Grid.Column="0" Width="20">
                                                 <!-- 圆点 -->
                                                 <Ellipse Width="8" Height="8"
                                                          Fill="{DynamicResource Bg.Divider}"
-                                                         HorizontalAlignment="Center"/>
-                                                <!-- 连接线段 -->
-                                                <Border Width="1" Height="40"
+                                                         Canvas.Left="6" Canvas.Top="20"/>
+                                                <!-- 连接线段 (下方) -->
+                                                <Border Width="1" Height="28"
                                                         Background="{DynamicResource Bg.Divider}"
-                                                        HorizontalAlignment="Center"/>
-                                            </StackPanel>
+                                                        Canvas.Left="9.5" Canvas.Top="28"/>
+                                            </Canvas>
                                             <!-- 日期文字 -->
-                                            <TextBlock Grid.Column="1" Grid.Row="0"
+                                            <TextBlock Grid.Column="1"
                                                        Text="{Binding Date, StringFormat='{}{0:yyyy-MM-dd}'}"
                                                        FontFamily="{DynamicResource Font.Mono}"
                                                        FontSize="12"
                                                        FontWeight="500"
                                                        Foreground="{DynamicResource Text.Secondary}"
-                                                       Margin="12,20,0,20"
                                                        VerticalAlignment="Center"/>
                                         </Grid>
                                     </ControlTemplate>
@@ -158,48 +152,56 @@
                                     </Button.ContextMenu>
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
-                                            <Border x:Name="PhotoBorder"
-                                                    Width="160" Height="120"
-                                                    Background="{DynamicResource Bg.Surface}"
-                                                    CornerRadius="{DynamicResource Radius.Medium}"
-                                                    ClipToBounds="True">
-                                                <Grid>
-                                                    <!-- 占位星座图标 -->
-                                                    <Path Data="{DynamicResource Icon.Constellation}"
-                                                          Stretch="Uniform"
-                                                          Width="24" Height="24"
-                                                          Stroke="{DynamicResource Text.Disabled}"
-                                                          StrokeThickness="1"
-                                                          Fill="Transparent"
-                                                          Opacity="0.4"
-                                                          HorizontalAlignment="Center"
-                                                          VerticalAlignment="Center"/>
+                                            <Grid>
+                                                <!-- 照片卡片 (裁切) -->
+                                                <Border x:Name="PhotoBorder"
+                                                        Width="160" Height="120"
+                                                        Background="{DynamicResource Bg.Surface}"
+                                                        CornerRadius="{DynamicResource Radius.Medium}"
+                                                        ClipToBounds="True">
+                                                    <Grid>
+                                                        <!-- 占位星座图标 -->
+                                                        <Path Data="{DynamicResource Icon.Constellation}"
+                                                              Stretch="Uniform"
+                                                              Width="24" Height="24"
+                                                              Stroke="{DynamicResource Text.Disabled}"
+                                                              StrokeThickness="1"
+                                                              Fill="Transparent"
+                                                              Opacity="0.4"
+                                                              HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"/>
 
-                                                    <!-- 状态徽章 (StatusBadge) -->
-                                                    <Panel HorizontalAlignment="Right"
-                                                           VerticalAlignment="Top"
-                                                           Margin="6">
-                                                        <Path Width="16" Height="16"
-                                                              Data="{DynamicResource Icon.Cloud}"
-                                                              Fill="{Binding Status, Converter={StaticResource SyncStatusToColor}}"
-                                                              Opacity="0.8"
-                                                              ToolTip.Tip="{Binding Status, Converter={StaticResource SyncStatusToTooltip}}"/>
-                                                    </Panel>
+                                                        <!-- 数量徽章 -->
+                                                        <Border IsVisible="{Binding GroupCount, Converter={StaticResource GreaterThanOne}}"
+                                                                HorizontalAlignment="Right"
+                                                                VerticalAlignment="Bottom"
+                                                                Margin="4"
+                                                                Background="#CC1F2438"
+                                                                CornerRadius="{DynamicResource Radius.Pill}"
+                                                                Padding="8,2">
+                                                            <TextBlock Text="{Binding GroupCount, StringFormat='{}{0}张'}"
+                                                                       FontSize="11"
+                                                                       Foreground="{DynamicResource Text.Primary}"/>
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
 
-                                                    <!-- 数量徽章 -->
-                                                    <Border IsVisible="{Binding GroupCount, Converter={StaticResource GreaterThanOne}}"
-                                                            HorizontalAlignment="Right"
-                                                            VerticalAlignment="Bottom"
-                                                            Margin="6"
-                                                            Background="#CC1F2438"
-                                                            CornerRadius="{DynamicResource Radius.Pill}"
-                                                            Padding="8,2">
-                                                        <TextBlock Text="{Binding GroupCount, StringFormat='{}{0}张'}"
-                                                                   FontSize="11"
-                                                                   Foreground="{DynamicResource Text.Primary}"/>
-                                                    </Border>
-                                                </Grid>
-                                            </Border>
+                                                <!-- 状态徽章 (StatusBadge) - 放在外层避免被裁切 -->
+                                                <Border HorizontalAlignment="Right"
+                                                        VerticalAlignment="Top"
+                                                        Margin="4"
+                                                        Width="28" Height="24"
+                                                        Background="#00000000">
+                                                    <Viewbox Width="28" Height="24" Stretch="Uniform">
+                                                        <Canvas Width="24" Height="24">
+                                                            <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
+                                                                  Fill="{Binding Status, Converter={StaticResource SyncStatusToColor}}"
+                                                                  Opacity="0.9"
+                                                                  ToolTip.Tip="{Binding Status, Converter={StaticResource SyncStatusToTooltip}}"/>
+                                                        </Canvas>
+                                                    </Viewbox>
+                                                </Border>
+                                            </Grid>
                                         </ControlTemplate>
                                     </Button.Template>
                                 </Button>
