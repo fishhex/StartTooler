@@ -35,13 +35,19 @@
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center"/>
 
-                <!-- 设置按钮 -->
-                <Button Grid.Column="2" Content="设置"
-                        Classes="header-button"
-                        Margin="0,0,16,0"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Center"
-                        Command="{Binding NavigateToSettingsCommand}"/>
+                <!-- 设置/返回按钮 -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,16,0">
+                    <!-- 返回按钮 (设置页显示) -->
+                    <Button Content="返回"
+                            Classes="header-button"
+                            Command="{Binding NavigateToGalleryCommand}"
+                            IsVisible="{Binding IsSettingsPage}"/>
+                    <!-- 设置按钮 (非设置页显示) -->
+                    <Button Content="设置"
+                            Classes="header-button"
+                            Command="{Binding NavigateToSettingsCommand}"
+                            IsVisible="{Binding !IsSettingsPage}"/>
+                </StackPanel>
             </Grid>
         </Border>
 

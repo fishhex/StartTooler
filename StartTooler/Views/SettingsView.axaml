@@ -55,7 +55,7 @@
                            VerticalAlignment="Bottom" Margin="0,16"/>
 
                 <!-- 保存按钮 -->
-                <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="12">
                     <TextBlock Text="有未保存的修改"
                                FontSize="11" Foreground="{DynamicResource Text.Secondary}"
                                VerticalAlignment="Center"
