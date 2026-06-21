@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace StartTooler.Models;
 
+// UI 内部状态枚举，用于转换器桥接
 public enum SyncStatus
 {
     UploadedAndLocal,
@@ -10,13 +11,13 @@ public enum SyncStatus
     NotUploaded
 }
 
-public record Photo(
-    string Id,
-    DateTime ShotAt,
-    string? ThumbnailPath,
-    SyncStatus Status,
-    int GroupCount = 1
-);
+public enum RefreshState
+{
+    Idle,
+    Scanning,
+    Completed,
+    Stopped
+}
 
 public partial class TimelineEntry : ObservableObject
 {
@@ -30,4 +31,12 @@ public partial class TimelineEntry : ObservableObject
         Date = date;
         PhotoCount = photoCount;
     }
+}
+
+public sealed class ScanProgress
+{
+    public int Total { get; set; }
+    public int Processed { get; set; }
+    public int Failed { get; set; }
+    public string? CurrentFile { get; set; }
 }

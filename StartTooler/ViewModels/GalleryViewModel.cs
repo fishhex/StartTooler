@@ -1,163 +1,200 @@
 using System;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
+using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using StartTooler.Data;
 using StartTooler.Models;
+using StartTooler.Services;
 
 namespace StartTooler.ViewModels;
 
 public partial class GalleryViewModel : ObservableObject
 {
-    [ObservableProperty] private ObservableCollection<TimelineEntry> timelineEntries;
-    [ObservableProperty] private TimelineEntry? selectedTimelineEntry;
-    [ObservableProperty] private ObservableCollection<Photo> photos;
-    [ObservableProperty] private bool isLoading;
-    [ObservableProperty] private bool isEmpty;
-    [ObservableProperty] private bool hasError;
-    [ObservableProperty] private string? errorMessage;
-    [ObservableProperty] private Photo? selectedPhoto;
+    private readonly IMediaRepository _mediaRepo;
+    private readonly IConfigService _configService;
+    private string? _projectPath;
+    private CancellationTokenSource? _cts;
 
-    public GalleryViewModel()
+    // === 数据源 ===
+    public ObservableCollection<TimelineEntry> DateGroups { get; } = new();
+    public ObservableCollection<MediaFile> CurrentMediaFiles { get; } = new();
+
+    // === 选中态 ===
+    [ObservableProperty] private TimelineEntry? _selectedDate;
+
+    // === 加载状态 ===
+    [ObservableProperty] private bool _isLoadingDateGroups;
+    [ObservableProperty] private bool _isLoadingMedia;
+    [ObservableProperty] private string? _loadErrorMessage;
+
+    // === 扫描进度状态 ===
+    [ObservableProperty] private bool _isScanning;
+    [ObservableProperty] private ScanProgress? _scanProgress;
+    [ObservableProperty] private string? _scanStatusMessage;
+    [ObservableProperty] private RefreshState _refreshState = RefreshState.Idle;
+
+    public GalleryViewModel(IMediaRepository mediaRepo, IConfigService configService)
     {
-        TimelineEntries = new ObservableCollection<TimelineEntry>();
-        Photos = new ObservableCollection<Photo>();
-
-        LoadSampleData();
+        _mediaRepo = mediaRepo;
+        _configService = configService;
     }
 
-    private void LoadSampleData()
+    public async Task InitializeAsync()
     {
-        TimelineEntries.Add(new TimelineEntry(new DateTime(2017, 3, 10), 12));
-        TimelineEntries.Add(new TimelineEntry(new DateTime(2018, 5, 12), 8));
-        TimelineEntries.Add(new TimelineEntry(new DateTime(2020, 9, 30), 5));
-
-        SelectedTimelineEntry = TimelineEntries[0];
-        TimelineEntries[0].IsSelected = true;
-        LoadPhotosForDate(TimelineEntries[0].Date);
-    }
-
-    [RelayCommand]
-    private void Select(TimelineEntry entry)
-    {
-        if (entry != null && entry != SelectedTimelineEntry)
-        {
-            if (SelectedTimelineEntry != null)
-                SelectedTimelineEntry.IsSelected = false;
-            entry.IsSelected = true;
-            SelectedTimelineEntry = entry;
-        }
-    }
-
-    partial void OnSelectedTimelineEntryChanged(TimelineEntry? value)
-    {
-        if (value != null)
-        {
-            LoadPhotosForDate(value.Date);
-        }
-    }
-
-    private void LoadPhotosForDate(DateTime date)
-    {
-        IsLoading = true;
-        IsEmpty = false;
-        HasError = false;
-        Photos.Clear();
-
-        Task.Delay(300).ContinueWith(_ =>
-        {
-            var random = new Random(date.GetHashCode());
-            var count = random.Next(0, 15);
-
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (count == 0)
-                {
-                    IsEmpty = true;
-                }
-                else
-                {
-                    for (int i = 0; i < count; i++)
-                    {
-                        var status = (SyncStatus)random.Next(3);
-                        Photos.Add(new Photo(
-                            $"photo-{date:yyyy-MM-dd}-{i}",
-                            date.AddHours(random.Next(0, 12)),
-                            null,
-                            status,
-                            random.Next(1, 15)
-                        ));
-                    }
-                }
-
-                IsLoading = false;
-            });
-        });
-    }
-
-    [RelayCommand]
-    private void OpenPhoto(Photo? photo)
-    {
-        if (photo == null) return;
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
 
         try
         {
-            Debug.WriteLine($"Open photo: {photo.Id}");
+            IsLoadingDateGroups = true;
+            LoadErrorMessage = null;
+            DateGroups.Clear();
+            CurrentMediaFiles.Clear();
+
+            // 读项目配置
+            var projectConfig = await _configService.GetOrCreateAsync<ProjectConfig>(ConfigKeys.Project);
+            _projectPath = projectConfig.CurrentDirectory;
+
+            if (string.IsNullOrEmpty(_projectPath))
+            {
+                IsLoadingDateGroups = false;
+                return;
+            }
+
+            // 加载日期分组
+            var dateGroups = await _mediaRepo.GetDateGroupsAsync(_projectPath, ct);
+            foreach (var group in dateGroups)
+            {
+                DateGroups.Add(new TimelineEntry(group.Date, group.Count));
+            }
+
+            IsLoadingDateGroups = false;
+
+            if (DateGroups.Count == 0)
+            {
+                return;
+            }
+
+            // 自动选中第一个日期
+            await SelectAsync(DateGroups[0]);
+        }
+        catch (OperationCanceledException)
+        {
+            // 忽略取消
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"打开失败: {ex.Message}";
-            HasError = true;
+            LoadErrorMessage = $"加载失败：{ex.Message}";
+            IsLoadingDateGroups = false;
+            IsLoadingMedia = false;
         }
     }
 
     [RelayCommand]
-    private void DeletePhoto(Photo? photo)
+    private async Task SelectAsync(TimelineEntry? entry)
     {
-        if (photo == null) return;
+        if (entry == null) return;
 
-        Photos.Remove(photo);
-        if (Photos.Count == 0)
+        // 取消之前的加载
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+
+        // 更新选中态
+        if (SelectedDate != null)
+            SelectedDate.IsSelected = false;
+
+        entry.IsSelected = true;
+        SelectedDate = entry;
+
+        await LoadDateAsync(entry, ct);
+    }
+
+    private async Task LoadDateAsync(TimelineEntry entry, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(_projectPath)) return;
+
+        try
         {
-            IsEmpty = true;
+            IsLoadingMedia = true;
+            CurrentMediaFiles.Clear();
+
+            var files = await _mediaRepo.GetByDateAsync(_projectPath, entry.Date, ct);
+
+            foreach (var file in files)
+            {
+                CurrentMediaFiles.Add(file);
+            }
+
+            IsLoadingMedia = false;
         }
-    }
-
-    [RelayCommand]
-    private void ReuploadPhoto(Photo? photo)
-    {
-        if (photo == null) return;
-
-        Debug.WriteLine($"Reupload photo: {photo.Id}");
-    }
-
-    [RelayCommand]
-    private void SelectPhoto(Photo? photo)
-    {
-        if (photo != null && photo != SelectedPhoto)
+        catch (OperationCanceledException)
         {
-            SelectedPhoto = photo;
+            // 忽略取消
         }
-        else if (photo == SelectedPhoto)
+        catch (Exception ex)
         {
-            SelectedPhoto = null;
+            LoadErrorMessage = $"加载失败：{ex.Message}";
+            IsLoadingMedia = false;
         }
     }
 
     [RelayCommand]
-    private void ImportPhotos()
+    private async Task ReloadAsync()
     {
-        Debug.WriteLine("Import photos");
+        await InitializeAsync();
     }
 
-    [RelayCommand]
-    private void Retry()
+    partial void OnSelectedDateChanged(TimelineEntry? value)
     {
-        if (SelectedTimelineEntry != null)
+        if (value != null)
         {
-            LoadPhotosForDate(SelectedTimelineEntry.Date);
+            _ = SelectAsync(value);
         }
+    }
+
+    partial void OnRefreshStateChanged(RefreshState value)
+    {
+        if (value == RefreshState.Completed)
+        {
+            ScanStatusMessage = $"扫描完成 · 共 {ScanProgress?.Total} 个文件，新增 {ScanProgress?.Processed - ScanProgress?.Failed ?? 0}，更新 0";
+            // 2s 后清空
+            _ = Task.Delay(2000).ContinueWith(_ => ScanStatusMessage = null);
+        }
+    }
+
+    public bool HasNoProject => string.IsNullOrEmpty(_projectPath);
+    public bool IsEmpty => !IsLoadingDateGroups && DateGroups.Count == 0;
+    public string? ProjectPath => _projectPath;
+
+    public async Task RefreshAsync()
+    {
+        RefreshState = RefreshState.Scanning;
+        IsScanning = true;
+        ScanProgress = new ScanProgress();
+        ScanStatusMessage = null;
+
+        await InitializeAsync();
+
+        // 模拟进度更新（实际应从 MediaRepository 回调更新）
+        // 这里简单处理：完成后设置状态
+        if (RefreshState == RefreshState.Scanning)
+        {
+            RefreshState = RefreshState.Completed;
+        }
+        IsScanning = false;
+    }
+
+    public void StopScan()
+    {
+        _cts?.Cancel();
+        RefreshState = RefreshState.Stopped;
+        IsScanning = false;
+        ScanStatusMessage = $"已停止，扫描了 {ScanProgress?.Processed ?? 0} / {ScanProgress?.Total ?? 0}";
+        _ = Task.Delay(2000).ContinueWith(_ => ScanStatusMessage = null);
     }
 }

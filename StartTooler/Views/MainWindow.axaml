@@ -4,6 +4,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:StartTooler.ViewModels"
         xmlns:views="using:StartTooler.Views"
+        xmlns:components="using:StartTooler.Components"
         mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
         x:Class="StartTooler.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -21,22 +22,45 @@
         <vm:MainWindowViewModel/>
     </Window.DataContext>
 
-    <Grid RowDefinitions="38,*">
-        <!-- 标题栏 -->
-        <Border Grid.Row="0" Background="{DynamicResource Gradient.Header}">
-            <Grid ColumnDefinitions="Auto,*,Auto">
+    <Grid RowDefinitions="38,Auto,*">
+        <!-- 标题栏 - Bg.Outer 背景 + 底部边框 -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource Bg.Outer}"
+                BorderBrush="{DynamicResource Bg.Divider}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto">
                 <!-- macOS 交通灯占位（系统绘制） -->
                 <Border Grid.Column="0" Width="80"/>
 
+                <!-- 刷新按钮 -->
+                <Button Grid.Column="1"
+                        Classes="refresh-button"
+                        Command="{Binding RefreshCommand}"
+                        IsEnabled="{Binding HasProject}"
+                        ToolTip.Tip="刷新扫描">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <Path Data="{DynamicResource Icon.Refresh}"
+                              Stretch="Uniform"
+                              Width="14" Height="14"
+                              Fill="{DynamicResource Text.Secondary}"
+                              Classes="refresh-icon"/>
+                        <TextBlock Text="刷新"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource Text.Secondary}"
+                                   VerticalAlignment="Center"
+                                   Classes="refresh-text"/>
+                    </StackPanel>
+                </Button>
+
                 <!-- 标题 -->
-                <TextBlock Grid.Column="1" Text="星助"
+                <TextBlock Grid.Column="2" Text="星助"
                            FontSize="13" FontWeight="600"
                            Foreground="{DynamicResource Text.Primary}"
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center"/>
 
                 <!-- 设置/返回按钮 -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,16,0">
+                <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,16,0">
                     <!-- 返回按钮 (设置页显示) -->
                     <Button Content="返回"
                             Classes="header-button"
@@ -51,8 +75,12 @@
             </Grid>
         </Border>
 
+        <!-- 扫描进度条 -->
+        <components:ScanProgressBar Grid.Row="1"
+                                     DataContext="{Binding GalleryViewModel}"/>
+
         <!-- 内容区域 -->
-        <ContentControl Grid.Row="1" Content="{Binding CurrentView}">
+        <ContentControl Grid.Row="2" Content="{Binding CurrentView}">
             <ContentControl.DataTemplates>
                 <DataTemplate DataType="{x:Type vm:GalleryViewModel}">
                     <views:GalleryView DataContext="{Binding}"/>

@@ -1,0 +1,70 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:StartTooler.ViewModels"
+             xmlns:converters="using:StartTooler.Converters"
+             x:Class="StartTooler.Components.ScanProgressBar"
+             x:DataType="vm:GalleryViewModel">
+
+    <UserControl.Styles>
+        <!-- 进度条滑入动画 (仅 Opacity) -->
+        <Style Selector="Border.progress-container">
+            <Setter Property="Opacity" Value="0"/>
+            <Style.Animations>
+                <Animation Duration="0:0:0.2"
+                           FillMode="Forward"
+                           Easing="QuadraticEaseOut">
+                    <KeyFrame Cue="100%">
+                        <Setter Property="Opacity" Value="1"/>
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,Auto">
+        <!-- 进度条容器 -->
+        <Border Grid.Row="0"
+                Classes="progress-container"
+                Height="2"
+                Background="{DynamicResource Bg.SurfaceElevated}"
+                IsVisible="{Binding IsScanning}">
+            <Panel>
+                <!-- 确定进度条 (Total > 0) -->
+                <Border Background="{DynamicResource Accent.Stellar}"
+                        HorizontalAlignment="Left"
+                        BoxShadow="0 0 8 0 #404FC3F7"
+                        IsVisible="{Binding ScanProgress.Total, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <Border.Width>
+                        <MultiBinding Converter="{x:Static converters:ScanProgressConverters.ProgressWidth}">
+                            <Binding Path="ScanProgress.Processed"/>
+                            <Binding Path="ScanProgress.Total"/>
+                        </MultiBinding>
+                    </Border.Width>
+                </Border>
+
+                <!-- 不确定进度条 (Total = 0) -->
+                <Border ClipToBounds="True"
+                        Background="Transparent"
+                        IsVisible="{Binding ScanProgress.Total, Converter={x:Static ObjectConverters.IsNull}}">
+                    <Border Background="{DynamicResource Accent.Stellar}"
+                            Width="60"
+                            HorizontalAlignment="Left"
+                            Opacity="0.6">
+                        <Border.RenderTransform>
+                            <TranslateTransform X="-60"/>
+                        </Border.RenderTransform>
+                    </Border>
+                </Border>
+            </Panel>
+        </Border>
+
+        <!-- 状态文字 -->
+        <TextBlock Grid.Row="1"
+                   FontFamily="{DynamicResource Font.Mono}"
+                   FontSize="12"
+                   Foreground="{DynamicResource Text.Secondary}"
+                   Margin="16,6,16,0"
+                   IsVisible="{Binding ScanStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Text="{Binding ScanStatusMessage}"/>
+    </Grid>
+</UserControl>
