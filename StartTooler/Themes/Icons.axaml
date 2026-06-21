@@ -1,0 +1,51 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Lucide Icons SVG Path Data -->
+
+    <!-- 云图标 (Cloud) - 16x16 -->
+    <PathGeometry x:Key="Icon.Cloud">M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z</PathGeometry>
+
+    <!-- 告警图标 (AlertTriangle) -->
+    <PathGeometry x:Key="Icon.AlertTriangle">M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4m0 4h.01</PathGeometry>
+
+    <!-- 禁止图标 (XCircle) -->
+    <PathGeometry x:Key="Icon.XCircle">M12 2a10 10 0 100 20 10 10 0 000-20zm0 14a1 1 0 110-2 1 1 0 010 2zm0-4a1 1 0 01-1-1V9a1 1 0 112 0v2a1 1 0 01-1 1z</PathGeometry>
+
+    <!-- 检查图标 (CheckCircle) -->
+    <PathGeometry x:Key="Icon.CheckCircle">M12 2a10 10 0 100 20 10 10 0 000-20zm-1 14l-4-4 1.41-1.41L11 13.17l6.59-6.59L19 8l-8 8z</PathGeometry>
+
+    <!-- 下拉箭头 (ChevronDown) - 16x16 -->
+    <PathGeometry x:Key="Icon.ChevronDown">M4.93 6.93a.996.996 0 011.41 0L12 12.49l5.66-5.56a.996.996 0 111.41 1.41l-6.36 6.36a.996.996 0 01-1.41 0L4.93 8.34a.996.996 0 010-1.41z</PathGeometry>
+
+    <!-- 设置图标 (Settings) - 16x16 -->
+    <PathGeometry x:Key="Icon.Settings">M12 15a3 3 0 100-6 3 3 0 000 6zm7.94-2.87l-1.06-1.06a1.5 1.5 0 00-2.12 0l-.53.53a5.5 5.5 0 01-7.66 0l-.53-.53a1.5 1.5 0 00-2.12 0l-1.06 1.06a3.5 3.5 0 000 4.94l1.06 1.06a1.5 1.5 0 002.12 0l.53-.53a5.5 5.5 0 017.66 0l.53.53a1.5 1.5 0 002.12 0l1.06-1.06a3.5 3.5 0 000-4.94z</PathGeometry>
+
+    <!-- 文件夹图标 (Folder) - 16x16 -->
+    <PathGeometry x:Key="Icon.Folder">M2 4a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V4z</PathGeometry>
+
+    <!-- 文件图标 (File) - 16x16 -->
+    <PathGeometry x:Key="Icon.File">M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm4 18H6V4h7v5h5v11z</PathGeometry>
+
+    <!-- 上传图标 (Upload) - 16x16 -->
+    <PathGeometry x:Key="Icon.Upload">M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4m4-5l5-5 5 5m-5-5v12</PathGeometry>
+
+    <!-- 删除图标 (Trash) - 16x16 -->
+    <PathGeometry x:Key="Icon.Trash">M3 6h18m-2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2m-6 5v6m4-6v6</PathGeometry>
+
+    <!-- 刷新图标 (Refresh) - 16x16 -->
+    <PathGeometry x:Key="Icon.Refresh">M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0020 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 004 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z</PathGeometry>
+
+    <!-- 照片图标 (Image) - 16x16 -->
+    <PathGeometry x:Key="Icon.Image">M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm0 2v14h14V5H5zm4 3a2 2 0 110 4 2 2 0 010-4zm3 6h7v2H12v-2z</PathGeometry>
+
+    <!-- 导入图标 (Download) - 16x16 -->
+    <PathGeometry x:Key="Icon.Download">M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4m-4-4l7 7 7-7m-7 7V3</PathGeometry>
+
+    <!-- 星星图标 (Star) - 用于空状态 -->
+    <PathGeometry x:Key="Icon.Star">M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z</PathGeometry>
+
+    <!-- 星座图标 (星座连线) -->
+    <PathGeometry x:Key="Icon.Constellation">M12 2l2.4 7.2L22 10.8 14.8 15.6l1.6 8L12 20l-4.4 3.6 1.6-8L2 10.8l7.6-1.6L12 2z</PathGeometry>
+
+</ResourceDictionary>

@@ -1,0 +1,69 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- 背景层 -->
+    <Color x:Key="Bg.Outer">#0A0E1A</Color>
+    <Color x:Key="Bg.Surface">#161B2E</Color>
+    <Color x:Key="Bg.SurfaceElevated">#1F2438</Color>
+    <Color x:Key="Bg.Divider">#2A3050</Color>
+    <Color x:Key="Bg.Hover">#252B45</Color>
+
+    <!-- 文字层 -->
+    <Color x:Key="Text.Primary">#E8EAF0</Color>
+    <Color x:Key="Text.Secondary">#8892B0</Color>
+    <Color x:Key="Text.Tertiary">#5A6280</Color>
+    <Color x:Key="Text.Disabled">#4A5273</Color>
+    <Color x:Key="Text.Inverse">#0A0E1A</Color>
+
+    <!-- 强调色 -->
+    <Color x:Key="Accent.Stellar">#4FC3F7</Color>
+    <Color x:Key="Accent.Nebula">#B388FF</Color>
+    <Color x:Key="Accent.Aurora">#4DD0E1</Color>
+
+    <!-- 状态色 -->
+    <Color x:Key="State.Quiet">#4A5273</Color>
+    <Color x:Key="State.Warning">#FFA726</Color>
+    <Color x:Key="State.Danger">#FF5252</Color>
+    <Color x:Key="State.Success">#4DD0E1</Color>
+
+    <!-- macOS 交通灯 -->
+    <Color x:Key="TrafficLight.Red">#FF5F57</Color>
+    <Color x:Key="TrafficLight.Yellow">#FFBD2E</Color>
+    <Color x:Key="TrafficLight.Green">#28C940</Color>
+
+    <!-- 渐变 -->
+    <LinearGradientBrush x:Key="Gradient.Header" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#0A0E1A"/>
+        <GradientStop Offset="1" Color="#161B2E"/>
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="Gradient.PrimaryButton" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#7E57C2"/>
+        <GradientStop Offset="1" Color="#B388FF"/>
+    </LinearGradientBrush>
+
+    <!-- 字体 -->
+    <FontFamily x:Key="Font.Primary">Inter, "PingFang SC", "Microsoft YaHei", sans-serif</FontFamily>
+    <FontFamily x:Key="Font.Mono">"JetBrains Mono", "SF Mono", Consolas, monospace</FontFamily>
+
+    <!-- 间距 -->
+    <x:Double x:Key="Space.1">4</x:Double>
+    <x:Double x:Key="Space.2">8</x:Double>
+    <x:Double x:Key="Space.3">12</x:Double>
+    <x:Double x:Key="Space.4">16</x:Double>
+    <x:Double x:Key="Space.5">24</x:Double>
+    <x:Double x:Key="Space.6">32</x:Double>
+    <x:Double x:Key="Space.7">48</x:Double>
+
+    <!-- 圆角 -->
+    <CornerRadius x:Key="Radius.Small">4</CornerRadius>
+    <CornerRadius x:Key="Radius.Medium">8</CornerRadius>
+    <CornerRadius x:Key="Radius.Large">12</CornerRadius>
+    <CornerRadius x:Key="Radius.Pill">9999</CornerRadius>
+
+    <!-- 动效时长 -->
+    <x:Double x:Key="Duration.Fast">120</x:Double>
+    <x:Double x:Key="Duration.Normal">200</x:Double>
+    <x:Double x:Key="Duration.Slow">320</x:Double>
+
+</ResourceDictionary>

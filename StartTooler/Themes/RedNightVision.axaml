@@ -1,0 +1,34 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Red Night Vision 主题覆盖 -->
+    <Color x:Key="Bg.Outer">#000000</Color>
+    <Color x:Key="Bg.Surface">#0A0000</Color>
+    <Color x:Key="Bg.SurfaceElevated">#140000</Color>
+    <Color x:Key="Bg.Divider">#2A0000</Color>
+    <Color x:Key="Bg.Hover">#1F0000</Color>
+
+    <Color x:Key="Text.Primary">#FF6B6B</Color>
+    <Color x:Key="Text.Secondary">#B53030</Color>
+    <Color x:Key="Text.Tertiary">#802020</Color>
+    <Color x:Key="Text.Disabled">#4D0000</Color>
+
+    <Color x:Key="Accent.Stellar">#FF3030</Color>
+    <Color x:Key="Accent.Nebula">#FF6060</Color>
+    <Color x:Key="Accent.Aurora">#FF8080</Color>
+
+    <Color x:Key="State.Success">#FF8080</Color>
+    <Color x:Key="State.Warning">#FFAA80</Color>
+    <Color x:Key="State.Danger">#FF3030</Color>
+
+    <LinearGradientBrush x:Key="Gradient.Header" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#000000"/>
+        <GradientStop Offset="1" Color="#0A0000"/>
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="Gradient.PrimaryButton" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#CC3030"/>
+        <GradientStop Offset="1" Color="#FF6060"/>
+    </LinearGradientBrush>
+
+</ResourceDictionary>
