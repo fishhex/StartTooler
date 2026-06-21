@@ -1,4 +1,5 @@
 using System;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace StartTooler.Models;
 
@@ -17,4 +18,16 @@ public record Photo(
     int GroupCount = 1
 );
 
-public record TimelineEntry(DateTime Date, int PhotoCount);
+public partial class TimelineEntry : ObservableObject
+{
+    public DateTime Date { get; }
+    public int PhotoCount { get; }
+
+    [ObservableProperty] private bool isSelected;
+
+    public TimelineEntry(DateTime date, int photoCount)
+    {
+        Date = date;
+        PhotoCount = photoCount;
+    }
+}

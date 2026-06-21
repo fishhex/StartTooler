@@ -10,6 +10,9 @@
         <converters:GreaterThanOneConverter x:Key="GreaterThanOne"/>
         <converters:SyncStatusToColorConverter x:Key="SyncStatusToColor"/>
         <converters:SyncStatusToTooltipConverter x:Key="SyncStatusToTooltip"/>
+        <converters:BoolToAccentOrDividerConverter x:Key="BoolToAccentOrDivider"/>
+        <converters:BoolToFontWeightConverter x:Key="BoolToFontWeight"/>
+        <converters:BoolToAccentOrSecondaryConverter x:Key="BoolToAccentOrSecondary"/>
     </UserControl.Resources>
 
     <Grid ColumnDefinitions="220,*">
@@ -29,27 +32,23 @@
                                     CommandParameter="{Binding}">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
-                                        <Grid ColumnDefinitions="20,*" Height="48">
-                                            <!-- 圆点和连接线 -->
-                                            <Canvas Grid.Column="0" Width="20">
-                                                <!-- 圆点 -->
-                                                <Ellipse Width="8" Height="8"
-                                                         Fill="{DynamicResource Bg.Divider}"
-                                                         Canvas.Left="6" Canvas.Top="20"/>
-                                                <!-- 连接线段 (下方) -->
-                                                <Border Width="1" Height="28"
-                                                        Background="{DynamicResource Bg.Divider}"
-                                                        Canvas.Left="9.5" Canvas.Top="28"/>
-                                            </Canvas>
+                                        <Canvas Width="160" Height="48">
+                                            <!-- 圆点 -->
+                                            <Ellipse Width="8" Height="8"
+                                                     Fill="{Binding IsSelected, Converter={StaticResource BoolToAccentOrDivider}}"
+                                                     Canvas.Left="6" Canvas.Top="20"/>
+                                            <!-- 连接线段 (下方) -->
+                                            <Border Width="1" Height="28"
+                                                    Background="{DynamicResource Bg.Divider}"
+                                                    Canvas.Left="9.5" Canvas.Top="28"/>
                                             <!-- 日期文字 -->
-                                            <TextBlock Grid.Column="1"
+                                            <TextBlock Canvas.Left="26" Canvas.Top="18"
                                                        Text="{Binding Date, StringFormat='{}{0:yyyy-MM-dd}'}"
                                                        FontFamily="{DynamicResource Font.Mono}"
                                                        FontSize="12"
-                                                       FontWeight="500"
-                                                       Foreground="{DynamicResource Text.Secondary}"
-                                                       VerticalAlignment="Center"/>
-                                        </Grid>
+                                                       FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
+                                                       Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
+                                        </Canvas>
                                     </ControlTemplate>
                                 </Button.Template>
                             </Button>

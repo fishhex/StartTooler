@@ -35,6 +35,7 @@ public partial class GalleryViewModel : ObservableObject
         TimelineEntries.Add(new TimelineEntry(new DateTime(2020, 9, 30), 5));
 
         SelectedTimelineEntry = TimelineEntries[0];
+        TimelineEntries[0].IsSelected = true;
         LoadPhotosForDate(TimelineEntries[0].Date);
     }
 
@@ -43,6 +44,9 @@ public partial class GalleryViewModel : ObservableObject
     {
         if (entry != null && entry != SelectedTimelineEntry)
         {
+            if (SelectedTimelineEntry != null)
+                SelectedTimelineEntry.IsSelected = false;
+            entry.IsSelected = true;
             SelectedTimelineEntry = entry;
         }
     }
