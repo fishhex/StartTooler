@@ -173,20 +173,53 @@ public partial class GalleryViewModel : ObservableObject
 
     public async Task RefreshAsync()
     {
+        if (string.IsNullOrEmpty(_projectPath))
+        {
+            return;
+        }
+
         RefreshState = RefreshState.Scanning;
         IsScanning = true;
         ScanProgress = new ScanProgress();
         ScanStatusMessage = null;
 
-        await InitializeAsync();
-
-        // 模拟进度更新（实际应从 MediaRepository 回调更新）
-        // 这里简单处理：完成后设置状态
-        if (RefreshState == RefreshState.Scanning)
+        var progress = new Progress<ScanProgress>(p =>
         {
+            ScanProgress = p;
+            if (p.Total > 0)
+            {
+                ScanStatusMessage = $"扫描中 {p.Processed} / {p.Total} · 当前文件：{p.CurrentFile}";
+            }
+            else
+            {
+                ScanStatusMessage = "正在扫描...";
+            }
+        });
+
+        try
+        {
+            var result = await _mediaRepo.ScanDirectoryAsync(_projectPath, progress, _cts?.Token ?? default);
+
+            // 扫描完成后刷新列表
+            await InitializeAsync();
+
             RefreshState = RefreshState.Completed;
+            ScanStatusMessage = $"扫描完成 · 共 {result.Processed} 个文件，新增 {result.NewFiles}，更新 {result.UpdatedFiles}";
         }
-        IsScanning = false;
+        catch (OperationCanceledException)
+        {
+            RefreshState = RefreshState.Stopped;
+            ScanStatusMessage = $"已停止，扫描了 {ScanProgress.Processed} / {ScanProgress.Total}";
+        }
+        catch (Exception ex)
+        {
+            RefreshState = RefreshState.Stopped;
+            ScanStatusMessage = $"扫描失败：{ex.Message}";
+        }
+        finally
+        {
+            IsScanning = false;
+        }
     }
 
     public void StopScan()

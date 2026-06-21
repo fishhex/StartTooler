@@ -135,4 +135,26 @@
         <Setter Property="FontFamily" Value="{DynamicResource Font.Primary}"/>
     </Style>
 
+    <!-- 刷新按钮样式 -->
+    <Style Selector="Button.refresh-button">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{DynamicResource Text.Secondary}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Padding" Value="8,4"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.refresh-button:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Bg.Hover}"/>
+    </Style>
+    <Style Selector="Button.refresh-button:pointerover TextBlock.refresh-text">
+        <Setter Property="Foreground" Value="{DynamicResource Accent.Stellar}"/>
+    </Style>
+    <Style Selector="Button.refresh-button:pointerover Path.refresh-icon">
+        <Setter Property="Fill" Value="{DynamicResource Accent.Stellar}"/>
+    </Style>
+    <Style Selector="Button.refresh-button:disabled">
+        <Setter Property="Opacity" Value="0.4"/>
+    </Style>
+
 </Styles>
