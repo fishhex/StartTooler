@@ -48,4 +48,7 @@
     <!-- 星座图标 (星座连线) -->
     <StreamGeometry x:Key="Icon.Constellation">M12 2l2.4 7.2L22 10.8 14.8 15.6l1.6 8L12 20l-4.4 3.6 1.6-8L2 10.8l7.6-1.6L12 2z</StreamGeometry>
 
+    <!-- 播放图标 (视频徽章) - 24x24 -->
+    <StreamGeometry x:Key="Icon.Play">M5 3l14 9-14 9V3z</StreamGeometry>
+
 </ResourceDictionary>

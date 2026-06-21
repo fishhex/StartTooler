@@ -2,24 +2,28 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:StartTooler.ViewModels"
              xmlns:models="using:StartTooler.Models"
+             xmlns:data="using:StartTooler.Data"
              xmlns:converters="using:StartTooler.Converters"
              x:Class="StartTooler.Views.GalleryView"
              x:DataType="vm:GalleryViewModel">
 
     <UserControl.Resources>
-        <converters:GreaterThanOneConverter x:Key="GreaterThanOne"/>
         <converters:SyncStatusToColorConverter x:Key="SyncStatusToColor"/>
         <converters:SyncStatusToTooltipConverter x:Key="SyncStatusToTooltip"/>
         <converters:BoolToAccentOrDividerConverter x:Key="BoolToAccentOrDivider"/>
         <converters:BoolToFontWeightConverter x:Key="BoolToFontWeight"/>
         <converters:BoolToAccentOrSecondaryConverter x:Key="BoolToAccentOrSecondary"/>
+        <converters:MediaFileToStatusConverter x:Key="MediaFileToStatus"/>
+        <converters:MediaFileToTooltipConverter x:Key="MediaFileToTooltip"/>
+        <converters:MediaTypeToVideoConverter x:Key="MediaTypeToVideo"/>
+        <converters:FilePathToBitmapConverter x:Key="FilePathToBitmap"/>
     </UserControl.Resources>
 
     <Grid ColumnDefinitions="220,*">
         <!-- 时间轴 (TimelineRail) -->
         <Border Grid.Column="0" Background="{DynamicResource Bg.Outer}">
             <ScrollViewer>
-                <ItemsControl ItemsSource="{Binding TimelineEntries}" Margin="16,24">
+                <ItemsControl ItemsSource="{Binding DateGroups}" Margin="16,24">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <StackPanel Spacing="0"/>
@@ -61,17 +65,31 @@
         <!-- 照片网格区域 -->
         <Border Grid.Column="1" Background="{DynamicResource Bg.Surface}" CornerRadius="12,0,0,0">
             <Grid>
-                <!-- 加载状态 - 骨架屏 -->
-                <ScrollViewer IsVisible="{Binding IsLoading}">
-                    <StackPanel Orientation="Horizontal" Margin="24">
-                        <Border Width="160" Height="120" Background="{DynamicResource Bg.Divider}" CornerRadius="{DynamicResource Radius.Medium}" Margin="8" Opacity="0.5"/>
-                        <Border Width="160" Height="120" Background="{DynamicResource Bg.Divider}" CornerRadius="{DynamicResource Radius.Medium}" Margin="8" Opacity="0.5"/>
-                        <Border Width="160" Height="120" Background="{DynamicResource Bg.Divider}" CornerRadius="{DynamicResource Radius.Medium}" Margin="8" Opacity="0.5"/>
-                        <Border Width="160" Height="120" Background="{DynamicResource Bg.Divider}" CornerRadius="{DynamicResource Radius.Medium}" Margin="8" Opacity="0.5"/>
-                    </StackPanel>
-                </ScrollViewer>
+                <!-- 无项目目录空态 -->
+                <StackPanel IsVisible="{Binding HasNoProject}"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="16">
+                    <Path Data="{DynamicResource Icon.Constellation}"
+                          Stretch="Uniform"
+                          Width="64" Height="64"
+                          Stroke="{DynamicResource Text.Disabled}"
+                          StrokeThickness="1"
+                          Fill="Transparent"
+                          Opacity="0.4"
+                          HorizontalAlignment="Center"/>
+                    <TextBlock Text="请先选择项目目录"
+                               FontSize="15"
+                               FontWeight="600"
+                               Foreground="{DynamicResource Text.Primary}"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="在设置中配置您的照片目录"
+                               FontSize="13"
+                               Foreground="{DynamicResource Text.Secondary}"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
 
-                <!-- 空状态 -->
+                <!-- 无媒体空态 -->
                 <StackPanel IsVisible="{Binding IsEmpty}"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
@@ -84,24 +102,28 @@
                           Fill="Transparent"
                           Opacity="0.4"
                           HorizontalAlignment="Center"/>
-                    <TextBlock Text="该日期暂无照片"
+                    <TextBlock Text="未发现媒体文件"
                                FontSize="15"
                                FontWeight="600"
                                Foreground="{DynamicResource Text.Primary}"
                                HorizontalAlignment="Center"/>
-                    <TextBlock Text="去拍摄或导入新照片"
+                    <TextBlock Text="请先刷新扫描您的照片目录"
                                FontSize="13"
                                Foreground="{DynamicResource Text.Secondary}"
                                HorizontalAlignment="Center"/>
-                    <Button Content="导入照片"
-                            Classes="primary-button"
-                            Command="{Binding ImportPhotosCommand}"
-                            Height="36" Width="120"
-                            Margin="0,8,0,0"/>
                 </StackPanel>
 
+                <!-- 加载骨架屏 -->
+                <ScrollViewer IsVisible="{Binding IsLoadingDateGroups}">
+                    <StackPanel Margin="24">
+                        <TextBlock Text="加载中..."
+                                   FontSize="13"
+                                   Foreground="{DynamicResource Text.Secondary}"/>
+                    </StackPanel>
+                </ScrollViewer>
+
                 <!-- 错误状态 -->
-                <StackPanel IsVisible="{Binding HasError}"
+                <StackPanel IsVisible="{Binding LoadErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
                             Spacing="16">
@@ -110,45 +132,29 @@
                           Width="48" Height="48"
                           Fill="{DynamicResource State.Danger}"
                           HorizontalAlignment="Center"/>
-                    <TextBlock Text="{Binding ErrorMessage}"
+                    <TextBlock Text="{Binding LoadErrorMessage}"
                                FontSize="13"
                                Foreground="{DynamicResource Text.Secondary}"
                                HorizontalAlignment="Center"/>
                     <Button Content="重试"
                             Classes="primary-button"
-                            Command="{Binding RetryCommand}"
+                            Command="{Binding ReloadCommand}"
                             Height="36" Width="80"
                             Margin="0,8,0,0"/>
                 </StackPanel>
 
                 <!-- 照片网格 -->
-                <ScrollViewer IsVisible="{Binding Photos.Count}">
-                    <ItemsControl ItemsSource="{Binding Photos}" Margin="24">
+                <ScrollViewer IsVisible="{Binding !IsLoadingDateGroups}">
+                    <ItemsControl ItemsSource="{Binding CurrentMediaFiles}" Margin="24">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <WrapPanel Orientation="Horizontal" ItemWidth="160" ItemHeight="120"/>
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="models:Photo">
+                            <DataTemplate x:DataType="data:MediaFile">
                                 <Button Classes="photo-tile"
-                                        Margin="8"
-                                        Command="{Binding $parent[UserControl].DataContext.SelectPhotoCommand}"
-                                        CommandParameter="{Binding}">
-                                    <Button.ContextMenu>
-                                        <ContextMenu>
-                                            <MenuItem Header="查看详情"
-                                                      Command="{Binding $parent[UserControl].DataContext.OpenPhotoCommand}"
-                                                      CommandParameter="{Binding}"/>
-                                            <MenuItem Header="重新上传"
-                                                      Command="{Binding $parent[UserControl].DataContext.ReuploadPhotoCommand}"
-                                                      CommandParameter="{Binding}"/>
-                                            <Separator/>
-                                            <MenuItem Header="删除"
-                                                      Command="{Binding $parent[UserControl].DataContext.DeletePhotoCommand}"
-                                                      CommandParameter="{Binding}"/>
-                                        </ContextMenu>
-                                    </Button.ContextMenu>
+                                        Margin="8">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
                                             <Grid>
@@ -159,33 +165,42 @@
                                                         CornerRadius="{DynamicResource Radius.Medium}"
                                                         ClipToBounds="True">
                                                     <Grid>
+                                                        <!-- 缩略图 -->
+                                                        <Image Source="{Binding ThumbnailPath, Converter={StaticResource FilePathToBitmap}}"
+                                                               Stretch="UniformToFill"
+                                                               IsVisible="{Binding ThumbnailPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
                                                         <!-- 占位星座图标 -->
                                                         <Path Data="{DynamicResource Icon.Constellation}"
                                                               Stretch="Uniform"
-                                                              Width="24" Height="24"
+                                                              Width="48" Height="48"
                                                               Stroke="{DynamicResource Text.Disabled}"
                                                               StrokeThickness="1"
                                                               Fill="Transparent"
                                                               Opacity="0.4"
                                                               HorizontalAlignment="Center"
-                                                              VerticalAlignment="Center"/>
+                                                              VerticalAlignment="Center"
+                                                              IsVisible="{Binding ThumbnailPath, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
 
-                                                        <!-- 数量徽章 -->
-                                                        <Border IsVisible="{Binding GroupCount, Converter={StaticResource GreaterThanOne}}"
-                                                                HorizontalAlignment="Right"
-                                                                VerticalAlignment="Bottom"
-                                                                Margin="4"
-                                                                Background="#CC1F2438"
-                                                                CornerRadius="{DynamicResource Radius.Pill}"
-                                                                Padding="8,2">
-                                                            <TextBlock Text="{Binding GroupCount, StringFormat='{}{0}张'}"
-                                                                       FontSize="11"
-                                                                       Foreground="{DynamicResource Text.Primary}"/>
+                                                        <!-- 视频徽章 -->
+                                                        <Border IsVisible="{Binding MediaType, Converter={StaticResource MediaTypeToVideo}}"
+                                                                HorizontalAlignment="Left"
+                                                                VerticalAlignment="Top"
+                                                                Margin="6"
+                                                                Width="22" Height="22"
+                                                                Background="#CC0A0E1A"
+                                                                CornerRadius="11">
+                                                            <Path Data="{DynamicResource Icon.Play}"
+                                                                  Stretch="Uniform"
+                                                                  Width="12" Height="12"
+                                                                  Fill="{DynamicResource State.Warning}"
+                                                                  HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center"/>
                                                         </Border>
                                                     </Grid>
                                                 </Border>
 
-                                                <!-- 状态徽章 (StatusBadge) - 放在外层避免被裁切 -->
+                                                <!-- 状态徽章 (StatusBadge) -->
                                                 <Border HorizontalAlignment="Right"
                                                         VerticalAlignment="Top"
                                                         Margin="4"
@@ -194,9 +209,9 @@
                                                     <Viewbox Width="28" Height="24" Stretch="Uniform">
                                                         <Canvas Width="24" Height="24">
                                                             <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
-                                                                  Fill="{Binding Status, Converter={StaticResource SyncStatusToColor}}"
+                                                                  Fill="{Binding Converter={StaticResource MediaFileToStatus}, ConverterParameter=Color}"
                                                                   Opacity="0.9"
-                                                                  ToolTip.Tip="{Binding Status, Converter={StaticResource SyncStatusToTooltip}}"/>
+                                                                  ToolTip.Tip="{Binding Converter={StaticResource MediaFileToTooltip}}"/>
                                                         </Canvas>
                                                     </Viewbox>
                                                 </Border>

@@ -6,6 +6,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using StartTooler.Data;
 using StartTooler.Services;
 
 namespace StartTooler.ViewModels;
@@ -18,20 +19,30 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private string title = "星助";
     [ObservableProperty] private bool isSettingsPage;
 
+    public bool HasProject => !string.IsNullOrEmpty(GalleryViewModel?.ProjectPath);
+
     public MainWindowViewModel()
     {
-        GalleryViewModel = new GalleryViewModel();
-        SettingsViewModel = new SettingsViewModel(new DirectoryPickerService(), new ConfigService());
+        // 创建服务实例
+        var configService = new ConfigService();
+        var mediaRepository = new MediaRepository();
+        var thumbnailService = new ThumbnailService();
+
+        // 创建 ViewModel
+        GalleryViewModel = new GalleryViewModel(mediaRepository, thumbnailService, configService);
+        SettingsViewModel = new SettingsViewModel(new DirectoryPickerService(), configService);
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;
 
-        // 初始化设置
+        // 初始化
         _ = InitializeAsync();
     }
 
     private async Task InitializeAsync()
     {
         await SettingsViewModel.InitializeAsync();
+        await GalleryViewModel.InitializeAsync();
+        OnPropertyChanged(nameof(HasProject));
     }
 
     [RelayCommand]
@@ -50,6 +61,9 @@ public partial class MainWindowViewModel : ObservableObject
 
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;
+
+        // 刷新画廊数据
+        GalleryViewModel.ReloadCommand.Execute(null);
     }
 
     [RelayCommand]
@@ -57,6 +71,15 @@ public partial class MainWindowViewModel : ObservableObject
     {
         CurrentView = SettingsViewModel;
         IsSettingsPage = true;
+    }
+
+    [RelayCommand]
+    private async Task Refresh()
+    {
+        if (GalleryViewModel != null)
+        {
+            await GalleryViewModel.RefreshAsync();
+        }
     }
 
     private async Task<bool> ShowDiscardConfirmDialog()

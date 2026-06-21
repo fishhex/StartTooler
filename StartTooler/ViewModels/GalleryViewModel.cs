@@ -14,6 +14,7 @@ namespace StartTooler.ViewModels;
 public partial class GalleryViewModel : ObservableObject
 {
     private readonly IMediaRepository _mediaRepo;
+    private readonly IThumbnailService _thumbnailService;
     private readonly IConfigService _configService;
     private string? _projectPath;
     private CancellationTokenSource? _cts;
@@ -36,9 +37,10 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty] private string? _scanStatusMessage;
     [ObservableProperty] private RefreshState _refreshState = RefreshState.Idle;
 
-    public GalleryViewModel(IMediaRepository mediaRepo, IConfigService configService)
+    public GalleryViewModel(IMediaRepository mediaRepo, IThumbnailService thumbnailService, IConfigService configService)
     {
         _mediaRepo = mediaRepo;
+        _thumbnailService = thumbnailService;
         _configService = configService;
     }
 
@@ -151,10 +153,7 @@ public partial class GalleryViewModel : ObservableObject
 
     partial void OnSelectedDateChanged(TimelineEntry? value)
     {
-        if (value != null)
-        {
-            _ = SelectAsync(value);
-        }
+        // 不在这里加载，避免与 SelectCommand 重复调用
     }
 
     partial void OnRefreshStateChanged(RefreshState value)
@@ -198,9 +197,14 @@ public partial class GalleryViewModel : ObservableObject
 
         try
         {
+            // 1. 扫描文件
             var result = await _mediaRepo.ScanDirectoryAsync(_projectPath, progress, _cts?.Token ?? default);
 
-            // 扫描完成后刷新列表
+            // 2. 生成缩略图
+            ScanStatusMessage = "正在生成缩略图...";
+            await _mediaRepo.GenerateThumbnailsAsync(_projectPath, _thumbnailService, progress, _cts?.Token ?? default);
+
+            // 3. 刷新列表
             await InitializeAsync();
 
             RefreshState = RefreshState.Completed;

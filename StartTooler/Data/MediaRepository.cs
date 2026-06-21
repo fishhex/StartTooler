@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using StartTooler.Models;
+using StartTooler.Services;
 
 namespace StartTooler.Data;
 
@@ -109,7 +110,7 @@ public class MediaRepository : IMediaRepository
         // 规范化路径以匹配扫描时保存的格式
         var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
 
-        var startOfDay = new DateTime(date.Year, date.Month, date.Day, 0, 0, 0, DateTimeKind.Local);
+        var startOfDay = new DateTime(date.Year, date.Month, date.Day, 0, 0, 0, DateTimeKind.Utc);
         var endOfDay = startOfDay.AddDays(1);
 
         var startTimestamp = new DateTimeOffset(startOfDay).ToUnixTimeMilliseconds();
@@ -219,12 +220,13 @@ public class MediaRepository : IMediaRepository
         await connection.OpenAsync(ct);
 
         var insertSql = @"
-            INSERT INTO media_files (project_path, relative_path, file_name, media_type, file_size, last_modified, shot_at, scanned_at)
-            VALUES (@projectPath, @relativePath, @fileName, @mediaType, @fileSize, @lastModified, @shotAt, @scannedAt)
+            INSERT INTO media_files (project_path, relative_path, file_name, media_type, file_size, last_modified, shot_at, thumbnail_path, scanned_at)
+            VALUES (@projectPath, @relativePath, @fileName, @mediaType, @fileSize, @lastModified, @shotAt, @thumbnailPath, @scannedAt)
             ON CONFLICT(project_path, relative_path) DO UPDATE SET
                 file_size = @fileSize,
                 last_modified = @lastModified,
                 shot_at = COALESCE(shot_at, @shotAt),
+                thumbnail_path = @thumbnailPath,
                 scanned_at = @scannedAt";
 
         await using var cmd = new SqliteCommand(insertSql, connection);
@@ -251,6 +253,7 @@ public class MediaRepository : IMediaRepository
                 cmd.Parameters.AddWithValue("@fileSize", fileInfo.Length);
                 cmd.Parameters.AddWithValue("@lastModified", lastModified);
                 cmd.Parameters.AddWithValue("@shotAt", lastModified); // 用文件修改时间作为 shot_at
+                cmd.Parameters.AddWithValue("@thumbnailPath", filePath); // 使用文件路径作为缩略图
                 cmd.Parameters.AddWithValue("@scannedAt", scannedAt);
 
                 var rowsAffected = await cmd.ExecuteNonQueryAsync(ct);
@@ -282,5 +285,63 @@ public class MediaRepository : IMediaRepository
         });
 
         return result;
+    }
+
+    public async Task GenerateThumbnailsAsync(string projectPath, IThumbnailService thumbnailService, IProgress<ScanProgress>? progress = null, CancellationToken ct = default)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+
+        // 获取所有没有缩略图的文件
+        var selectSql = @"
+            SELECT id, project_path, relative_path, file_name
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND (thumbnail_path IS NULL OR thumbnail_path = '')";
+
+        var updateSql = "UPDATE media_files SET thumbnail_path = @thumbnailPath WHERE id = @id";
+
+        var files = new List<(long Id, string RelativePath)>();
+
+        await using (var cmd = new SqliteCommand(selectSql, connection))
+        {
+            cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                files.Add((reader.GetInt64(0), reader.GetString(2)));
+            }
+        }
+
+        var total = files.Count;
+        var processed = 0;
+
+        foreach (var (id, relativePath) in files)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            var fullPath = Path.Combine(normalizedPath, relativePath);
+            if (!File.Exists(fullPath)) continue;
+
+            var thumbnailPath = await thumbnailService.GenerateThumbnailAsync(fullPath, normalizedPath, ct);
+
+            if (thumbnailPath != null)
+            {
+                await using var cmd = new SqliteCommand(updateSql, connection);
+                cmd.Parameters.AddWithValue("@thumbnailPath", thumbnailPath);
+                cmd.Parameters.AddWithValue("@id", id);
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
+
+            processed++;
+            progress?.Report(new ScanProgress
+            {
+                Total = total,
+                Processed = processed,
+                CurrentFile = Path.GetFileName(fullPath)
+            });
+        }
     }
 }
