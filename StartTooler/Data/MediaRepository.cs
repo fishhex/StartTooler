@@ -242,18 +242,20 @@ public class MediaRepository : IMediaRepository
                 var relativePath = Path.GetRelativePath(projectPath, filePath);
                 var ext = Path.GetExtension(filePath).ToLowerInvariant();
                 var mediaType = ImageExtensions.Contains(ext) ? 0 : 1;
-                var lastModified = new DateTimeOffset(fileInfo.LastWriteTime).ToUnixTimeMilliseconds();
+                var fileName = Path.GetFileName(filePath);
+                var fileSize = fileInfo.Length;
+                var lastModified = new DateTimeOffset(fileInfo.LastWriteTimeUtc).ToUnixTimeMilliseconds();
                 var scannedAt = DateTimeOffset.Now.ToUnixTimeMilliseconds();
 
                 cmd.Parameters.Clear();
                 cmd.Parameters.AddWithValue("@projectPath", projectPathNormalized);
                 cmd.Parameters.AddWithValue("@relativePath", relativePath);
-                cmd.Parameters.AddWithValue("@fileName", fileInfo.Name);
+                cmd.Parameters.AddWithValue("@fileName", fileName);
                 cmd.Parameters.AddWithValue("@mediaType", mediaType);
-                cmd.Parameters.AddWithValue("@fileSize", fileInfo.Length);
+                cmd.Parameters.AddWithValue("@fileSize", fileSize);
                 cmd.Parameters.AddWithValue("@lastModified", lastModified);
                 cmd.Parameters.AddWithValue("@shotAt", lastModified); // 用文件修改时间作为 shot_at
-                cmd.Parameters.AddWithValue("@thumbnailPath", filePath); // 使用文件路径作为缩略图
+                cmd.Parameters.AddWithValue("@thumbnailPath", DBNull.Value); // 缩略图稍后生成
                 cmd.Parameters.AddWithValue("@scannedAt", scannedAt);
 
                 var rowsAffected = await cmd.ExecuteNonQueryAsync(ct);

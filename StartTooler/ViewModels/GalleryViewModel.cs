@@ -123,10 +123,11 @@ public partial class GalleryViewModel : ObservableObject
         try
         {
             IsLoadingMedia = true;
-            CurrentMediaFiles.Clear();
 
             var files = await _mediaRepo.GetByDateAsync(_projectPath, entry.Date, ct);
 
+            // 批量替换：先清空再一次性添加，减少 UI 更新次数
+            CurrentMediaFiles.Clear();
             foreach (var file in files)
             {
                 CurrentMediaFiles.Add(file);
