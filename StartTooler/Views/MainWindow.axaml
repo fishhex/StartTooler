@@ -50,8 +50,8 @@
                                      VerticalAlignment="Bottom"
                                      DataContext="{Binding GalleryViewModel}"/>
 
-        <!-- 左侧导航 Rail (Col 0 跨两行) -->
-        <Border Grid.Column="0" Grid.RowSpan="2"
+        <!-- 左侧导航 Rail (Col 0 仅内容区) -->
+        <Border Grid.Column="0" Grid.Row="1"
                 Background="{DynamicResource Bg.Outer}"
                 BorderBrush="{DynamicResource Bg.Divider}"
                 BorderThickness="0,0,1,0">

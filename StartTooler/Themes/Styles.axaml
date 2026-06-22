@@ -143,6 +143,8 @@
         <Setter Property="Padding" Value="8,4"/>
         <Setter Property="CornerRadius" Value="6"/>
         <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
     </Style>
     <Style Selector="Button.refresh-button:pointerover">
         <Setter Property="Background" Value="{DynamicResource Bg.Hover}"/>

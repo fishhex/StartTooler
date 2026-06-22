@@ -25,6 +25,11 @@
     <Color x:Key="State.Warning">#FFA726</Color>
     <Color x:Key="State.Danger">#FF5252</Color>
     <Color x:Key="State.Success">#4DD0E1</Color>
+    
+    <!-- 时间轴专用色 -->
+    <Color x:Key="Timeline.Selected">#FF6B6B</Color>
+    <Color x:Key="Timeline.Dot.Selected">#4FC3F7</Color>
+    <Color x:Key="Timeline.Line">#8892B0</Color>
 
     <!-- macOS 交通灯 -->
     <Color x:Key="TrafficLight.Red">#FF5F57</Color>
