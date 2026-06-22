@@ -157,4 +157,39 @@
         <Setter Property="Opacity" Value="0.4"/>
     </Style>
 
+    <!-- 刷新按钮旋转动画（Scanning 状态） -->
+    <Style Selector="Button.refresh-button.Scanning Path.refresh-icon">
+        <Setter Property="RenderTransform">
+            <Setter.Value>
+                <RotateTransform Angle="0"/>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 导航 Rail 按钮样式 (C15 NavItem) -->
+    <Style Selector="Button.nav-item">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{DynamicResource Text.Secondary}"/>
+        <Setter Property="Padding" Value="8,12"/>
+        <Setter Property="CornerRadius" Value="0"/>
+        <Setter Property="Height" Value="48"/>
+        <Setter Property="Width" Value="80"/>
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.nav-item:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Bg.Hover}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Text.Primary}"/>
+    </Style>
+    <Style Selector="Button.nav-item:pressed">
+        <Setter Property="Background" Value="{DynamicResource Bg.Divider}"/>
+    </Style>
+    <Style Selector="Button.nav-item.active">
+        <Setter Property="Background" Value="{DynamicResource Bg.SurfaceElevated}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Accent.Stellar}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Accent.Stellar}"/>
+        <Setter Property="BorderThickness" Value="2,0,0,0"/>
+    </Style>
+
 </Styles>

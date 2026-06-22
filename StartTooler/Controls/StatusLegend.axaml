@@ -1,0 +1,145 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:converters="using:StartTooler.Converters"
+             mc:Ignorable="d"
+             x:Class="StartTooler.Controls.StatusLegend">
+
+    <UserControl.Resources>
+        <converters:SyncStatusToColorConverter x:Key="SyncStatusToColor"/>
+        <converters:SyncStatusToTooltipConverter x:Key="SyncStatusToTooltip"/>
+    </UserControl.Resources>
+
+    <Border Background="{DynamicResource Bg.Outer}"
+            BorderBrush="{DynamicResource Bg.Divider}"
+            BorderThickness="1,0,0,0"
+            Padding="24,20">
+        <StackPanel Spacing="16">
+            <!-- 标题区 -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="状态说明"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text.Primary}"/>
+                <TextBlock Text="三种状态徽章的含义"
+                           FontSize="11"
+                           Foreground="{DynamicResource Text.Tertiary}"/>
+            </StackPanel>
+
+            <!-- 状态项 1: 已上传且本地存在 -->
+            <Border Background="{DynamicResource Bg.Surface}"
+                    CornerRadius="8"
+                    Padding="16,12">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 图标 -->
+                    <Canvas Grid.Row="0" Grid.RowSpan="2" Grid.Column="0"
+                            Width="28" Height="28"
+                            Margin="0,0,12,0">
+                        <Ellipse Width="28" Height="28"
+                                 Fill="{DynamicResource Bg.Outer}"
+                                 Opacity="0.5"/>
+                        <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
+                              Fill="#4DD0E1"
+                              Width="20" Height="20"
+                              Stretch="Uniform"
+                              Margin="4"/>
+                    </Canvas>
+
+                    <!-- 主文字 -->
+                    <TextBlock Grid.Row="0" Grid.Column="1"
+                               Text="已上传且本地存在"
+                               FontSize="12"
+                               Foreground="{DynamicResource Text.Primary}"/>
+
+                    <!-- 副文字 -->
+                    <TextBlock Grid.Row="1" Grid.Column="1"
+                               Text="云端有，本地副本存在"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text.Tertiary}"/>
+                </Grid>
+            </Border>
+
+            <!-- 状态项 2: 已上传但本地不存在 -->
+            <Border Background="{DynamicResource Bg.Surface}"
+                    CornerRadius="8"
+                    Padding="16,12">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 图标 -->
+                    <Canvas Grid.Row="0" Grid.RowSpan="2" Grid.Column="0"
+                            Width="28" Height="28"
+                            Margin="0,0,12,0">
+                        <Ellipse Width="28" Height="28"
+                                 Fill="{DynamicResource Bg.Outer}"
+                                 Opacity="0.5"/>
+                        <Path Data="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"
+                              Fill="#FFA726"
+                              Width="20" Height="20"
+                              Stretch="Uniform"
+                              Margin="6,4"/>
+                    </Canvas>
+
+                    <!-- 主文字 -->
+                    <TextBlock Grid.Row="0" Grid.Column="1"
+                               Text="已上传但本地不存在"
+                               FontSize="12"
+                               Foreground="{DynamicResource Text.Primary}"/>
+
+                    <!-- 副文字 -->
+                    <TextBlock Grid.Row="1" Grid.Column="1"
+                               Text="云端有，本地副本丢失"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text.Tertiary}"/>
+                </Grid>
+            </Border>
+
+            <!-- 状态项 3: 未上传 -->
+            <Border Background="{DynamicResource Bg.Surface}"
+                    CornerRadius="8"
+                    Padding="16,12">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 图标 -->
+                    <Canvas Grid.Row="0" Grid.RowSpan="2" Grid.Column="0"
+                            Width="28" Height="28"
+                            Margin="0,0,12,0">
+                        <Ellipse Width="28" Height="28"
+                                 Fill="{DynamicResource Bg.Outer}"
+                                 Opacity="0.5"/>
+                        <Path Data="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z"
+                              Fill="#4A5273"
+                              Width="18" Height="18"
+                              Stretch="Uniform"
+                              Margin="5"/>
+                    </Canvas>
+
+                    <!-- 主文字 -->
+                    <TextBlock Grid.Row="0" Grid.Column="1"
+                               Text="未上传"
+                               FontSize="12"
+                               Foreground="{DynamicResource Text.Primary}"/>
+
+                    <!-- 副文字 -->
+                    <TextBlock Grid.Row="1" Grid.Column="1"
+                               Text="仅在本地，尚未同步"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text.Tertiary}"/>
+                </Grid>
+            </Border>
+        </StackPanel>
+    </Border>
+</UserControl>

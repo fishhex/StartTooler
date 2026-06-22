@@ -11,6 +11,12 @@ using StartTooler.Services;
 
 namespace StartTooler.ViewModels;
 
+public enum ViewPage
+{
+    Gallery,
+    Settings
+}
+
 public partial class MainWindowViewModel : ObservableObject
 {
     [ObservableProperty] private GalleryViewModel galleryViewModel;
@@ -18,6 +24,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private object currentView;
     [ObservableProperty] private string title = "星助";
     [ObservableProperty] private bool isSettingsPage;
+    [ObservableProperty] private ViewPage currentPage = ViewPage.Gallery;
 
     public bool HasProject => !string.IsNullOrEmpty(GalleryViewModel?.ProjectPath);
 
@@ -33,6 +40,7 @@ public partial class MainWindowViewModel : ObservableObject
         SettingsViewModel = new SettingsViewModel(new DirectoryPickerService(), configService);
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;
+        CurrentPage = ViewPage.Gallery;
 
         // 初始化
         _ = InitializeAsync();
@@ -61,6 +69,7 @@ public partial class MainWindowViewModel : ObservableObject
 
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;
+        CurrentPage = ViewPage.Gallery;
 
         // 刷新画廊数据
         GalleryViewModel.ReloadCommand.Execute(null);
@@ -71,6 +80,13 @@ public partial class MainWindowViewModel : ObservableObject
     {
         CurrentView = SettingsViewModel;
         IsSettingsPage = true;
+        CurrentPage = ViewPage.Settings;
+    }
+
+    [RelayCommand]
+    private void NavigateToMedia()
+    {
+        NavigateToGalleryCommand.Execute(null);
     }
 
     [RelayCommand]
@@ -78,7 +94,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (GalleryViewModel != null)
         {
-            await GalleryViewModel.RefreshAsync();
+            await GalleryViewModel.RefreshCommand.ExecuteAsync(null);
         }
     }
 

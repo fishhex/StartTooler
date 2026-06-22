@@ -152,33 +152,15 @@ public partial class GalleryViewModel : ObservableObject
         await InitializeAsync();
     }
 
-    partial void OnSelectedDateChanged(TimelineEntry? value)
-    {
-        // 不在这里加载，避免与 SelectCommand 重复调用
-    }
-
-    partial void OnRefreshStateChanged(RefreshState value)
-    {
-        if (value == RefreshState.Completed)
-        {
-            ScanStatusMessage = $"扫描完成 · 共 {ScanProgress?.Total} 个文件，新增 {ScanProgress?.Processed - ScanProgress?.Failed ?? 0}，更新 0";
-            // 2s 后清空
-            _ = Task.Delay(2000).ContinueWith(_ => ScanStatusMessage = null);
-        }
-    }
-
-    public bool HasNoProject => string.IsNullOrEmpty(_projectPath);
-    public bool IsEmpty => !IsLoadingDateGroups && DateGroups.Count == 0;
-    public string? ProjectPath => _projectPath;
-
-    public async Task RefreshAsync()
+    [RelayCommand]
+    private async Task RefreshAsync()
     {
         if (string.IsNullOrEmpty(_projectPath))
         {
             return;
         }
 
-        RefreshState = RefreshState.Scanning;
+        RefreshState = Models.RefreshState.Scanning;
         IsScanning = true;
         ScanProgress = new ScanProgress();
         ScanStatusMessage = null;
@@ -208,17 +190,17 @@ public partial class GalleryViewModel : ObservableObject
             // 3. 刷新列表
             await InitializeAsync();
 
-            RefreshState = RefreshState.Completed;
+            RefreshState = Models.RefreshState.Completed;
             ScanStatusMessage = $"扫描完成 · 共 {result.Processed} 个文件，新增 {result.NewFiles}，更新 {result.UpdatedFiles}";
         }
         catch (OperationCanceledException)
         {
-            RefreshState = RefreshState.Stopped;
+            RefreshState = Models.RefreshState.Idle;
             ScanStatusMessage = $"已停止，扫描了 {ScanProgress.Processed} / {ScanProgress.Total}";
         }
         catch (Exception ex)
         {
-            RefreshState = RefreshState.Stopped;
+            RefreshState = Models.RefreshState.Idle;
             ScanStatusMessage = $"扫描失败：{ex.Message}";
         }
         finally
@@ -226,6 +208,25 @@ public partial class GalleryViewModel : ObservableObject
             IsScanning = false;
         }
     }
+
+    partial void OnSelectedDateChanged(TimelineEntry? value)
+    {
+        // 不在这里加载，避免与 SelectCommand 重复调用
+    }
+
+    partial void OnRefreshStateChanged(RefreshState value)
+    {
+        if (value == RefreshState.Completed)
+        {
+            ScanStatusMessage = $"扫描完成 · 共 {ScanProgress?.Total} 个文件，新增 {ScanProgress?.Processed - ScanProgress?.Failed ?? 0}，更新 0";
+            // 2s 后清空
+            _ = Task.Delay(2000).ContinueWith(_ => ScanStatusMessage = null);
+        }
+    }
+
+    public bool HasNoProject => string.IsNullOrEmpty(_projectPath);
+    public bool IsEmpty => !IsLoadingDateGroups && DateGroups.Count == 0;
+    public string? ProjectPath => _projectPath;
 
     public void StopScan()
     {
