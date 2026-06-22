@@ -14,7 +14,6 @@
         <converters:BoolToFontWeightConverter x:Key="BoolToFontWeight"/>
         <converters:BoolToAccentOrSecondaryConverter x:Key="BoolToAccentOrSecondary"/>
         <converters:MediaFileToStatusConverter x:Key="MediaFileToStatus"/>
-        <converters:MediaFileToTooltipConverter x:Key="MediaFileToTooltip"/>
         <converters:MediaTypeToVideoConverter x:Key="MediaTypeToVideo"/>
         <converters:FilePathToBitmapConverter x:Key="FilePathToBitmap"/>
     </UserControl.Resources>
@@ -211,7 +210,7 @@
                                                             <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
                                                                   Fill="{Binding Converter={StaticResource MediaFileToStatus}, ConverterParameter=Color}"
                                                                   Opacity="0.9"
-                                                                  ToolTip.Tip="{Binding Converter={StaticResource MediaFileToTooltip}}"/>
+                                                                  ToolTip.Tip="{Binding Converter={StaticResource MediaFileToStatus}, ConverterParameter=Tooltip}"/>
                                                         </Canvas>
                                                     </Viewbox>
                                                 </Border>
