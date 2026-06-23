@@ -1,4 +1,5 @@
 using System;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace StartTooler.Data;
 
@@ -8,7 +9,7 @@ public enum MediaType
     Video
 }
 
-public sealed class MediaFile
+public partial class MediaFile : ObservableObject
 {
     public long Id { get; set; }
     public string ProjectPath { get; set; } = "";
@@ -24,6 +25,12 @@ public sealed class MediaFile
     public string? RemoteUrl { get; set; }
     public long? UploadedAt { get; set; }
     public long ScannedAt { get; set; }
+
+    /// <summary>
+    /// UI 多选模式下的选中状态。由 GalleryViewModel.SelectedFiles 同步控制。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isSelected;
 
     public DateTime? ShotAtDateTime => ShotAt.HasValue
         ? DateTimeOffset.FromUnixTimeMilliseconds(ShotAt.Value).DateTime

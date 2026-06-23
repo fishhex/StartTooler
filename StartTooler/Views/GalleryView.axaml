@@ -16,8 +16,6 @@
         <converters:MediaFileToStatusConverter x:Key="MediaFileToStatus"/>
         <converters:MediaTypeToVideoConverter x:Key="MediaTypeToVideo"/>
         <converters:FilePathToBitmapConverter x:Key="FilePathToBitmap"/>
-        <converters:IsFileSelectedConverter x:Key="IsFileSelected"/>
-        <converters:FileSelectionStateConverter x:Key="FileSelectionState"/>
     </UserControl.Resources>
 
     <!-- v2.3: 工具栏已移至 MainWindow 全局工具栏 -->
@@ -167,28 +165,20 @@
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
                                             <Grid>
-                                                <!-- 不可见的状态源 Border (承载 MultiBinding 结果, 必须 IsVisible=True 才能传播绑定) -->
-                                                <Border x:Name="SelectionStateSource"
-                                                        IsHitTestVisible="False"
-                                                        Width="0" Height="0"
-                                                        Opacity="0">
-                                                    <Border.Tag>
-                                                        <MultiBinding Converter="{x:Static converters:FileSelectionStateConverter.Instance}">
-                                                            <Binding/>
-                                                            <Binding Path="$parent[ItemsControl].((vm:GalleryViewModel)DataContext).SelectedFiles"/>
-                                                            <Binding Path="$parent[ItemsControl].((vm:GalleryViewModel)DataContext).IsMultiSelectMode"/>
-                                                        </MultiBinding>
-                                                    </Border.Tag>
-                                                </Border>
+                                                <!-- 选中时高亮边框: 浮在 PhotoBorder 外层, IsSelected=true 时显示 -->
+                                                <Border x:Name="SelectionHighlight"
+                                                        Width="160" Height="120"
+                                                        CornerRadius="{DynamicResource Radius.Large}"
+                                                        BorderBrush="{DynamicResource Accent.Stellar}"
+                                                        BorderThickness="2"
+                                                        IsVisible="{Binding IsSelected}"/>
 
                                                 <!-- 照片卡片 -->
                                                 <Border x:Name="PhotoBorder"
                                                         Width="160" Height="120"
                                                         Background="{DynamicResource Bg.SurfaceElevated}"
                                                         CornerRadius="{DynamicResource Radius.Large}"
-                                                        ClipToBounds="True"
-                                                        BorderBrush="{DynamicResource Accent.Stellar}"
-                                                        BorderThickness="{Binding #SelectionStateSource.Tag, Converter={x:Static converters:SelectionBorderThicknessConverter.Instance}}">
+                                                        ClipToBounds="True">
 
                                                     <Grid>
                                                         <!-- 缩略图 -->
@@ -240,12 +230,12 @@
                                                                   VerticalAlignment="Center"/>
                                                         </Border>
 
-                                                        <!-- v2.3 选中时遮罩: 半透明蓝色叠加, 加强选中反馈 -->
-                                                        <Border IsVisible="{Binding #SelectionStateSource.Tag, Converter={x:Static converters:IsCheckedConverter.Instance}}"
+                                                        <!-- 选中时遮罩: 半透明蓝色叠加 -->
+                                                        <Border IsVisible="{Binding IsSelected}"
                                                                 Background="#334FC3F7"
                                                                 IsHitTestVisible="False"/>
 
-                                                        <!-- v2.3.2: 多选模式复选框 (垂直水平居中) -->
+                                                        <!-- 多选模式复选框 (垂直水平居中) -->
                                                         <Panel HorizontalAlignment="Center"
                                                                VerticalAlignment="Center">
                                                             <!-- 未选中的空心圆 (多选模式但未选中) -->
@@ -254,7 +244,7 @@
                                                                     BorderBrush="#E6FFFFFF"
                                                                     BorderThickness="2"
                                                                     CornerRadius="14"
-                                                                    IsVisible="{Binding #SelectionStateSource.Tag, Converter={x:Static converters:IsUncheckedConverter.Instance}}"/>
+                                                                    IsVisible="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).IsMultiSelectMode}"/>
 
                                                             <!-- 已选中的对勾 (多选模式 + 已选中) -->
                                                             <Border Width="28" Height="28"
@@ -262,7 +252,7 @@
                                                                     BorderBrush="#FFFFFF"
                                                                     BorderThickness="2"
                                                                     CornerRadius="14"
-                                                                    IsVisible="{Binding #SelectionStateSource.Tag, Converter={x:Static converters:IsCheckedConverter.Instance}}">
+                                                                    IsVisible="{Binding IsSelected}">
                                                                 <Path Data="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
                                                                       Stretch="Uniform"
                                                                       Width="18" Height="18"

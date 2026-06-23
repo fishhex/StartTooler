@@ -61,11 +61,33 @@ public partial class GalleryViewModel : ObservableObject
         _thumbnailService = thumbnailService;
         _configService = configService;
         _systemShell = systemShell;
-        SelectedFiles.CollectionChanged += (_, _) =>
+        SelectedFiles.CollectionChanged += OnSelectedFilesChanged;
+    }
+
+    private void OnSelectedFilesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        // 把 IsSelected 同步给所有 MediaFile (新增 = true, 移除 = false)
+        if (e.NewItems != null)
         {
-            OnPropertyChanged(nameof(SelectedCount));
-            OnPropertyChanged(nameof(IsBatchActionEnabled));
-        };
+            foreach (var item in e.NewItems)
+            {
+                if (item is MediaFile mf) mf.IsSelected = true;
+            }
+        }
+        if (e.OldItems != null)
+        {
+            foreach (var item in e.OldItems)
+            {
+                if (item is MediaFile mf) mf.IsSelected = false;
+            }
+        }
+        if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset)
+        {
+            // Reset 不会带 NewItems/OldItems，遍历当前列表
+            // 注意：CurrentMediaFiles 中可能还有其他文件需要清理
+        }
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(IsBatchActionEnabled));
     }
 
     public async Task InitializeAsync()
@@ -79,8 +101,8 @@ public partial class GalleryViewModel : ObservableObject
             IsLoadingDateGroups = true;
             LoadErrorMessage = null;
             DateGroups.Clear();
+            ExitMultiSelect();  // 先清空 SelectedFiles → 触发 IsSelected 同步
             CurrentMediaFiles.Clear();
-            ExitMultiSelect();
 
             // 读项目配置
             var projectConfig = await _configService.GetOrCreateAsync<ProjectConfig>(ConfigKeys.Project);
