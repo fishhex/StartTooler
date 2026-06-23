@@ -6,6 +6,7 @@
         xmlns:views="using:StartTooler.Views"
         xmlns:components="using:StartTooler.Components"
         xmlns:controls="using:StartTooler.Controls"
+        xmlns:platform="using:Avalonia.Platform"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="StartTooler.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -28,22 +29,24 @@
     <Grid ColumnDefinitions="80,*"
           RowDefinitions="38,*">
         <!-- 系统标题栏 (Row 0 跨两列) -->
-        <Border Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0"
-                Background="{DynamicResource Bg.Outer}"
-                BorderBrush="{DynamicResource Bg.Divider}"
-                BorderThickness="0,0,0,1">
-            <Grid>
-                <!-- 交通灯占位（macOS 系统绘制） -->
-                <Border Width="68" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                <!-- 星助标题 -->
-                <TextBlock Text="星助"
-                           FontSize="13"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource Text.Primary}"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"/>
-            </Grid>
-        </Border>
+        <Panel Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0"
+               x:Name="TitleBar"
+               Background="Transparent"
+               PointerPressed="OnTitleBarPointerPressed">
+            <Border Background="{DynamicResource Bg.Outer}"
+                    BorderBrush="{DynamicResource Bg.Divider}"
+                    BorderThickness="0,0,0,1">
+                <Grid Margin="80,0,0,0">
+                    <!-- 星助标题 -->
+                    <TextBlock Text="星助"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Primary}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
+        </Panel>
 
         <!-- 扫描进度条 (C14 ScanProgressBar) -->
         <components:ScanProgressBar Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0"
