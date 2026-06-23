@@ -28,6 +28,10 @@ public partial class MainWindowViewModel : ObservableObject
 
     public bool HasProject => !string.IsNullOrEmpty(GalleryViewModel?.ProjectPath);
 
+    public bool IsMediaActive => CurrentPage == ViewPage.Gallery;
+
+    public bool IsSettingsActive => CurrentPage == ViewPage.Settings;
+
     public MainWindowViewModel()
     {
         // 创建服务实例
@@ -145,5 +149,11 @@ public partial class MainWindowViewModel : ObservableObject
             }
         }
         return false;
+    }
+
+    partial void OnCurrentPageChanged(ViewPage value)
+    {
+        OnPropertyChanged(nameof(IsMediaActive));
+        OnPropertyChanged(nameof(IsSettingsActive));
     }
 }
