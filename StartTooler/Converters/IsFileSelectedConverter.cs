@@ -99,3 +99,21 @@ public class IsCheckedConverter : IValueConverter
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
+
+/// <summary>
+/// 把 bool? 状态转成 BorderThickness:
+/// - null/false → 0
+/// - true → 2 (Uniform)
+/// </summary>
+public class SelectionBorderThicknessConverter : IValueConverter
+{
+    public static readonly SelectionBorderThicknessConverter Instance = new();
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is bool b && b)
+            return new Avalonia.Thickness(2);
+        return new Avalonia.Thickness(0);
+    }
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
