@@ -1,4 +1,4 @@
-# 星助（StarHelper）— 界面实现规格 v2.1
+# 星助（StarHelper）— 界面实现规格 v2.2
 
 > 本规格文档是给实现 AI 的**唯一权威输入**。
 > 实现者只需严格按照本文档执行，无需追问设计意图。
@@ -10,16 +10,31 @@
 
 | 项 | 值 |
 |---|---|
-| 项目名 | 星助 / StarHelper |
-| 文档版本 | **2.1**（从 v2.0 升级；v2.1 修正 MainWindow 布局为「三区域模式」） |
+| 项目名 | 星助 / StartTooler |
+| 文档版本 | **2.2**（从 v2.1 升级；v2.2 基于实际实现更新规格） |
 | 目标用户 | 天文摄影爱好者（astrophotographer） |
-| 技术栈 | **Avalonia UI 11.x** + C# 12 + .NET 8 + **SQLite** + CommunityToolkit.Mvvm |
+| 技术栈 | **Avalonia UI 11.x** + C# 12 + **.NET 9** + **SQLite** + CommunityToolkit.Mvvm |
 | 目标平台 | macOS（首要）、Windows 11、Linux（次要） |
 | 文档语言 | 中文 |
 | 设计风格 | Deep Space 深空主题（暗色优先）+ Red Night Vision 夜间红（次要） |
+| 项目结构 | **单项目**（StartTooler/StartTooler/） |
 | 字数限制 | 本版本忽略字数限制，作为权威参考 |
 
-### v2.0 相对 v1.1 的变更摘要
+### v2.2 相对 v2.1 的变更摘要
+
+| 类别 | 变更 |
+|------|------|
+| **技术栈** | .NET 8 → .NET 9 |
+| **项目结构** | src/ 子项目 → 单项目（StartTooler/StartTooler/） |
+| **ScanProgressBar** | Gallery 页内 → MainWindow 标题栏区域 |
+| **GalleryView 工具栏** | 高度 40px，有 "Gallery" 文字 |
+| **时间轴宽度** | 220px → 180px |
+| **NavRail** | 图标+文字 → **只有文字**（垂直排列） |
+| **TimelineEntry** | Count 属性 → **PhotoCount** 属性 |
+| **数据库表名** | `config` → `Config`（大写） |
+| **数据库路径** | `~/Library/Application Support/` → `Environment.SpecialFolder.ApplicationData` |
+
+### v2.1 相对 v2.0 的变更摘要（历史）
 
 | 类别 | 变更 |
 |------|------|
@@ -238,26 +253,26 @@
 
 ## 4. 组件库
 
-### 4.1 组件清单
+### 4.1 组件清单（v2.2 实际实现）
 
-| 编号 | 名称 | 用途 |
-|------|------|------|
-| C1 | MacChrome | 窗口标题栏 |
-| C2 | TimelineRail | 时间轴 |
-| C3 | MediaFileTile | 媒体缩略图（图片+视频） |
-| C4 | StatusBadge | 同步状态徽章（三态） |
-| C5 | PrimaryButton | 主按钮（紫渐变） |
-| C6 | SecondaryButton | 次按钮 |
-| C7 | TabBar | Tab 切换 |
-| C8 | Select | 选择器（含 Flyout） |
-| C9 | FormRow | 表单行 |
-| C10 | Tooltip | 悬浮提示 |
-| C11 | Iconography | 图标系统（StreamGeometry） |
-| **C12** | **RefreshButton** | 工具栏刷新按钮（5 状态） |
-| **C13** | **VideoBadge** | 视频角标 ▶ |
-| **C14** | **ScanProgressBar** | Gallery 页工具栏下方进度条 |
-| **C15** | **NavRail** | 左侧导航 rail（媒体 / 设置） |
-| C16 | StringToBitmapConverter | 文件路径 → Bitmap 转换器 |
+| 编号 | 名称 | 用途 | 状态 |
+|------|------|------|------|
+| C1 | MacChrome | 窗口标题栏 | ✅ |
+| C2 | TimelineRail | 时间轴 | ✅ |
+| C3 | MediaFileTile | 媒体缩略图（图片+视频） | ✅ |
+| C4 | StatusBadge | 同步状态徽章（三态） | ✅ |
+| C5 | PrimaryButton | 主按钮（紫渐变） | ✅ |
+| C6 | SecondaryButton | 次按钮 | ✅ |
+| C7 | TabBar | Tab 切换 | ✅ |
+| C8 | Select | 选择器（含 Flyout） | ✅ |
+| C9 | FormRow | 表单行 | ✅ |
+| C10 | Tooltip | 悬浮提示 | ✅ |
+| C11 | Iconography | 图标系统（StreamGeometry） | ✅ |
+| C12 | RefreshButton | 工具栏刷新按钮（4 状态+旋转动画） | ✅ |
+| C13 | VideoBadge | 视频角标 ▶ | ✅ |
+| C14 | ScanProgressBar | **标题栏底部**进度条 | ✅ |
+| C15 | NavRail | 左侧导航 rail（**只有文字**） | ✅ |
+| C16 | StringToBitmapConverter | 文件路径 → Bitmap 转换器 | ✅（FilePathToBitmapConverter）|
 
 ### C1 MacChrome
 
@@ -381,7 +396,12 @@
 
 ### C14 ScanProgressBar
 
-**位置**：Gallery 页工具栏**下方**（不是标题栏下方），全宽 2px。
+**位置**：MainWindow **标题栏底部**（Row 0 底部），全宽 2px。
+
+**v2.2 实际实现**：
+- 位于 MainWindow.axaml 的 Grid Row 0 内
+- Bottom 对齐，紧贴标题栏下方
+- DataContext 绑定到 `GalleryViewModel`
 
 **状态**：
 
@@ -390,11 +410,13 @@
 | 未扫描 | 完全隐藏（`IsVisible=False`） |
 | Scanning-Indeterminate | 流动条纹动画 |
 | Scanning-Determinate | 按 `Processed/Total` 比例填充 |
-| Completed | 100% 停留 200ms → 渐隐 |
+| Completed | 100% 停留 200ms → **渐隐**（opacity 动画） |
 
 **下方文字行**（条件显示）：
 - 扫描中：「扫描中 123 / 456 · 当前文件：DSC_0001.NEF」
 - 完成后：「扫描完成 · 共 456 个文件」
+
+> **注意**：v2.2 ScanProgressBar 在 MainWindow 内，不在 GalleryView 内。这样扫描状态在切换页面时也可见。
 
 ### C15 NavRail（左侧导航）
 
@@ -403,45 +425,45 @@
 | 宽度 | 80px 固定 |
 | 背景 | `Bg.Outer` |
 | 右边框 | 1px `Bg.Divider` |
-| 高度 | 主内容区全高（窗口高 - 86px） |
+| 高度 | 主内容区全高 |
 
-**内容（DockPanel）**：
-- 顶部（DockPanel.Dock="Top"）：媒体 NavItem
-- 底部（DockPanel.Dock="Bottom"）：设置 NavItem
-- 中间：留白
+**v2.2 实现**：使用 Grid 布局
+- Row 0：媒体 NavItem（顶部对齐）
+- Row 1：设置 NavItem（底部对齐）
 
-**NavItem 视觉**：
+**NavItem 视觉**（v2.2）：
 - 高度 48px
-- 垂直布局：图标（16×16）在上，文字在下
+- **只有文字**，垂直排列
 - 水平居中
-- Padding 8×12
+- Padding 0（文字内边距）
 
-**NavItem 5 状态**：
+**NavItem 4 状态**（v2.2 实际）：
 
 | 状态 | 表现 |
 |------|------|
-| 默认 | 透明背景，`Text.Secondary` 文字 + 图标 |
+| 默认 | 透明背景，`Text.Secondary` 文字 |
 | Hover | `Bg.Hover` 背景，`Text.Primary` |
-| **激活** | `Bg.SurfaceElevated` 背景，`Accent.Stellar` 文字 + 图标 + **左侧 2px `Accent.Stellar` 强调条** |
+| **激活** | `Bg.SurfaceElevated` 背景，`Accent.Stellar` 文字 + **左侧 2px `Accent.Stellar` 边框** |
 | Pressed | `Bg.Divider` 背景 |
 
-### C16 StringToBitmapConverter（关键差异点）
+> **注意**：v2.2 实现只有文字，**没有图标**。如需添加图标，见 §21.1 涉及文件清单。
+
+### C16 FilePathToBitmapConverter（v2.2 实际实现）
 
 > **Avalonia 11 的 `Image.Source` 不接受 `string`**（不像 WPF 自动转）。
 
+**v2.2 实现**（`Converters/FilePathToBitmapConverter.cs`）：
+
 ```csharp
-public class StringToBitmapConverter : IValueConverter
+public class FilePathToBitmapConverter : IValueConverter
 {
-    private static readonly LruCache _cache = new(maxSize: 100);
-    
     public object? Convert(object? value, Type t, object? p, CultureInfo c)
     {
         if (value is not string path || string.IsNullOrEmpty(path)) return null;
         if (!File.Exists(path)) return null;
         try
         {
-            return _cache.GetOrAdd(path, p => 
-                Bitmap.DecodeToWidth(File.OpenRead(p), 320));
+            return new Bitmap(File.OpenRead(path));
         }
         catch { return null; }
     }
@@ -452,21 +474,24 @@ public class StringToBitmapConverter : IValueConverter
 
 **使用**：
 ```xml
-<Image Source="{Binding ThumbnailPath, Converter={StaticResource StringToBitmap}}"
+<Image Source="{Binding ThumbnailPath, Converter={StaticResource FilePathToBitmap}}"
        Stretch="UniformToFill" />
 ```
+
+> **注意**：v2.2 实现没有 LRU 缓存，直接加载。性能优化可在后续迭代中添加。
 
 ---
 
 ## 5. 页面规格
 
-### 5.1 MainWindow（整体布局 — 三区域模式）
+### 5.1 MainWindow（整体布局 — v2.2 实际实现）
 
 ```
 ┌──────────────────────────────────────────────────┐
 │  [● ● ●]                  星助                    │ 系统标题栏 38px
+│  ═══════════════════════════════════════════════ │ ScanProgressBar (2px)
 ├──────┬───────────────────────────────────────────┤
-│      │  [当前页面的工具栏 48px]                  │ ← 每页独立
+│      │  [当前页面的工具栏]                        │ ← 每页独立
 │      │  ──────────────────────────────────────   │
 │ 菜单 │                                            │
 │ 栏   │  [当前内容]                                │ ← 每页不同
@@ -479,84 +504,98 @@ public class StringToBitmapConverter : IValueConverter
 ```
 
 **外层 Grid**：
-- `ColumnDefinitions="80,*"`（**两列**，没有 280px 第三列）
-- `RowDefinitions="38,*"`（**标题栏 / 主内容**）—**没有**全局工具栏行
+- `ColumnDefinitions="80,*"`（两列）
+- `RowDefinitions="38,*"`（标题栏 / 主内容）
 
 **三区域职责**：
 
 | 区域 | 位置 | 职责 | 跨页 |
 |------|------|------|------|
-| **系统标题栏** | Row 0 跨两列 | 仅窗口标题（星助） | 是 |
-| **菜单栏** | Col 0 跨两行 | 页面导航（媒体 / 设置） | 是 |
+| **系统标题栏** | Row 0 跨两列 | 窗口标题（星助）+ **ScanProgressBar** | 是 |
+| **菜单栏** | Col 0 Row 1 | 页面导航（媒体 / 设置） | 是 |
 | **页面工具栏** | Col 1 Row 1 顶部 | **每页独立**的动作 | ❌ 否 |
 | **页面内容** | Col 1 Row 1 下半 | 当前页的具体内容 | ❌ 否 |
 
-**关键原则**：
-- 标题栏 = 仅窗口标题，**不**放按钮
-- 菜单栏 = 跨页持久，**不**变
-- 工具栏 = **每页自带**，内容随页面变
-- 内容 = 完全随页面变
+**v2.2 关键差异**：
+- **ScanProgressBar 位于标题栏底部**（不是 GalleryView 内）
+- 标题栏内放置进度条，扫描状态全局可见
+- Grid.Row 0 内包含：标题文字 + ScanProgressBar（Bottom 对齐）
 
-**为什么工具栏是每页独立**：
-- Gallery 页：刷新（动作）
-- Settings 页：保存 / 返回（动作）
-- 未来 OSS 页：测试连接 / 保存（动作）
-- 不同页有不同动作，**不**应该用全局工具栏
+**GalleryView 工具栏**：
+- 高度 **40px**（不是 48px）
+- 包含 "Gallery" 标题文字 + 刷新按钮
+
+**时间轴宽度**：
+- **180px**（不是 220px）
 
 ### 5.2 GalleryView（页面 1：媒体）
 
-**结构**：
+**结构**（v2.2 实际实现）：
 ```
 ┌─────────────────────────────────────────────┐
-│  [Page Toolbar 48px]      [刷新]              │  ← 每页工具栏
+│  Gallery    [刷新]                           │  ← 工具栏 40px
 ├──────────┬──────────────────────────────────┤
 │ Timeline │                                  │
-│  (220px) │  PhotoGrid                       │
+│  (180px) │  PhotoGrid                       │
 │          │                                  │
 └──────────┴──────────────────────────────────┘
 ```
 
-**布局**：
-- 顶部 48px 工具栏：右对齐「刷新」按钮
-- 下方两列 Grid：220px TimelineRail / `*` PhotoGrid
-- PhotoGrid 4 列 WrapPanel
+**布局**（v2.2）：
+- 顶部 **40px** 工具栏：左侧 "Gallery" 标题 + 右侧「刷新」按钮
+- 下方两列 Grid：**180px** TimelineRail / `*` PhotoGrid
+- PhotoGrid 使用 WrapPanel（ItemWidth=160, ItemHeight=120）
 
-**GalleryViewModel 接口**（不变）：
+**GalleryViewModel 接口**（v2.2 实际实现）：
 
 ```csharp
 public partial class GalleryViewModel : ObservableObject
 {
-    // 数据
-    public ObservableCollection<DateCount> DateGroups { get; }
+    // === 数据源 ===
+    public ObservableCollection<TimelineEntry> DateGroups { get; }
     public ObservableCollection<MediaFile> CurrentMediaFiles { get; }
-    
-    // 状态
-    [ObservableProperty] DateCount? _selectedDate;
-    [ObservableProperty] bool _isLoadingDateGroups;
-    [ObservableProperty] bool _isLoadingMedia;
-    [ObservableProperty] string? _loadErrorMessage;
-    [ObservableProperty] string? _projectPath;
-    [ObservableProperty] bool _isScanning;
-    [ObservableProperty] ScanProgress? _scanProgress;
-    [ObservableProperty] string? _scanStatusMessage;
-    [ObservableProperty] RefreshState _refreshState;
-    
-    // 命令
-    IRelayCommand RefreshCommand
-    IRelayCommand CancelScanCommand
-    IRelayCommand ReloadCommand
-    IRelayCommand<DateCount> SelectDateCommand
-    
-    // 生命周期
+
+    // === 选中态 ===
+    [ObservableProperty] private TimelineEntry? _selectedDate;
+
+    // === 加载状态 ===
+    [ObservableProperty] private bool _isLoadingDateGroups;
+    [ObservableProperty] private bool _isLoadingMedia;
+    [ObservableProperty] private string? _loadErrorMessage;
+
+    // === 扫描进度状态 ===
+    [ObservableProperty] private bool _isScanning;
+    [ObservableProperty] private ScanProgress? _scanProgress;
+    [ObservableProperty] private string? _scanStatusMessage;
+    [ObservableProperty] private RefreshState _refreshState = RefreshState.Idle;
+
+    // === 命令 ===
+    [RelayCommand] private async Task SelectAsync(TimelineEntry? entry)
+    [RelayCommand] private async Task ReloadAsync()
+    [RelayCommand] private async Task RefreshAsync()
+
+    // === 生命周期 ===
     Task InitializeAsync()
-    Task LoadDateAsync(DateCount date)
+    private async Task LoadDateAsync(TimelineEntry entry, CancellationToken ct)
 }
 ```
 
-**Page Toolbar 规格**（C12 RefreshButton）：
-- 高度 48px，背景 `Bg.Surface`，底 1px `Bg.Divider`
-- 右侧 margin 14px 放「刷新」按钮
-- 5 状态：默认 / Hover / Pressed / Scanning / Disabled
+**TimelineEntry 模型**（v2.2）：
+```csharp
+public partial class TimelineEntry : ObservableObject
+{
+    public DateTime Date { get; }
+    public int PhotoCount { get; }        // 注意：是 PhotoCount 不是 Count
+    [ObservableProperty] private bool isSelected;
+}
+```
+
+**Page Toolbar 规格**（v2.2）：
+- 高度 **40px**（不是 48px）
+- 背景 `Bg.Surface`，底 1px `Bg.Divider`
+- 左侧 "Gallery" 标题文字
+- 右侧「刷新」按钮
+- 状态：默认 / Hover / Pressed / Scanning（旋转动画）/ Disabled
 
 ### 5.3 SettingsView（页面 2：设置）
 
@@ -590,56 +629,67 @@ public partial class GalleryViewModel : ObservableObject
 - OnSelectedThemeChanged **只**调 `RecomputeDirty`，不预览
 - 跨 Tab 状态保持：切 Tab 不丢改动
 
-**GalleryViewModel 接口**：
+**SettingsViewModel 接口**（v2.2 实际实现）：
 
 ```csharp
-public partial class GalleryViewModel : ObservableObject
+public partial class SettingsViewModel : ObservableObject
 {
-    // 数据
-    public ObservableCollection<DateCount> DateGroups { get; }
-    public ObservableCollection<MediaFile> CurrentMediaFiles { get; }
-    
-    // 状态
-    [ObservableProperty] DateCount? _selectedDate;
-    [ObservableProperty] bool _isLoadingDateGroups;
-    [ObservableProperty] bool _isLoadingMedia;
-    [ObservableProperty] string? _loadErrorMessage;
-    [ObservableProperty] string? _projectPath;
-    [ObservableProperty] bool _isScanning;
-    [ObservableProperty] ScanProgress? _scanProgress;
-    [ObservableProperty] string? _scanStatusMessage;
-    [ObservableProperty] RefreshState _refreshState;
-    
-    // 命令
-    IRelayCommand RefreshCommand
-    IRelayCommand CancelScanCommand
-    IRelayCommand ReloadCommand
-    IRelayCommand<DateCount> SelectDateCommand
-    
-    // 生命周期
-    Task InitializeAsync()
-    Task LoadDateAsync(DateCount date)
+    private readonly IDirectoryPickerService _directoryPicker;
+    private readonly IConfigService _configService;
+    private string? _lastSavedDirectory;
+    private int _lastSavedTheme;  // 0=DeepSpace, 1=RedNight
+
+    [ObservableProperty] private string? selectedProjectDirectory;
+    [ObservableProperty] private ObservableCollection<string> recentDirectories;
+    [ObservableProperty] private bool isDirty;
+    [ObservableProperty] private bool isSaving;
+    [ObservableProperty] private string? statusMessage;
+    [ObservableProperty] private int selectedTheme;  // 0 或 1
+
+    [RelayCommand] private async Task BrowseDirectory()
+    [RelayCommand] private void SelectRecentDirectory(string? directory)
+    [RelayCommand] private void ClearRecentDirectories()
+    [RelayCommand] private async Task Save()
+    public void DiscardChanges()
 }
 ```
 
-### 5.4 MainWindowViewModel
+**v2.2 特点**：
+- 主题用 `int`（0=DeepSpace, 1=RedNight），不是枚举
+- 保存时调用 `ThemeManager.SetTheme()` 应用主题
+- 使用快照（`_lastSavedDirectory`, `_lastSavedTheme`）判断 `IsDirty`
+- `InitializeAsync()` 最后才标记 `_isInitialized = true`，避免初始化时触发脏检查
+
+### 5.4 MainWindowViewModel（v2.2 实际实现）
 
 ```csharp
+public enum ViewPage { Gallery, Settings }
+
 public partial class MainWindowViewModel : ObservableObject
 {
-    [ObservableProperty] private ViewPage _currentPage = ViewPage.Gallery;
-    
-    [RelayCommand]
-    private void NavigateToMedia() => CurrentPage = ViewPage.Gallery;
-    
-    [RelayCommand]
-    private void NavigateToSettings() => CurrentPage = ViewPage.Settings;
-}
+    [ObservableProperty] private GalleryViewModel galleryViewModel;
+    [ObservableProperty] private SettingsViewModel settingsViewModel;
+    [ObservableProperty] private object currentView;
+    [ObservableProperty] private string title = "星助";
+    [ObservableProperty] private bool isSettingsPage;
+    [ObservableProperty] private ViewPage currentPage = ViewPage.Gallery;
 
-public enum ViewPage { Gallery, Settings }
+    public bool HasProject => !string.IsNullOrEmpty(GalleryViewModel?.ProjectPath);
+    public bool IsMediaActive => CurrentPage == ViewPage.Gallery;
+    public bool IsSettingsActive => CurrentPage == ViewPage.Settings;
+
+    [RelayCommand] private async Task NavigateToGallery()
+    [RelayCommand] private void NavigateToSettings()
+    [RelayCommand] private void NavigateToMedia()
+    [RelayCommand] private async Task Refresh()
+}
 ```
 
-`CurrentPage` 控制主内容显示，NavRail 通过 `Classes.Active` 响应。
+**v2.2 特点**：
+- 直接创建子 ViewModel（不使用 DI 容器）
+- 包含 `GalleryViewModel` 和 `SettingsViewModel` 实例
+- `CurrentView` 控制 ContentControl 显示哪个页面
+- 导航到设置页时检查 `IsDirty`，有未保存修改则弹出确认对话框
 
 ---
 
@@ -947,79 +997,69 @@ public interface IThemeService
 
 ---
 
-## 13. 项目结构
+## 13. 项目结构（v2.2 实际实现）
 
 ```
-StarHelper/
-├── StarHelper.sln
-├── src/
-│   ├── StarHelper.App/
-│   │   ├── Program.cs
-│   │   ├── App.axaml / App.axaml.cs
-│   │   ├── Views/
-│   │   │   ├── MainWindow.axaml
-│   │   │   ├── GalleryView.axaml
-│   │   │   └── SettingsView.axaml
-│   │   ├── ViewModels/
-│   │   │   ├── MainWindowViewModel.cs
-│   │   │   ├── GalleryViewModel.cs
-│   │   │   └── SettingsViewModel.cs
-│   │   ├── Controls/
-│   │   │   ├── MediaFileTile.axaml / .cs        (C3)
-│   │   │   ├── TimelineRail.axaml / .cs
-│   │   │   ├── RefreshButton.axaml / .cs       (C12)
-│   │   │   ├── ScanProgressBar.axaml / .cs      (C14)
-│   │   │   └── NavRail.axaml / .cs              (C15)
-│   │   ├── Converters/
-│   │   │   ├── StringToBitmapConverter.cs       (C16)
-│   │   │   ├── MediaTypeConverters.cs
-│   │   │   ├── MediaFileConverters.cs
-│   │   │   ├── EnumToBoolConverter.cs           (警告：不推荐使用)
-│   │   │   └── BoolToSaveTextConverter.cs
-│   │   ├── Services/
-│   │   │   ├── IConfigService.cs / SqliteConfigService.cs
-│   │   │   ├── IDirectoryPickerService.cs / DirectoryPickerService.cs
-│   │   │   ├── IThemeService.cs / ThemeService.cs
-│   │   │   ├── IMediaScanner.cs / MediaScanner.cs
-│   │   │   ├── IThumbnailGenerator.cs / ThumbnailGenerator.cs
-│   │   │   └── IFfmpegLocator.cs / FfmpegLocator.cs
-│   │   ├── Models/
-│   │   │   ├── DateCount.cs
-│   │   │   ├── MediaFile.cs
-│   │   │   ├── MediaType.cs
-│   │   │   └── SyncStatus.cs                   (UI 内部枚举)
-│   │   └── Assets/
-│   │       └── Icons.axaml
-│   └── StarHelper.Core/
-│       ├── Config/
-│       │   ├── IConfigService.cs
-│       │   ├── SqliteConfigService.cs
-│       │   ├── ConfigServiceExtensions.cs
-│       │   ├── ConfigKeys.cs
-│       │   ├── AppConfig.cs
-│       │   ├── ProjectConfig.cs
-│       │   ├── OssConfig.cs
-│       │   └── WindowConfig.cs
-│       ├── Data/
-│       │   ├── MediaFile.cs
-│       │   ├── MediaType.cs
-│       │   ├── DateCount.cs
-│       │   ├── IMediaRepository.cs
-│       │   └── MediaRepository.cs
-│       └── Services/
-│           └── ...
-└── Tests/
-    ├── StarHelper.Core.Tests/
-    │   ├── Config/SqliteConfigServiceTests.cs
-    │   └── Data/MediaRepositoryTests.cs
-    └── StarHelper.App.Tests/
-        └── Services/MediaScannerTests.cs
-
-Themes/
-    ├── Colors.axaml
-    ├── DeepSpace.axaml
-    └── RedNightVision.axaml
+StartTooler/                          ← 解决方案根目录
+├── StartTooler.sln
+├── StartTooler/                      ← 单项目（不是 src/ 子项目）
+│   ├── Program.cs
+│   ├── StartTooler.csproj
+│   ├── App.axaml / App.axaml.cs
+│   ├── Views/
+│   │   ├── MainWindow.axaml / .cs
+│   │   ├── GalleryView.axaml / .cs
+│   │   └── SettingsView.axaml / .cs
+│   ├── ViewModels/
+│   │   ├── MainWindowViewModel.cs
+│   │   ├── GalleryViewModel.cs
+│   │   └── SettingsViewModel.cs
+│   ├── Controls/
+│   │   ├── NavRail.axaml / .cs
+│   │   └── StatusLegend.axaml / .cs
+│   ├── Components/
+│   │   └── ScanProgressBar.axaml / .cs   (C14)
+│   ├── Converters/
+│   │   ├── FilePathToBitmapConverter.cs
+│   │   ├── MediaFileConverters.cs
+│   │   ├── MediaTypeConverters.cs
+│   │   ├── RefreshStateConverters.cs
+│   │   ├── ScanProgressConverters.cs
+│   │   ├── SettingsConverters.cs
+│   │   ├── SyncStatusConverters.cs
+│   │   └── TimelineBoolConverters.cs
+│   ├── Services/
+│   │   ├── ConfigService.cs
+│   │   ├── IConfigService.cs
+│   │   ├── DirectoryPickerService.cs
+│   │   ├── IDirectoryPickerService.cs
+│   │   ├── ThemeManager.cs
+│   │   ├── ThumbnailService.cs
+│   │   ├── ImageCacheService.cs
+│   │   ├── AppConfig.cs
+│   │   ├── ProjectConfig.cs
+│   │   └── ConfigKeys.cs
+│   ├── Data/
+│   │   ├── MediaFile.cs
+│   │   ├── MediaType.cs
+│   │   ├── DateCount.cs
+│   │   ├── IMediaRepository.cs
+│   │   └── MediaRepository.cs
+│   ├── Models/
+│   │   └── Models.cs                   (TimelineEntry, SyncStatus, RefreshState, ScanProgress)
+│   ├── Themes/
+│   │   ├── Colors.axaml
+│   │   ├── Icons.axaml
+│   │   ├── Styles.axaml
+│   │   └── RedNightVision.axaml
+│   └── Assets/
+│       └── ...
+├── dist/
+├── publish/
+└── obj/
 ```
+
+> **注意**：v2.2 使用单项目结构，所有代码在同一目录下。
 
 ---
 
@@ -1056,14 +1096,17 @@ Themes/
 
 ### 15.3 表结构（设置表，唯一一张）
 
+**v2.2 实际实现**：
+
 ```sql
-CREATE TABLE IF NOT EXISTS config (
-    key        TEXT PRIMARY KEY NOT NULL,
-    value      TEXT NOT NULL,           -- JSON
-    updated_at TEXT NOT NULL,           -- ISO 8601 UTC
-    version    INTEGER NOT NULL DEFAULT 1
+CREATE TABLE IF NOT EXISTS Config (
+    Key        TEXT PRIMARY KEY,
+    Value      TEXT NOT NULL,           -- JSON
+    UpdatedAt  TEXT NOT NULL            -- ISO 8601 UTC
 );
 ```
+
+> **注意**：v2.2 表名为 `Config`（大写），没有 `version` 字段。
 
 > ⚠️ **铁律**：无论未来增加多少配置分区，**始终只有这一张 `config` 表**。
 
@@ -1099,11 +1142,23 @@ public interface IConfigService
 
 ### 15.7 数据库路径
 
-| 平台 | 路径 |
-|------|------|
-| macOS | `~/Library/Application Support/StarHelper/config.db` |
-| Windows | `%LOCALAPPDATA%\StarHelper\config.db` |
-| Linux | `~/.local/share/StarHelper/config.db` |
+**v2.2 实际实现**：统一使用 `Environment.SpecialFolder.ApplicationData`
+
+```csharp
+// C# 实现
+var appDataPath = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+    "StartTooler");
+var dbPath = Path.Combine(appDataPath, "config.db");
+```
+
+| 平台 | 实际路径 |
+|------|---------|
+| macOS | `~/Library/Application Support/StartTooler/config.db` |
+| Windows | `%APPDATA%\StartTooler\config.db` |
+| Linux | `~/.config/StartTooler/config.db` |
+
+> **注意**：v2.2 使用 `ApplicationData`（漫游），不是 `LocalApplicationData`。
 
 ### 15.8 敏感字段
 
@@ -1699,9 +1754,9 @@ foreach (var file in files)
 | `App/ViewModels/GalleryViewModel.cs` | 完全重写，接 Repository + 状态机 |
 | `App/ViewModels/SettingsViewModel.cs` | 单一启用控制 + Save-First 主题 |
 | `Core/Config/SqliteConfigService.cs` | 已有 |
-| `App.axaml.cs` | 启动时 ThemeService.ApplyTheme + DI 注册 |
-| `Program.cs` | DI 注册所有服务 |
-| `App.axaml` | 注册 Converter + Icon + Theme 资源 |
+| `App.axaml.cs` | 启动时 ThemeManager.SetTheme |
+| `Program.cs` | 创建 MainWindow |
+| `App.axaml` | 注册 Styles + Colors + Icons 资源 |
 
 ### 21.3 删除
 
@@ -1728,9 +1783,38 @@ foreach (var file in files)
 
 ---
 
-**End of Spec v2.1**
+**End of Spec v2.2**
 
-> 本规格是 v2.1，整合 6+ 轮迭代的**全部**需求、决策、踩坑教训。
-> v2.1 关键修正：MainWindow 改用「三区域模式」（标题栏 / 菜单栏 / 每页自带工具栏）。
+> 本规格是 v2.2，基于实际实现更新。
+> v2.2 关键修正：反映单项目结构、ScanProgressBar 位置、NavRail 纯文字实现等实际细节。
 > 实现 AI 只需严格按照本文档执行，无需追问设计意图。
 > **所有视觉决策、所有行为约束、所有架构铁律已闭环。**
+
+---
+
+## 附录 A：v2.2 变更汇总
+
+### 设计决策
+
+| 项目 | 原规格 | v2.2 实际 |
+|------|--------|-----------|
+| 项目结构 | src/ 子项目 | 单项目 |
+| .NET 版本 | .NET 8 | .NET 9 |
+| ScanProgressBar | GalleryView 内 | MainWindow 标题栏 |
+| 工具栏高度 | 48px | **40px** |
+| 时间轴宽度 | 220px | **180px** |
+| NavRail | 图标+文字 | **只有文字** |
+| TimelineEntry.Count | Count | **PhotoCount** |
+| 数据库表名 | config | **Config** |
+| 数据库路径 | ~/Library/Application Support/ | **Environment.SpecialFolder.ApplicationData** |
+| Theme 存储 | ThemeMode 枚举 | **int (0/1)** |
+
+### 未实现项（待后续迭代）
+
+| 项目 | 说明 |
+|------|------|
+| C12 RefreshButton 5 状态 | 目前 Hover/Pressed 样式未完全实现 |
+| LRU 缩略图缓存 | FilePathToBitmapConverter 未实现缓存 |
+| 主题切换预览 | 尚未实现（Save-First 生效） |
+| OSS 配置 Tab | SettingsView 只有「项目」Tab，OSS Tab 未实现 |
+| 单元测试 | 未编写 |
