@@ -238,38 +238,37 @@
                                                                   VerticalAlignment="Center"/>
                                                         </Border>
 
-                                                        <!-- v2.3: 多选模式复选框 (左上角) -->
-                                                        <Panel HorizontalAlignment="Left"
-                                                               VerticalAlignment="Top"
-                                                               Margin="6">
+                                                        <!-- v2.3 选中时遮罩: 半透明蓝色叠加, 加强选中反馈 -->
+                                                        <Border IsVisible="{Binding #SelectionStateSource.Tag, Converter={x:Static converters:IsCheckedConverter.Instance}}"
+                                                                Background="#334FC3F7"
+                                                                IsHitTestVisible="False"/>
+
+                                                        <!-- v2.3.2: 多选模式复选框 (垂直水平居中) -->
+                                                        <Panel HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center">
                                                             <!-- 未选中的空心圆 (多选模式但未选中) -->
-                                                            <Border Width="22" Height="22"
-                                                                    Background="#99000000"
+                                                            <Border Width="28" Height="28"
+                                                                    Background="#AA000000"
                                                                     BorderBrush="#E6FFFFFF"
                                                                     BorderThickness="2"
-                                                                    CornerRadius="11"
+                                                                    CornerRadius="14"
                                                                     IsVisible="{Binding #SelectionStateSource.Tag, Converter={x:Static converters:IsUncheckedConverter.Instance}}"/>
 
                                                             <!-- 已选中的对勾 (多选模式 + 已选中) -->
-                                                            <Border Width="22" Height="22"
+                                                            <Border Width="28" Height="28"
                                                                     Background="{DynamicResource Accent.Stellar}"
-                                                                    BorderBrush="{DynamicResource Accent.Stellar}"
+                                                                    BorderBrush="#FFFFFF"
                                                                     BorderThickness="2"
-                                                                    CornerRadius="11"
+                                                                    CornerRadius="14"
                                                                     IsVisible="{Binding #SelectionStateSource.Tag, Converter={x:Static converters:IsCheckedConverter.Instance}}">
                                                                 <Path Data="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
                                                                       Stretch="Uniform"
-                                                                      Width="16" Height="16"
+                                                                      Width="18" Height="18"
                                                                       Fill="#0A0E1A"
                                                                       HorizontalAlignment="Center"
                                                                       VerticalAlignment="Center"/>
                                                             </Border>
                                                         </Panel>
-
-                                                        <!-- v2.3 选中时遮罩: 半透明蓝色叠加, 加强选中反馈 -->
-                                                        <Border IsVisible="{Binding #SelectionStateSource.Tag, Converter={x:Static converters:IsCheckedConverter.Instance}}"
-                                                                Background="#334FC3F7"
-                                                                IsHitTestVisible="False"/>
                                                     </Grid>
                                                 </Border>
                                             </Grid>
