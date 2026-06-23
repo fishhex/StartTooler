@@ -167,9 +167,11 @@
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
                                             <Grid>
-                                                <!-- 不可见的状态源 Border (承载 MultiBinding 结果) -->
+                                                <!-- 不可见的状态源 Border (承载 MultiBinding 结果, 必须 IsVisible=True 才能传播绑定) -->
                                                 <Border x:Name="SelectionStateSource"
-                                                        IsVisible="False">
+                                                        IsHitTestVisible="False"
+                                                        Width="0" Height="0"
+                                                        Opacity="0">
                                                     <Border.Tag>
                                                         <MultiBinding Converter="{x:Static converters:FileSelectionStateConverter.Instance}">
                                                             <Binding/>
