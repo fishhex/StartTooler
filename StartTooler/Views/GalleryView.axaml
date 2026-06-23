@@ -16,6 +16,8 @@
         <converters:MediaFileToStatusConverter x:Key="MediaFileToStatus"/>
         <converters:MediaTypeToVideoConverter x:Key="MediaTypeToVideo"/>
         <converters:FilePathToBitmapConverter x:Key="FilePathToBitmap"/>
+        <converters:IsFileSelectedConverter x:Key="IsFileSelected"/>
+        <converters:FileSelectionStateConverter x:Key="FileSelectionState"/>
     </UserControl.Resources>
 
     <!-- v2.3: 工具栏已移至 MainWindow 全局工具栏 -->
@@ -160,7 +162,7 @@
                             <DataTemplate x:DataType="data:MediaFile">
                                 <Button Classes="photo-tile"
                                         Margin="8"
-                                        Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).ToggleSelectionCommand}"
+                                        Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).ToggleSelectionCommand}"
                                         CommandParameter="{Binding}">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
@@ -205,22 +207,45 @@
                                                                   VerticalAlignment="Center"/>
                                                         </Border>
 
-                                                        <!-- v2.3: 选中状态 - 黑色对勾 (右上角) -->
-                                                        <Border IsVisible="False"
-                                                                x:Name="CheckBadge"
-                                                                HorizontalAlignment="Right"
-                                                                VerticalAlignment="Top"
-                                                                Margin="6"
-                                                                Width="28" Height="28"
-                                                                Background="#E60A0E1A"
-                                                                CornerRadius="14">
-                                                            <Path Data="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
-                                                                  Stretch="Uniform"
-                                                                  Width="18" Height="18"
-                                                                  Fill="{DynamicResource Text.Primary}"
-                                                                  HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center"/>
-                                                        </Border>
+                                                        <!-- v2.3: 多选模式的复选框 (右上角) -->
+                                                        <Panel HorizontalAlignment="Right"
+                                                               VerticalAlignment="Top"
+                                                               Margin="6">
+                                                            <!-- 不可见的状态源 Border (承载 MultiBinding 结果) -->
+                                                            <Border x:Name="SelectionStateSource"
+                                                                    IsVisible="False">
+                                                                <Border.Tag>
+                                                                    <MultiBinding Converter="{x:Static converters:FileSelectionStateConverter.Instance}">
+                                                                        <Binding/>
+                                                                        <Binding Path="$parent[ItemsControl].((vm:GalleryViewModel)DataContext).SelectedFiles"/>
+                                                                        <Binding Path="$parent[ItemsControl].((vm:GalleryViewModel)DataContext).IsMultiSelectMode"/>
+                                                                    </MultiBinding>
+                                                                </Border.Tag>
+                                                            </Border>
+
+                                                            <!-- 未选中的空心圆 (多选模式但未选中) -->
+                                                            <Border Width="22" Height="22"
+                                                                    Background="#99000000"
+                                                                    BorderBrush="#CCFFFFFF"
+                                                                    BorderThickness="1.5"
+                                                                    CornerRadius="11"
+                                                                    IsVisible="{Binding #SelectionStateSource.Tag, Converter={x:Static converters:IsUncheckedConverter.Instance}}"/>
+
+                                                            <!-- 已选中的对勾 (多选模式 + 已选中) -->
+                                                            <Border Width="22" Height="22"
+                                                                    Background="#E60A0E1A"
+                                                                    BorderBrush="#4FC3F7"
+                                                                    BorderThickness="1.5"
+                                                                    CornerRadius="11"
+                                                                    IsVisible="{Binding #SelectionStateSource.Tag, Converter={x:Static converters:IsCheckedConverter.Instance}}">
+                                                                <Path Data="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
+                                                                      Stretch="Uniform"
+                                                                      Width="16" Height="16"
+                                                                      Fill="{DynamicResource Accent.Stellar}"
+                                                                      HorizontalAlignment="Center"
+                                                                      VerticalAlignment="Center"/>
+                                                            </Border>
+                                                        </Panel>
                                                     </Grid>
                                                 </Border>
                                             </Grid>
