@@ -6,7 +6,6 @@
         xmlns:views="using:StartTooler.Views"
         xmlns:components="using:StartTooler.Components"
         xmlns:controls="using:StartTooler.Controls"
-        xmlns:platform="using:Avalonia.Platform"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="StartTooler.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -24,11 +23,14 @@
         <vm:MainWindowViewModel/>
     </Window.DataContext>
 
-    <!-- 两列两行布局：Col 0: NavRail(80px) | Col 1: 内容(*) -->
-    <!--                        Row 0: 标题栏(38px) | Row 1: 内容(*) -->
+    <!-- v2.3 布局：
+         Col 0: NavRail (80px)        Col 1: 内容
+         Row 0: 标题栏 (38px, 跨两列)
+         Row 1: 工具栏 (40px)         (NavRail 顶部留白 40px)
+         Row 2: 页面内容 (*)          NavRail 主体 -->
     <Grid ColumnDefinitions="80,*"
-          RowDefinitions="38,*">
-        <!-- 系统标题栏 (Row 0 跨两列) -->
+          RowDefinitions="38,40,*">
+        <!-- Row 0 跨两列: 系统标题栏 -->
         <Panel Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0"
                x:Name="TitleBar"
                Background="Transparent"
@@ -37,7 +39,6 @@
                     BorderBrush="{DynamicResource Bg.Divider}"
                     BorderThickness="0,0,0,1">
                 <Grid Margin="80,0,0,0">
-                    <!-- 星助标题 -->
                     <TextBlock Text="星助"
                                FontSize="13"
                                FontWeight="SemiBold"
@@ -46,23 +47,91 @@
                                VerticalAlignment="Center"/>
                 </Grid>
             </Border>
+            <components:ScanProgressBar VerticalAlignment="Bottom"
+                                        DataContext="{Binding GalleryViewModel}"/>
         </Panel>
 
-        <!-- 扫描进度条 (C14 ScanProgressBar) -->
-        <components:ScanProgressBar Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0"
-                                     VerticalAlignment="Bottom"
-                                     DataContext="{Binding GalleryViewModel}"/>
-
-        <!-- 左侧导航 Rail (Col 0 仅内容区) -->
+        <!-- Row 1 Col 0: NavRail 上方 40px 留白 (背景色与 NavRail 一致) -->
         <Border Grid.Column="0" Grid.Row="1"
+                Background="{DynamicResource Bg.Outer}"
+                BorderBrush="{DynamicResource Bg.Divider}"
+                BorderThickness="0,0,1,1"/>
+
+        <!-- Row 1 Col 1: 全局工具栏 -->
+        <Border Grid.Column="1" Grid.Row="1"
+                Background="{DynamicResource Bg.Surface}"
+                BorderBrush="{DynamicResource Bg.Divider}"
+                BorderThickness="0,0,0,1">
+            <DockPanel>
+                <!-- 右侧：刷新按钮 -->
+                <Button Classes="refresh-button"
+                        DockPanel.Dock="Right"
+                        Margin="0,0,16,0"
+                        Command="{Binding GalleryViewModel.RefreshCommand}"
+                        IsEnabled="{Binding GalleryViewModel.ProjectPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                        ToolTip.Tip="刷新扫描">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <Path Data="{DynamicResource Icon.Refresh}"
+                              Stretch="Uniform"
+                              Width="14" Height="14"
+                              Fill="{DynamicResource Text.Secondary}"
+                              Classes="refresh-icon"/>
+                        <TextBlock Text="刷新"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource Text.Secondary}"
+                                   VerticalAlignment="Center"
+                                   Classes="refresh-text"/>
+                    </StackPanel>
+                </Button>
+
+                <!-- 左侧：动作按钮组 -->
+                <StackPanel Orientation="Horizontal"
+                            Spacing="8"
+                            Margin="16,0,0,0"
+                            VerticalAlignment="Center"
+                            IsVisible="{Binding IsGalleryPage}">
+                    <Button Classes="toolbar-button"
+                            Content="多选"
+                            Command="{Binding GalleryViewModel.EnterMultiSelectCommand}"
+                            IsVisible="{Binding !GalleryViewModel.IsMultiSelectMode}"/>
+
+                    <Button Classes="toolbar-button"
+                            Content="取消多选"
+                            Command="{Binding GalleryViewModel.ExitMultiSelectCommand}"
+                            IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"/>
+
+                    <Button Classes="toolbar-button"
+                            Content="批量上传"
+                            Command="{Binding GalleryViewModel.BatchUploadCommand}"
+                            IsEnabled="{Binding GalleryViewModel.IsBatchActionEnabled}"
+                            IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"/>
+
+                    <Button Classes="toolbar-button-danger"
+                            Content="删除"
+                            Command="{Binding GalleryViewModel.BatchDeleteCommand}"
+                            IsEnabled="{Binding GalleryViewModel.IsBatchActionEnabled}"
+                            IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"/>
+
+                    <TextBlock Text="{Binding GalleryViewModel.SelectedCount, StringFormat='已选 {0} 项'}"
+                               FontSize="12"
+                               Foreground="{DynamicResource Text.Secondary}"
+                               VerticalAlignment="Center"
+                               Margin="8,0,0,0"
+                               IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Row 2 Col 0: NavRail 主体 -->
+        <Border Grid.Column="0" Grid.Row="2"
                 Background="{DynamicResource Bg.Outer}"
                 BorderBrush="{DynamicResource Bg.Divider}"
                 BorderThickness="0,0,1,0">
             <controls:NavRail DataContext="{Binding}"/>
         </Border>
 
-        <!-- 页面内容区域 (Row 1 Col 1) -->
-        <ContentControl Grid.Column="1" Grid.Row="1" Content="{Binding CurrentView}">
+        <!-- Row 2 Col 1: 页面内容 -->
+        <ContentControl Grid.Column="1" Grid.Row="2" Content="{Binding CurrentView}">
             <ContentControl.DataTemplates>
                 <DataTemplate DataType="{x:Type vm:GalleryViewModel}">
                     <views:GalleryView DataContext="{Binding}"/>

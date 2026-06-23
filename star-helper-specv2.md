@@ -1,4 +1,4 @@
-# 星助（StarHelper）— 界面实现规格 v2.2
+# 星助（StarHelper）— 界面实现规格 v2.3
 
 > 本规格文档是给实现 AI 的**唯一权威输入**。
 > 实现者只需严格按照本文档执行，无需追问设计意图。
@@ -11,7 +11,7 @@
 | 项 | 值 |
 |---|---|
 | 项目名 | 星助 / StartTooler |
-| 文档版本 | **2.2**（从 v2.1 升级；v2.2 基于实际实现更新规格） |
+| 文档版本 | **2.3**（从 v2.2 升级；v2.3 补充多选模式、批量操作、右键菜单的实现约束） |
 | 目标用户 | 天文摄影爱好者（astrophotographer） |
 | 技术栈 | **Avalonia UI 11.x** + C# 12 + **.NET 9** + **SQLite** + CommunityToolkit.Mvvm |
 | 目标平台 | macOS（首要）、Windows 11、Linux（次要） |
@@ -19,6 +19,19 @@
 | 设计风格 | Deep Space 深空主题（暗色优先）+ Red Night Vision 夜间红（次要） |
 | 项目结构 | **单项目**（StartTooler/StartTooler/） |
 | 字数限制 | 本版本忽略字数限制，作为权威参考 |
+
+### v2.3 相对 v2.2 的变更摘要
+
+| 类别 | 变更 |
+|------|------|
+| **工具栏** | 改为「全局工具栏」（标题栏下方），不是每页独立 |
+| **工具栏按钮** | 新增「多选 / 取消多选 / 批量上传 / 删除」4 个按钮 |
+| **多选模式** | 默认只显示「多选 / 刷新」；进入多选态后显示「取消多选 / 批量上传 / 删除」 |
+| **批量操作** | 上传 / 删除仅做 UI 反馈（Toast），不执行真实 IO |
+| **右键菜单** | 新增：上传 / 删除 / 彻底删除 / 文件夹中打开 / 查看 |
+| **系统 API** | 「在文件夹中打开」跨平台调用系统 Shell |
+| **UI 状态机** | 单张照片：未选择 / 选中 / 进行中 三态可视化 |
+| **NavRail** | 4 项：媒体 / 本地 / 服务 / 设置（v2.2 只有 2 项，更新） |
 
 ### v2.2 相对 v2.1 的变更摘要
 
@@ -1818,3 +1831,251 @@ foreach (var file in files)
 | 主题切换预览 | 尚未实现（Save-First 生效） |
 | OSS 配置 Tab | SettingsView 只有「项目」Tab，OSS Tab 未实现 |
 | 单元测试 | 未编写 |
+| 批量上传 / 删除 | 当前仅 UI 反馈（Toast），不执行真实 IO（v2.3 决定） |
+| 右键菜单 | 当前未实现（v2.3 规划中） |
+| 真实媒体扫描 | 扫描逻辑待实现 |
+| ffmpeg 视频缩略图 | 视频处理待实现 |
+
+---
+
+## 23. v2.3 实现约束（基于原型图）
+
+### 23.1 全局工具栏（修正 v2.2）
+
+**位置**：MainWindow Row 0 标题栏**下方**，Row 1 主内容**上方**。
+
+```
+┌──────────────────────────────────────────────────┐
+│  [● ● ●]                  星助                    │ 系统标题栏 38px
+│  ═══════════════════════════════════════════════ │ ScanProgressBar (2px)
+├──────────────────────────────────────────────────┤
+│  [多选] [批量上传] [删除]            [刷新]       │ 全局工具栏 40px
+├──────┬───────────────────────────────────────────┤
+│      │  [当前内容]                                │
+│ Nav  │                                            │
+│ Rail │                                            │
+└──────┴────────────────────────────────────────────┘
+```
+
+**外层 Grid**（v2.3）：
+```xml
+<Grid ColumnDefinitions="80,*"
+      RowDefinitions="38,40,*">
+    <!-- Row 0: 标题栏 (跨两列) -->
+    <!-- Row 1: 工具栏 (跨两列) -->
+    <!-- Row 2: 主内容 (Col 1) + NavRail (Col 0) -->
+</Grid>
+```
+
+### 23.2 工具栏按钮 + 显隐规则
+
+工具栏含 4 个按钮 + 1 个右侧刷新按钮。
+
+| 按钮 | 默认显隐 | 多选模式显隐 | 说明 |
+|------|----------|--------------|------|
+| **多选** | ✅ 显示 | ❌ 隐藏 | 点击进入多选模式 |
+| **取消多选** | ❌ 隐藏 | ✅ 显示 | 点击退出多选模式 |
+| **批量上传** | ❌ 隐藏 | ✅ 显示 | 选中≥1项时可点 |
+| **删除** | ❌ 隐藏 | ✅ 显示 | 选中≥1项时可点 |
+| **刷新** | ✅ 显示 | ✅ 显示 | 始终在右侧 |
+
+**铁律**：
+> 非多选模式不显示「批量上传」「删除」按钮（v2.3 用户决定）
+
+### 23.3 多选模式
+
+**状态机**：
+
+```
+            点击「多选」              点击「取消多选」
+Normal ──────────────────▶ Multi-Select ────────────▶ Normal
+   │                            │
+   │                            │ 点击「批量上传」或「删除」
+   │                            ▼
+   │                       执行操作 + 弹 Toast
+   │                            │
+   │                            ▼
+   │                       自动退出多选
+   │                            │
+   │                            ▼
+   └───────────────────────── Normal
+```
+
+**ViewModel 状态**：
+
+```csharp
+[ObservableProperty] private bool _isMultiSelectMode;
+[ObservableProperty] private ObservableCollection<MediaFile> _selectedFiles;
+
+// 计算属性
+public bool IsBatchActionEnabled => IsMultiSelectMode && SelectedFiles.Count > 0;
+public int SelectedCount => SelectedFiles.Count;
+```
+
+**照片 UI 状态机**（单张缩略图）：
+
+| 状态 | 视觉 | 触发 |
+|------|------|------|
+| **未选择** | 白色圆圈 | 默认 / 不在多选模式 |
+| **已选择** | 黑色对勾 | 多选模式下点击 |
+| **进行中** | 进度环（百分比） | 扫描 / 上传时 |
+
+### 23.4 批量操作（仅 UI 反馈）
+
+**铁律**：
+> 先不实现真实的删除和上传逻辑（v2.3 用户决定）
+
+**实现**：
+
+```csharp
+[RelayCommand]
+private void BatchUpload()
+{
+    if (!IsBatchActionEnabled) return;
+    
+    var count = SelectedFiles.Count;
+    StatusMessage = $"已请求上传 {count} 个文件（待实现）";
+    ExitMultiSelectMode();
+}
+
+[RelayCommand]
+private void BatchDelete()
+{
+    if (!IsBatchActionEnabled) return;
+    
+    var count = SelectedFiles.Count;
+    StatusMessage = $"已请求删除 {count} 个文件（待实现）";
+    ExitMultiSelectMode();
+}
+```
+
+**UI 反馈**：在工具栏下方弹 Toast / StatusMessage，2-3 秒后自动消失。
+
+### 23.5 右键菜单
+
+**菜单项**：
+
+| 菜单 | 操作 |
+|------|------|
+| 上传 | 调 BatchUploadCommand（仅 UI 反馈） |
+| 删除（释放本地空间） | 调 BatchDeleteCommand（仅 UI 反馈） |
+| 彻底删除 | 调 BatchDeleteCommand（仅 UI 反馈，**红色文字**） |
+| 文件夹中打开 | 调 OpenInFolderCommand（**真实系统调用**） |
+| 查看 | 调 ViewCommand（**仅 UI 反馈**） |
+
+**右键触发**：
+- 右键单张缩略图时显示
+- 菜单显示位置：光标位置
+
+**XAML 实现**：
+```xml
+<Button.ContextMenu>
+    <ContextMenu>
+        <MenuItem Header="上传" Command="{Binding $parent[UserControl].DataContext.UploadCommand}"/>
+        <MenuItem Header="删除（释放本地空间）" Command="{Binding ...DeleteCommand}"/>
+        <MenuItem Header="彻底删除" Foreground="{DynamicResource State.Danger}" Command="{Binding ...DeleteCommand}"/>
+        <Separator/>
+        <MenuItem Header="文件夹中打开" Command="{Binding ...OpenInFolderCommand}"/>
+        <MenuItem Header="查看" Command="{Binding ...ViewCommand}"/>
+    </ContextMenu>
+</Button.ContextMenu>
+```
+
+### 23.6 在系统中打开（跨平台）
+
+**铁律**：
+> 「在文件夹中打开」调用系统 API（v2.3 用户决定）
+
+**实现**（`Services/SystemShellService.cs`）：
+
+```csharp
+public interface ISystemShellService
+{
+    /// 打开文件夹并选中文件
+    void RevealInFolder(string filePath);
+}
+
+public class SystemShellService : ISystemShellService
+{
+    public void RevealInFolder(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            throw new FileNotFoundException(filePath);
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            // macOS: open -R <path> 在 Finder 中显示
+            Process.Start("open", $"-R \"{filePath}\"");
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            // Windows: explorer /select,<path>
+            Process.Start("explorer", $"/select,\"{filePath}\"");
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            // Linux: 打开文件所在目录
+            var dir = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Process.Start("xdg-open", $"\"{dir}\"");
+            }
+        }
+    }
+}
+```
+
+**使用**：
+```csharp
+[RelayCommand]
+private void OpenInFolder(MediaFile? file)
+{
+    if (file == null) return;
+    
+    try
+    {
+        var absolutePath = Path.Combine(file.ProjectPath, file.RelativePath);
+        _systemShell.RevealInFolder(absolutePath);
+    }
+    catch (Exception ex)
+    {
+        StatusMessage = $"打开失败：{ex.Message}";
+    }
+}
+```
+
+### 23.7 涉及文件清单（v2.3 新增 / 修改）
+
+| 文件 | 角色 | 操作 |
+|------|------|------|
+| `App/Services/ISystemShellService.cs` | 系统 Shell 调用 | **新增** |
+| `App/Services/SystemShellService.cs` | 系统 Shell 实现 | **新增** |
+| `App/Views/MainWindow.axaml` | 加 Row 1 工具栏 | **修改** |
+| `App/ViewModels/MainWindowViewModel.cs` | 工具栏命令分发 | **修改** |
+| `App/Views/GalleryView.axaml` | 单张图加 ContextMenu + 选中状态 | **修改** |
+| `App/ViewModels/GalleryViewModel.cs` | 多选模式 + 选中状态 + 批量操作 | **修改** |
+| `App/Converters/IsNotNullConverter.cs` | 空态占位（可选） | 可选 |
+
+---
+
+## 24. v2.3 验收标准
+
+- [ ] 工具栏位置在标题栏下方（不是页面内）
+- [ ] 非多选模式只显示「多选 / 刷新」
+- [ ] 点击「多选」后切换按钮为「取消多选 / 批量上传 / 删除」
+- [ ] 多选模式下点击缩略图显示黑色对勾
+- [ ] 「批量上传」/「删除」点击后弹 Toast「待实现」并自动退出多选
+- [ ] 右键缩略图弹出 5 项菜单
+- [ ] 「文件夹中打开」在 macOS Finder / Windows Explorer / Linux 文件管理器中显示文件
+- [ ] 「彻底删除」显示红色文字
+- [ ] 跨平台 Shell 调用失败有友好错误提示
+
+---
+
+**End of Spec v2.3**
+
+> 本规格是 v2.3，整合原型图反馈 + 多选模式 + 批量操作 + 右键菜单 + 系统 Shell 跨平台调用。
+> 实现 AI 只需严格按照本文档执行，无需追问设计意图。
+> **所有视觉决策、所有行为约束、所有架构铁律已闭环。**

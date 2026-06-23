@@ -168,6 +168,44 @@
         </Setter>
     </Style>
 
+    <!-- v2.3: 工具栏按钮 -->
+    <Style Selector="Button.toolbar-button">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{DynamicResource Text.Secondary}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Padding" Value="12,5"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Height" Value="28"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.toolbar-button:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Bg.Hover}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Text.Primary}"/>
+    </Style>
+    <Style Selector="Button.toolbar-button:disabled">
+        <Setter Property="Opacity" Value="0.4"/>
+    </Style>
+
+    <!-- v2.3: 工具栏危险按钮 (删除) -->
+    <Style Selector="Button.toolbar-button-danger">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{DynamicResource State.Danger}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Padding" Value="12,5"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Height" Value="28"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.toolbar-button-danger:pointerover">
+        <Setter Property="Background" Value="{DynamicResource State.Danger}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Text.Inverse}"/>
+    </Style>
+    <Style Selector="Button.toolbar-button-danger:disabled">
+        <Setter Property="Opacity" Value="0.4"/>
+    </Style>
+
     <!-- 导航 Rail 按钮样式 (C15 NavItem) -->
     <Style Selector="Button.nav-item">
         <Setter Property="Background" Value="Transparent"/>

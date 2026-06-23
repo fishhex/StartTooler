@@ -32,15 +32,18 @@ public partial class MainWindowViewModel : ObservableObject
 
     public bool IsSettingsActive => CurrentPage == ViewPage.Settings;
 
+    public bool IsGalleryPage => CurrentPage == ViewPage.Gallery;
+
     public MainWindowViewModel()
     {
         // 创建服务实例
         var configService = new ConfigService();
         var mediaRepository = new MediaRepository();
         var thumbnailService = new ThumbnailService();
+        var systemShell = new SystemShellService();
 
         // 创建 ViewModel
-        GalleryViewModel = new GalleryViewModel(mediaRepository, thumbnailService, configService);
+        GalleryViewModel = new GalleryViewModel(mediaRepository, thumbnailService, configService, systemShell);
         SettingsViewModel = new SettingsViewModel(new DirectoryPickerService(), configService);
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;
@@ -155,5 +158,6 @@ public partial class MainWindowViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsMediaActive));
         OnPropertyChanged(nameof(IsSettingsActive));
+        OnPropertyChanged(nameof(IsGalleryPage));
     }
 }
