@@ -19,6 +19,7 @@ public partial class GalleryViewModel : ObservableObject
     private readonly IThumbnailService _thumbnailService;
     private readonly IConfigService _configService;
     private readonly ISystemShellService _systemShell;
+    private readonly IOssStorageFactory _ossFactory;
     private string? _projectPath;
     private CancellationTokenSource? _cts;
 
@@ -55,12 +56,14 @@ public partial class GalleryViewModel : ObservableObject
         IMediaRepository mediaRepo,
         IThumbnailService thumbnailService,
         IConfigService configService,
-        ISystemShellService systemShell)
+        ISystemShellService systemShell,
+        IOssStorageFactory ossFactory)
     {
         _mediaRepo = mediaRepo;
         _thumbnailService = thumbnailService;
         _configService = configService;
         _systemShell = systemShell;
+        _ossFactory = ossFactory;
         SelectedFiles.CollectionChanged += OnSelectedFilesChanged;
     }
 
@@ -314,13 +317,53 @@ public partial class GalleryViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void BatchUpload()
+    private async Task BatchUpload()
     {
         if (!IsBatchActionEnabled) return;
 
-        var count = SelectedFiles.Count;
-        ShowToast($"已请求上传 {count} 个文件（待实现）");
+        var storage = _ossFactory.TryCreate();
+        if (storage == null)
+        {
+            ShowToast("OSS 未配置，请先到设置页填写");
+            return;
+        }
+
+        var files = SelectedFiles.ToList();
+        var count = files.Count;
+        ShowToast($"开始上传 {count} 个文件…");
         ExitMultiSelect();
+
+        var ossCfg = (await _configService.GetAsync<OssConfig>(ConfigKeys.Oss)) ?? new OssConfig();
+
+        var ok = 0;
+        var fail = 0;
+        foreach (var f in files)
+        {
+            try
+            {
+                var localPath = Path.Combine(f.ProjectPath, f.RelativePath);
+                var key = AliyunOssStorage.BuildObjectKey(ossCfg.PathPrefix, f.RelativePath);
+
+                var result = await storage.UploadAsync(localPath, key, _cts?.Token ?? default);
+                if (result.Success)
+                {
+                    f.IsUploaded = true;
+                    f.UploadedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    f.RemoteUrl = await storage.GetCoverUrlAsync(key, TimeSpan.FromHours(1), _cts?.Token ?? default);
+                    ok++;
+                }
+                else
+                {
+                    fail++;
+                }
+            }
+            catch
+            {
+                fail++;
+            }
+        }
+
+        ShowToast(fail == 0 ? $"上传完成：{ok} 个" : $"上传完成：成功 {ok}，失败 {fail}");
     }
 
     [RelayCommand]
@@ -357,10 +400,41 @@ public partial class GalleryViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void UploadSingle(MediaFile? file)
+    private async Task UploadSingle(MediaFile? file)
     {
         if (file == null) return;
-        ShowToast($"已请求上传 {file.FileName}（待实现）");
+
+        var storage = _ossFactory.TryCreate();
+        if (storage == null)
+        {
+            ShowToast("OSS 未配置，请先到设置页填写");
+            return;
+        }
+
+        try
+        {
+            var localPath = Path.Combine(file.ProjectPath, file.RelativePath);
+            var ossCfg = (await _configService.GetAsync<OssConfig>(ConfigKeys.Oss)) ?? new OssConfig();
+            var key = AliyunOssStorage.BuildObjectKey(ossCfg.PathPrefix, file.RelativePath);
+
+            ShowToast($"开始上传 {file.FileName}…");
+            var result = await storage.UploadAsync(localPath, key, _cts?.Token ?? default);
+            if (result.Success)
+            {
+                file.IsUploaded = true;
+                file.UploadedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                file.RemoteUrl = await storage.GetCoverUrlAsync(key, TimeSpan.FromHours(1), _cts?.Token ?? default);
+                ShowToast($"已上传 {file.FileName}");
+            }
+            else
+            {
+                ShowToast($"上传失败：{result.Error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"上传失败：{ex.Message}");
+        }
     }
 
     [RelayCommand]

@@ -44,8 +44,17 @@ public partial class MainWindowViewModel : ObservableObject
         var thumbnailService = new ThumbnailService();
         var systemShell = new SystemShellService();
 
+        // OSS Storage 工厂：OssConfig 在 Settings 加载前为空，所以延迟构造。
+        // configProvider 每次调用都从 configService 拿最新值，确保用户在 Settings
+        // 改完 OSS 配置后下次上传能拿到新凭据。
+        IOssStorageFactory ossFactory = new OssStorageFactory(() =>
+        {
+            return configService.GetAsync<OssConfig>(ConfigKeys.Oss)
+                .GetAwaiter().GetResult() ?? new OssConfig();
+        });
+
         // 创建 ViewModel
-        GalleryViewModel = new GalleryViewModel(mediaRepository, thumbnailService, configService, systemShell);
+        GalleryViewModel = new GalleryViewModel(mediaRepository, thumbnailService, configService, systemShell, ossFactory);
         SettingsViewModel = new SettingsViewModel(new DirectoryPickerService(), configService);
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;
