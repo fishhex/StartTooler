@@ -146,10 +146,10 @@
                     </Grid>
                 </Border>
 
-                <!-- 区域 -->
+                <!-- 区域 (endpoint) -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
                     <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="区域"
+                        <TextBlock Grid.Column="0" Text="区域 (endpoint)"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
                         <TextBox Grid.Column="1"
@@ -161,10 +161,10 @@
                     </Grid>
                 </Border>
 
-                <!-- 桶名 -->
+                <!-- 桶名 (bucket) -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
                     <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="桶名"
+                        <TextBlock Grid.Column="0" Text="桶名(bucket)"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
                         <TextBox Grid.Column="1"
@@ -176,10 +176,10 @@
                     </Grid>
                 </Border>
 
-                <!-- 密钥 (AccessKey + SecretKey) -->
+                <!-- 密钥 (access key) -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
                     <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="密钥"
+                        <TextBlock Grid.Column="0" Text="密钥 (access key)"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
