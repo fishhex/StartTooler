@@ -36,7 +36,7 @@ public class ThemeManager
             _overrideDict.Add("Bg.SurfaceElevated", Avalonia.Media.Color.Parse("#140000"));
             _overrideDict.Add("Bg.Divider", Avalonia.Media.Color.Parse("#2A0000"));
             _overrideDict.Add("Bg.Hover", Avalonia.Media.Color.Parse("#1F0000"));
-            _overrideDict.Add("Bg.HoverSubtle", Avalonia.Media.Color.Parse("#140000"));
+            _overrideDict.Add("Bg.HoverSubtle", Avalonia.Media.Color.Parse("#1F0000"));
             _overrideDict.Add("Text.Primary", Avalonia.Media.Color.Parse("#FF6B6B"));
             _overrideDict.Add("Text.Secondary", Avalonia.Media.Color.Parse("#B53030"));
             _overrideDict.Add("Text.Tertiary", Avalonia.Media.Color.Parse("#802020"));
