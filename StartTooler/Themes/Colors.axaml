@@ -7,7 +7,7 @@
     <Color x:Key="Bg.SurfaceElevated">#1F2438</Color>
     <Color x:Key="Bg.Divider">#2A3050</Color>
     <Color x:Key="Bg.Hover">#252B45</Color>
-    <Color x:Key="Bg.HoverSubtle">#252B45</Color>
+    <Color x:Key="Bg.HoverSubtle">#3A4060</Color>
 
     <!-- 文字层 -->
     <Color x:Key="Text.Primary">#E8EAF0</Color>
