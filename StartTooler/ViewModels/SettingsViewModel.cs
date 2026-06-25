@@ -37,6 +37,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private int selectedTheme;
 
     // OSS Tab 字段
+    // OssProvider 是 UI 占位字段，目前只支持 Aliyun (index 0)，为未来扩展留入口。
+    // 不参与 dirty 计算，不持久化到 Config（BuildOssConfigFromVm 硬编码 Provider = "Aliyun"）。
+    [ObservableProperty] private int ossProvider = 0;
     [ObservableProperty] private string ossRegion = "";
     [ObservableProperty] private string ossBucket = "";
     [ObservableProperty] private string ossAccessKey = "";

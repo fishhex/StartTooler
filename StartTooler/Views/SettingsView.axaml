@@ -129,10 +129,27 @@
 
             <!-- OSS Tab -->
             <StackPanel IsVisible="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.Oss}}">
-                <!-- Region -->
+                <!-- 供应商（未来扩展入口） -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
                     <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="Region"
+                        <TextBlock Grid.Column="0" Text="供应商"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="1"
+                                  Width="200"
+                                  SelectedIndex="{Binding OssProvider, Mode=TwoWay}"
+                                  VerticalAlignment="Center"
+                                  HorizontalAlignment="Left"
+                                  IsHitTestVisible="False">
+                            <ComboBoxItem Content="阿里云 OSS"/>
+                        </ComboBox>
+                    </Grid>
+                </Border>
+
+                <!-- 区域 -->
+                <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*" Height="64">
+                        <TextBlock Grid.Column="0" Text="区域"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
                         <TextBox Grid.Column="1"
@@ -144,10 +161,10 @@
                     </Grid>
                 </Border>
 
-                <!-- Bucket -->
+                <!-- 桶名 -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
                     <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="Bucket"
+                        <TextBlock Grid.Column="0" Text="桶名"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
                         <TextBox Grid.Column="1"
@@ -159,10 +176,10 @@
                     </Grid>
                 </Border>
 
-                <!-- Key (AccessKey + SecretKey) -->
+                <!-- 密钥 (AccessKey + SecretKey) -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
                     <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="Key"
+                        <TextBlock Grid.Column="0" Text="密钥"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
@@ -181,10 +198,10 @@
                     </Grid>
                 </Border>
 
-                <!-- 目录 -->
+                <!-- 路径前缀 -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
                     <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="目录"
+                        <TextBlock Grid.Column="0" Text="路径前缀"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
                         <TextBox Grid.Column="1"
