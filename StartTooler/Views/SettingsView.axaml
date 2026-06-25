@@ -10,7 +10,7 @@
         <converters:StringNullOrEmptyToPlaceholderClassConverter x:Key="NullOrEmptyToPlaceholderClass"/>
     </UserControl.Resources>
 
-    <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <Grid RowDefinitions="Auto,Auto,Auto,*">
         <!-- Tab 栏 -->
         <Border Grid.Row="0" Background="{DynamicResource Bg.Outer}" Height="44">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="24" VerticalAlignment="Center">
@@ -129,35 +129,16 @@
 
             <!-- OSS Tab -->
             <StackPanel IsVisible="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.Oss}}">
-                <!-- 厂商 -->
+                <!-- Region -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
                     <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="厂商"
-                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
-                                   VerticalAlignment="Center"/>
-                        <ComboBox Grid.Column="1"
-                                  Width="200"
-                                  SelectedIndex="{Binding OssProvider, Mode=TwoWay}"
-                                  VerticalAlignment="Center"
-                                  HorizontalAlignment="Left">
-                            <ComboBoxItem Content="阿里云 OSS"/>
-                            <ComboBoxItem Content="腾讯云 COS"/>
-                            <ComboBoxItem Content="AWS S3"/>
-                            <ComboBoxItem Content="自定义"/>
-                        </ComboBox>
-                    </Grid>
-                </Border>
-
-                <!-- Endpoint -->
-                <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
-                    <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="Endpoint"
+                        <TextBlock Grid.Column="0" Text="Region"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
                         <TextBox Grid.Column="1"
-                                 Text="{Binding OssEndpoint, Mode=TwoWay}"
+                                 Text="{Binding OssRegion, Mode=TwoWay}"
                                  FontSize="13"
-                                 Watermark="oss-cn-hangzhou.aliyuncs.com"
+                                 Watermark="cn-hangzhou"
                                  VerticalAlignment="Center"
                                  Width="360" HorizontalAlignment="Left"/>
                     </Grid>
@@ -178,90 +159,38 @@
                     </Grid>
                 </Border>
 
-                <!-- AccessKey -->
+                <!-- Key (AccessKey + SecretKey) -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
                     <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="AccessKey"
+                        <TextBlock Grid.Column="0" Text="Key"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="1"
-                                 Text="{Binding OssAccessKey, Mode=TwoWay}"
-                                 FontSize="13"
-                                 Watermark="访问密钥"
-                                 VerticalAlignment="Center"
-                                 Width="360" HorizontalAlignment="Left"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <TextBox Text="{Binding OssAccessKey, Mode=TwoWay}"
+                                     FontSize="13"
+                                     Watermark="AccessKeyId"
+                                     Width="280"
+                                     VerticalAlignment="Center"/>
+                            <TextBox Text="{Binding OssSecretKey, Mode=TwoWay}"
+                                     FontSize="13"
+                                     PasswordChar="•"
+                                     Watermark="AccessKeySecret"
+                                     Width="280"
+                                     VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Grid>
                 </Border>
 
-                <!-- SecretKey -->
+                <!-- 目录 -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
                     <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="SecretKey"
-                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
-                                   VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="1"
-                                 Text="{Binding OssSecretKey, Mode=TwoWay}"
-                                 FontSize="13"
-                                 PasswordChar="•"
-                                 Watermark="密钥（脱敏显示）"
-                                 RevealPassword="False"
-                                 VerticalAlignment="Center"
-                                 Width="360" HorizontalAlignment="Left"/>
-                    </Grid>
-                </Border>
-
-                <!-- PathPrefix -->
-                <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
-                    <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="PathPrefix"
+                        <TextBlock Grid.Column="0" Text="目录"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
                         <TextBox Grid.Column="1"
                                  Text="{Binding OssPathPrefix, Mode=TwoWay}"
                                  FontSize="13"
                                  Watermark="astrophotos/（可选）"
-                                 VerticalAlignment="Center"
-                                 Width="360" HorizontalAlignment="Left"/>
-                    </Grid>
-                </Border>
-
-                <!-- UseHttps -->
-                <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
-                    <Grid ColumnDefinitions="160,*" Height="40">
-                        <TextBlock Grid.Column="0" Text="UseHttps"
-                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
-                                   VerticalAlignment="Center"/>
-                        <CheckBox Grid.Column="1"
-                                  IsChecked="{Binding OssUseHttps, Mode=TwoWay}"
-                                  Content="启用 HTTPS"
-                                  VerticalAlignment="Center"/>
-                    </Grid>
-                </Border>
-
-                <!-- EnableCdn -->
-                <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
-                    <Grid ColumnDefinitions="160,*" Height="40">
-                        <TextBlock Grid.Column="0" Text="EnableCdn"
-                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
-                                   VerticalAlignment="Center"/>
-                        <CheckBox Grid.Column="1"
-                                  IsChecked="{Binding OssEnableCdn, Mode=TwoWay}"
-                                  Content="启用 CDN 加速"
-                                  VerticalAlignment="Center"/>
-                    </Grid>
-                </Border>
-
-                <!-- CDN Domain -->
-                <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
-                    <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="CDN Domain"
-                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
-                                   VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="1"
-                                 Text="{Binding OssCdnDomain, Mode=TwoWay}"
-                                 FontSize="13"
-                                 Watermark="cdn.example.com"
-                                 IsEnabled="{Binding OssEnableCdn}"
                                  VerticalAlignment="Center"
                                  Width="360" HorizontalAlignment="Left"/>
                     </Grid>

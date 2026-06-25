@@ -37,15 +37,11 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private int selectedTheme;
 
     // OSS Tab 字段
-    [ObservableProperty] private int ossProvider;            // 0=Aliyun, 1=Tencent, 2=AWS, 3=Custom
-    [ObservableProperty] private string ossEndpoint = "";
+    [ObservableProperty] private string ossRegion = "";
     [ObservableProperty] private string ossBucket = "";
     [ObservableProperty] private string ossAccessKey = "";
     [ObservableProperty] private string ossSecretKey = "";
     [ObservableProperty] private string ossPathPrefix = "";
-    [ObservableProperty] private bool ossUseHttps = true;
-    [ObservableProperty] private bool ossEnableCdn = false;
-    [ObservableProperty] private string ossCdnDomain = "";
 
     // 状态
     [ObservableProperty] private bool isDirty;
@@ -98,43 +94,23 @@ public partial class SettingsViewModel : ObservableObject
 
     private void LoadOssFromConfig(OssConfig cfg)
     {
-        OssProvider = cfg.Provider switch
-        {
-            "Aliyun" => 0,
-            "Tencent" => 1,
-            "Aws" => 2,
-            "Custom" => 3,
-            _ => 0
-        };
-        OssEndpoint = cfg.Endpoint ?? "";
+        OssRegion = cfg.Region ?? "";
         OssBucket = cfg.Bucket ?? "";
         OssAccessKey = cfg.AccessKeyId ?? "";
         OssSecretKey = cfg.AccessKeySecret ?? "";
         OssPathPrefix = cfg.PathPrefix ?? "";
-        OssUseHttps = cfg.UseHttps;
-        OssEnableCdn = cfg.EnableCdn;
-        OssCdnDomain = cfg.CdnDomain ?? "";
     }
 
     private OssConfig BuildOssConfigFromVm()
     {
         return new OssConfig
         {
-            Provider = OssProvider switch
-            {
-                0 => "Aliyun",
-                1 => "Tencent",
-                2 => "Aws",
-                _ => "Custom"
-            },
-            Endpoint = OssEndpoint ?? "",
+            Provider = "Aliyun",
+            Region = OssRegion ?? "",
             Bucket = OssBucket ?? "",
             AccessKeyId = OssAccessKey ?? "",
             AccessKeySecret = OssSecretKey ?? "",
-            PathPrefix = OssPathPrefix ?? "",
-            UseHttps = OssUseHttps,
-            EnableCdn = OssEnableCdn,
-            CdnDomain = OssCdnDomain ?? ""
+            PathPrefix = OssPathPrefix ?? ""
         };
     }
 
@@ -158,13 +134,7 @@ public partial class SettingsViewModel : ObservableObject
         RecomputeDirty();
     }
 
-    partial void OnOssProviderChanged(int value)
-    {
-        if (!_isInitialized) return;
-        RecomputeDirty();
-    }
-
-    partial void OnOssEndpointChanged(string value)
+    partial void OnOssRegionChanged(string value)
     {
         if (!_isInitialized) return;
         RecomputeDirty();
@@ -194,24 +164,6 @@ public partial class SettingsViewModel : ObservableObject
         RecomputeDirty();
     }
 
-    partial void OnOssUseHttpsChanged(bool value)
-    {
-        if (!_isInitialized) return;
-        RecomputeDirty();
-    }
-
-    partial void OnOssEnableCdnChanged(bool value)
-    {
-        if (!_isInitialized) return;
-        RecomputeDirty();
-    }
-
-    partial void OnOssCdnDomainChanged(string value)
-    {
-        if (!_isInitialized) return;
-        RecomputeDirty();
-    }
-
     private void RecomputeDirty()
     {
         if (!_isInitialized) return;
@@ -233,14 +185,11 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (b == null) return false;
         return a.Provider == b.Provider
-            && a.Endpoint == b.Endpoint
+            && a.Region == b.Region
             && a.Bucket == b.Bucket
             && a.AccessKeyId == b.AccessKeyId
             && a.AccessKeySecret == b.AccessKeySecret
-            && a.PathPrefix == b.PathPrefix
-            && a.UseHttps == b.UseHttps
-            && a.EnableCdn == b.EnableCdn
-            && a.CdnDomain == b.CdnDomain;
+            && a.PathPrefix == b.PathPrefix;
     }
 
     public void DiscardChanges()
