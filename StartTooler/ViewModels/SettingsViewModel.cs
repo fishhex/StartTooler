@@ -259,6 +259,10 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private async Task Save()
     {
+        // 无修改时静默返回（按钮始终可用，避免禁用态视觉问题）
+        if (!IsDirty)
+            return;
+
         var hasDirectory = !string.IsNullOrEmpty(SelectedProjectDirectory);
 
         if (hasDirectory && !Directory.Exists(SelectedProjectDirectory))

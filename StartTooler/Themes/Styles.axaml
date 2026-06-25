@@ -60,7 +60,7 @@
         <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
     <Style Selector="Button.primary-button:disabled">
-        <Setter Property="Opacity" Value="0.35"/>
+        <Setter Property="Opacity" Value="0.55"/>
     </Style>
 
     <!-- 次按钮 -->
@@ -78,6 +78,9 @@
     </Style>
     <Style Selector="Button.secondary-button:pointerover">
         <Setter Property="BorderBrush" Value="{DynamicResource Accent.Stellar}"/>
+    </Style>
+    <Style Selector="Button.secondary-button:disabled">
+        <Setter Property="Opacity" Value="0.55"/>
     </Style>
 
     <!-- Select 按钮 -->
