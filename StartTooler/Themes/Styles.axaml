@@ -17,7 +17,7 @@
         <Setter Property="Cursor" Value="Hand"/>
     </Style>
     <Style Selector="Button.header-button:pointerover">
-        <Setter Property="Background" Value="{DynamicResource Bg.Hover}"/>
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
     </Style>
 
     <!-- 时间轴节点 -->
@@ -108,7 +108,7 @@
         <Setter Property="Cursor" Value="Hand"/>
     </Style>
     <Style Selector="Button.tab-item:pointerover">
-        <Setter Property="Background" Value="{DynamicResource Bg.Hover}"/>
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
     </Style>
     <Style Selector="Button.tab-item.active">
         <Setter Property="Background" Value="{DynamicResource Bg.SurfaceElevated}"/>
@@ -155,7 +155,7 @@
         <Setter Property="HorizontalContentAlignment" Value="Center"/>
     </Style>
     <Style Selector="Button.refresh-button:pointerover">
-        <Setter Property="Background" Value="{DynamicResource Bg.Hover}"/>
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
     </Style>
     <Style Selector="Button.refresh-button:pointerover Path.refresh-icon">
         <Setter Property="Fill" Value="{DynamicResource Accent.Stellar}"/>
@@ -185,7 +185,7 @@
         <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
     <Style Selector="Button.toolbar-button:pointerover">
-        <Setter Property="Background" Value="{DynamicResource Bg.Hover}"/>
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
     </Style>
     <Style Selector="Button.toolbar-button:disabled">
         <Setter Property="Opacity" Value="0.4"/>
@@ -203,7 +203,7 @@
         <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
     <Style Selector="Button.toolbar-button-danger:pointerover">
-        <Setter Property="Background" Value="{DynamicResource Bg.Hover}"/>
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
     </Style>
     <Style Selector="Button.toolbar-button-danger:disabled">
         <Setter Property="Opacity" Value="0.4"/>
@@ -222,7 +222,7 @@
         <Setter Property="Cursor" Value="Hand"/>
     </Style>
     <Style Selector="Button.nav-item:pointerover">
-        <Setter Property="Background" Value="{DynamicResource Bg.Hover}"/>
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
     </Style>
     <Style Selector="Button.nav-item:pressed">
         <Setter Property="Background" Value="{DynamicResource Bg.Divider}"/>

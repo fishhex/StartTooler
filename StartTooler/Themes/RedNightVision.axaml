@@ -7,6 +7,7 @@
     <Color x:Key="Bg.SurfaceElevated">#140000</Color>
     <Color x:Key="Bg.Divider">#2A0000</Color>
     <Color x:Key="Bg.Hover">#1F0000</Color>
+    <Color x:Key="Bg.HoverSubtle">#140000</Color>
 
     <Color x:Key="Text.Primary">#FFD0D0</Color>
     <Color x:Key="Text.Secondary">#B53030</Color>
