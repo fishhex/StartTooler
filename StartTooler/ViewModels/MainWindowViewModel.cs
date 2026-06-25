@@ -34,6 +34,8 @@ public partial class MainWindowViewModel : ObservableObject
 
     public bool IsGalleryPage => CurrentPage == ViewPage.Gallery;
 
+    public bool IsSettingsPageVisible => CurrentPage == ViewPage.Settings;
+
     public MainWindowViewModel()
     {
         // 创建服务实例
@@ -159,5 +161,6 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsMediaActive));
         OnPropertyChanged(nameof(IsSettingsActive));
         OnPropertyChanged(nameof(IsGalleryPage));
+        OnPropertyChanged(nameof(IsSettingsPageVisible));
     }
 }

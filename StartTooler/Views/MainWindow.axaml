@@ -63,13 +63,31 @@
                 BorderBrush="{DynamicResource Bg.Divider}"
                 BorderThickness="0,0,0,1">
             <DockPanel>
-                <!-- 右侧：刷新按钮 -->
+                <!-- 最右：返回按钮（设置页） -->
+                <Button Classes="secondary-button"
+                        DockPanel.Dock="Right"
+                        Margin="0,0,16,0"
+                        Content="返回"
+                        Command="{Binding NavigateToMediaCommand}"
+                        IsVisible="{Binding IsSettingsPageVisible}"/>
+
+                <!-- 次右：保存按钮（设置页） -->
+                <Button Classes="secondary-button"
+                        DockPanel.Dock="Right"
+                        Margin="0,0,8,0"
+                        Content="保存"
+                        Command="{Binding SettingsViewModel.SaveCommand}"
+                        IsEnabled="{Binding SettingsViewModel.IsDirty}"
+                        IsVisible="{Binding IsSettingsPageVisible}"/>
+
+                <!-- 右侧：刷新按钮（媒体页） -->
                 <Button Classes="refresh-button"
                         DockPanel.Dock="Right"
                         Margin="0,0,16,0"
                         Command="{Binding GalleryViewModel.RefreshCommand}"
                         IsEnabled="{Binding GalleryViewModel.ProjectPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                        ToolTip.Tip="刷新扫描">
+                        ToolTip.Tip="刷新扫描"
+                        IsVisible="{Binding IsGalleryPage}">
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <Path Data="{DynamicResource Icon.Refresh}"
                               Stretch="Uniform"
@@ -84,7 +102,7 @@
                     </StackPanel>
                 </Button>
 
-                <!-- 左侧：动作按钮组 -->
+                <!-- 左侧：动作按钮组（媒体页） -->
                 <StackPanel Orientation="Horizontal"
                             Spacing="8"
                             Margin="16,0,0,0"

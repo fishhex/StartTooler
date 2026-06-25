@@ -6,12 +6,11 @@
              x:DataType="vm:SettingsViewModel">
 
     <UserControl.Resources>
-        <converters:BoolToSaveTextConverter x:Key="BoolToSaveText"/>
         <converters:StringNullOrEmptyToTextConverter x:Key="NullOrEmptyToPlaceholder"/>
         <converters:StringNullOrEmptyToPlaceholderClassConverter x:Key="NullOrEmptyToPlaceholderClass"/>
     </UserControl.Resources>
 
-    <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
         <!-- Tab 栏 -->
         <Border Grid.Row="0" Background="{DynamicResource Bg.Outer}" Height="44">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="24">
@@ -20,27 +19,33 @@
             </StackPanel>
         </Border>
 
+        <!-- 状态行（仅在有 StatusMessage 时显示） -->
+        <Border Grid.Row="1" Padding="40,6"
+                Background="{DynamicResource Bg.Outer}"
+                IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding StatusMessage}"
+                       FontSize="12"
+                       Foreground="{DynamicResource State.Warning}"
+                       VerticalAlignment="Center"/>
+        </Border>
+
         <!-- 表单内容 -->
-        <Border Grid.Row="1" Background="{DynamicResource Bg.Surface}">
-            <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+        <Border Grid.Row="2" Background="{DynamicResource Bg.Surface}">
+            <Grid RowDefinitions="Auto,Auto,*">
                 <!-- 项目目录 FormRow -->
                 <Border Grid.Row="0" Padding="40,16" Background="{DynamicResource Bg.Surface}">
                     <Grid ColumnDefinitions="160,*" Height="64">
-                        <!-- 标签 -->
                         <TextBlock Grid.Column="0" Text="项目目录"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
 
-                        <!-- Select + 浏览按钮 -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                            <!-- Select 按钮 -->
                             <Button x:Name="SelectButton"
                                     MinWidth="280" Height="36"
                                     HorizontalAlignment="Left"
                                     HorizontalContentAlignment="Stretch"
                                     Classes="select-button">
                                 <Grid ColumnDefinitions="*,Auto">
-                                    <!-- 文字内容 -->
                                     <TextBlock Grid.Column="0"
                                                Text="{Binding SelectedProjectDirectory, Converter={StaticResource NullOrEmptyToPlaceholder}, ConverterParameter=选择项目目录}"
                                                FontSize="13"
@@ -57,7 +62,6 @@
                                             </Style>
                                         </TextBlock.Styles>
                                     </TextBlock>
-                                    <!-- Chevron -->
                                     <Path Grid.Column="1"
                                           Data="{DynamicResource Icon.ChevronDown}"
                                           Stretch="Uniform"
@@ -73,7 +77,6 @@
                                         <Separator/>
                                         <StackPanel IsVisible="{Binding RecentDirectories.Count}">
                                             <TextBlock Text="最近使用" FontWeight="SemiBold" Foreground="{DynamicResource Text.Secondary}" Padding="8,4"/>
-                                            <!-- 动态渲染最近目录 -->
                                             <MenuItem Header="/Users/hex/Pictures/Test"
                                                      IsVisible="False"/>
                                             <Separator/>
@@ -85,7 +88,6 @@
                                 </Button.Flyout>
                             </Button>
 
-                            <!-- 浏览按钮 -->
                             <Button Content="浏览..."
                                     Classes="secondary-button"
                                     Command="{Binding BrowseDirectoryCommand}"/>
@@ -109,36 +111,8 @@
                     </Grid>
                 </Border>
 
-                <!-- 底部分隔线 -->
-                <Border Grid.Row="2" Height="1" Background="{DynamicResource Bg.Divider}"/>
-
-                <!-- 空区域 -->
-                <Border Grid.Row="3" Background="{DynamicResource Bg.Surface}"/>
-
-                <!-- 保存栏 -->
-                <Border Grid.Row="4" Background="{DynamicResource Bg.Outer}" Padding="40,16">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <!-- 左：提示 -->
-                        <TextBlock Grid.Column="0"
-                                   Text="{Binding StatusMessage}"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource State.Warning}"
-                                   VerticalAlignment="Center"
-                                   IsVisible="{Binding StatusMessage}"/>
-
-                        <!-- 右：保存按钮 -->
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                            <TextBlock Text="有未保存的修改"
-                                       FontSize="12" Foreground="{DynamicResource State.Warning}"
-                                       VerticalAlignment="Center"
-                                       IsVisible="{Binding IsDirty}"/>
-                            <Button Classes="primary-button"
-                                    Content="{Binding IsSaving, Converter={StaticResource BoolToSaveText}}"
-                                    Command="{Binding SaveCommand}"
-                                    IsEnabled="{Binding IsDirty}"/>
-                        </StackPanel>
-                    </Grid>
-                </Border>
+                <!-- 空区域填充 -->
+                <Border Grid.Row="2" Background="{DynamicResource Bg.Surface}"/>
             </Grid>
         </Border>
     </Grid>
