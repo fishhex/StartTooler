@@ -98,14 +98,21 @@
     <!-- Tab 项 -->
     <Style Selector="Button.tab-item">
         <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="BorderThickness" Value="2"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
         <Setter Property="Foreground" Value="{DynamicResource Text.Secondary}"/>
         <Setter Property="FontSize" Value="13"/>
-        <Setter Property="Padding" Value="4,0"/>
+        <Setter Property="Padding" Value="16,4"/>
+        <Setter Property="CornerRadius" Value="6"/>
         <Setter Property="Cursor" Value="Hand"/>
     </Style>
     <Style Selector="Button.tab-item:pointerover">
         <Setter Property="Foreground" Value="{DynamicResource Text.Primary}"/>
+    </Style>
+    <Style Selector="Button.tab-item.active">
+        <Setter Property="Background" Value="{DynamicResource Bg.SurfaceElevated}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Accent.Stellar}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Accent.Stellar}"/>
     </Style>
     <Style Selector="Button.tab-item:disabled">
         <Setter Property="Foreground" Value="{DynamicResource Accent.Stellar}"/>

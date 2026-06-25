@@ -8,21 +8,49 @@ using StartTooler.Services;
 
 namespace StartTooler.ViewModels;
 
+public enum SettingsTab
+{
+    General,
+    Oss
+}
+
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly IDirectoryPickerService _directoryPicker;
     private readonly IConfigService _configService;
+
+    // General Tab 快照
     private string? _lastSavedDirectory;
     private int _lastSavedTheme;  // 0=DeepSpace, 1=RedNight
+
+    // OSS Tab 快照
+    private OssConfig? _lastSavedOss;
+
     private ProjectConfig? _projectConfig;
     private bool _isInitialized;
 
+    [ObservableProperty] private SettingsTab selectedTab = SettingsTab.General;
+
+    // General Tab 字段
     [ObservableProperty] private string? selectedProjectDirectory;
     [ObservableProperty] private ObservableCollection<string> recentDirectories;
+    [ObservableProperty] private int selectedTheme;
+
+    // OSS Tab 字段
+    [ObservableProperty] private int ossProvider;            // 0=Aliyun, 1=Tencent, 2=AWS, 3=Custom
+    [ObservableProperty] private string ossEndpoint = "";
+    [ObservableProperty] private string ossBucket = "";
+    [ObservableProperty] private string ossAccessKey = "";
+    [ObservableProperty] private string ossSecretKey = "";
+    [ObservableProperty] private string ossPathPrefix = "";
+    [ObservableProperty] private bool ossUseHttps = true;
+    [ObservableProperty] private bool ossEnableCdn = false;
+    [ObservableProperty] private string ossCdnDomain = "";
+
+    // 状态
     [ObservableProperty] private bool isDirty;
     [ObservableProperty] private bool isSaving;
     [ObservableProperty] private string? statusMessage;
-    [ObservableProperty] private int selectedTheme;
 
     public SettingsViewModel(IDirectoryPickerService directoryPicker, IConfigService configService)
     {
@@ -57,9 +85,64 @@ public partial class SettingsViewModel : ObservableObject
             RecentDirectories.Add(dir);
         }
 
+        // 加载 OSS 配置
+        var ossConfig = await _configService.GetOrCreateAsync<OssConfig>(ConfigKeys.Oss);
+        _lastSavedOss = ossConfig;
+        LoadOssFromConfig(ossConfig);
+
         // 最后才标记初始化完成
         _isInitialized = true;
         IsDirty = false;
+        StatusMessage = null;
+    }
+
+    private void LoadOssFromConfig(OssConfig cfg)
+    {
+        OssProvider = cfg.Provider switch
+        {
+            "Aliyun" => 0,
+            "Tencent" => 1,
+            "Aws" => 2,
+            "Custom" => 3,
+            _ => 0
+        };
+        OssEndpoint = cfg.Endpoint ?? "";
+        OssBucket = cfg.Bucket ?? "";
+        OssAccessKey = cfg.AccessKeyId ?? "";
+        OssSecretKey = cfg.AccessKeySecret ?? "";
+        OssPathPrefix = cfg.PathPrefix ?? "";
+        OssUseHttps = cfg.UseHttps;
+        OssEnableCdn = cfg.EnableCdn;
+        OssCdnDomain = cfg.CdnDomain ?? "";
+    }
+
+    private OssConfig BuildOssConfigFromVm()
+    {
+        return new OssConfig
+        {
+            Provider = OssProvider switch
+            {
+                0 => "Aliyun",
+                1 => "Tencent",
+                2 => "Aws",
+                _ => "Custom"
+            },
+            Endpoint = OssEndpoint ?? "",
+            Bucket = OssBucket ?? "",
+            AccessKeyId = OssAccessKey ?? "",
+            AccessKeySecret = OssSecretKey ?? "",
+            PathPrefix = OssPathPrefix ?? "",
+            UseHttps = OssUseHttps,
+            EnableCdn = OssEnableCdn,
+            CdnDomain = OssCdnDomain ?? ""
+        };
+    }
+
+    [RelayCommand]
+    private void SelectTab(SettingsTab tab)
+    {
+        SelectedTab = tab;
+        // 跨 Tab 状态保持: 不清 IsDirty
     }
 
     partial void OnSelectedProjectDirectoryChanged(string? value)
@@ -75,25 +158,97 @@ public partial class SettingsViewModel : ObservableObject
         RecomputeDirty();
     }
 
+    partial void OnOssProviderChanged(int value)
+    {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+    }
+
+    partial void OnOssEndpointChanged(string value)
+    {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+    }
+
+    partial void OnOssBucketChanged(string value)
+    {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+    }
+
+    partial void OnOssAccessKeyChanged(string value)
+    {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+    }
+
+    partial void OnOssSecretKeyChanged(string value)
+    {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+    }
+
+    partial void OnOssPathPrefixChanged(string value)
+    {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+    }
+
+    partial void OnOssUseHttpsChanged(bool value)
+    {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+    }
+
+    partial void OnOssEnableCdnChanged(bool value)
+    {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+    }
+
+    partial void OnOssCdnDomainChanged(string value)
+    {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+    }
+
     private void RecomputeDirty()
     {
         if (!_isInitialized) return;
 
-        var newValue = SelectedProjectDirectory != _lastSavedDirectory
-                    || SelectedTheme != _lastSavedTheme;
+        var generalDirty = SelectedProjectDirectory != _lastSavedDirectory
+                        || SelectedTheme != _lastSavedTheme;
+
+        var currentOss = BuildOssConfigFromVm();
+        var ossDirty = !OssConfigEquals(currentOss, _lastSavedOss);
+
+        var newValue = generalDirty || ossDirty;
         if (IsDirty != newValue)
         {
             IsDirty = newValue;
         }
     }
 
+    private static bool OssConfigEquals(OssConfig a, OssConfig? b)
+    {
+        if (b == null) return false;
+        return a.Provider == b.Provider
+            && a.Endpoint == b.Endpoint
+            && a.Bucket == b.Bucket
+            && a.AccessKeyId == b.AccessKeyId
+            && a.AccessKeySecret == b.AccessKeySecret
+            && a.PathPrefix == b.PathPrefix
+            && a.UseHttps == b.UseHttps
+            && a.EnableCdn == b.EnableCdn
+            && a.CdnDomain == b.CdnDomain;
+    }
+
     public void DiscardChanges()
     {
-        // 恢复到上次保存的状态
+        // 恢复 General
         SelectedProjectDirectory = _lastSavedDirectory;
         SelectedTheme = _lastSavedTheme;
 
-        // 恢复最近目录
         RecentDirectories.Clear();
         if (_projectConfig != null)
         {
@@ -101,6 +256,12 @@ public partial class SettingsViewModel : ObservableObject
             {
                 RecentDirectories.Add(dir);
             }
+        }
+
+        // 恢复 OSS
+        if (_lastSavedOss != null)
+        {
+            LoadOssFromConfig(_lastSavedOss);
         }
 
         IsDirty = false;
@@ -162,6 +323,7 @@ public partial class SettingsViewModel : ObservableObject
 
         try
         {
+            // 保存项目配置
             if (hasDirectory)
             {
                 _projectConfig ??= new ProjectConfig();
@@ -181,9 +343,15 @@ public partial class SettingsViewModel : ObservableObject
             await _configService.SetAsync(ConfigKeys.App, appConfig);
             ThemeManager.SetTheme(SelectedTheme == 1);
 
+            // 保存 OSS 配置
+            var ossConfig = BuildOssConfigFromVm();
+            await _configService.SetAsync(ConfigKeys.Oss, ossConfig);
+
             // 刷新快照
             _lastSavedDirectory = SelectedProjectDirectory;
             _lastSavedTheme = SelectedTheme;
+            _lastSavedOss = ossConfig;
+
             IsDirty = false;
             StatusMessage = "已保存";
         }
