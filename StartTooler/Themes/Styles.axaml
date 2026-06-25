@@ -7,6 +7,37 @@
         <Setter Property="FontFamily" Value="{DynamicResource Font.Primary}"/>
     </Style>
 
+    <!--
+        全局 Button ControlTemplate (替换 FluentTheme 默认模板)
+
+        FluentTheme 默认 Button 模板含 4 个状态层 Border (Rest/PointerOver/Pressed/Disabled)，
+        每个状态层用半透明遮罩叠加在 Background 上。当 Background=Transparent 时，
+        PointerOver 状态层无可着底色，hover 视觉反馈几乎不可见。
+
+        这个自定义模板简化为：Border 直接渲染 Background/BorderBrush/CornerRadius，
+        ContentPresenter 渲染内容。hover/active/disabled 完全靠属性 setter 控制，
+        不依赖 PseudoClasses 状态层切换。
+    -->
+    <Style Selector="Button">
+        <Setter Property="Template">
+            <ControlTemplate TargetType="Button">
+                <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        Padding="{TemplateBinding Padding}">
+                    <ContentPresenter Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      FontSize="{TemplateBinding FontSize}"
+                                      FontWeight="{TemplateBinding FontWeight}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
     <!-- 标题栏设置按钮 -->
     <Style Selector="Button.header-button">
         <Setter Property="Background" Value="Transparent"/>
