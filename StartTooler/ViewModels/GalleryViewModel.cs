@@ -1,13 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using StartTooler.Data;
+using StartTooler.Helpers;
 using StartTooler.Models;
 using StartTooler.Services;
 
@@ -20,9 +23,11 @@ public partial class GalleryViewModel : ObservableObject
     private readonly IConfigService _configService;
     private readonly ISystemShellService _systemShell;
     private readonly IOssStorageFactory _ossFactory;
+    private readonly IUploadJobRepository _uploadJobRepo;
     private readonly Func<Task<bool>>? _onOssNotConfigured;
     private string? _projectPath;
     private CancellationTokenSource? _cts;
+    private CancellationTokenSource? _uploadCts;
 
     // === 数据源 ===
     public ObservableCollection<TimelineEntry> DateGroups { get; } = new();
@@ -47,8 +52,19 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty] private string? _toastMessage;
     public ObservableCollection<MediaFile> SelectedFiles { get; } = new();
 
+    // === v3.0 上传状态 ===
+    [ObservableProperty] private bool _isUploading;
+    [ObservableProperty] private int _uploadCompletedCount;
+    [ObservableProperty] private int _uploadTotalCount;
+    public string UploadProgressText => IsUploading && UploadTotalCount > 0
+        ? $"上传中 {UploadCompletedCount}/{UploadTotalCount}"
+        : string.Empty;
+    partial void OnIsUploadingChanged(bool value) => OnPropertyChanged(nameof(UploadProgressText));
+    partial void OnUploadCompletedCountChanged(int value) => OnPropertyChanged(nameof(UploadProgressText));
+    partial void OnUploadTotalCountChanged(int value) => OnPropertyChanged(nameof(UploadProgressText));
+
     public int SelectedCount => SelectedFiles.Count;
-    public bool IsBatchActionEnabled => IsMultiSelectMode && SelectedFiles.Count > 0;
+    public bool IsBatchActionEnabled => IsMultiSelectMode && SelectedFiles.Count > 0 && !IsUploading;
     public string? ProjectPath => _projectPath;
     public bool HasNoProject => string.IsNullOrEmpty(_projectPath);
     public bool IsEmpty => !IsLoadingDateGroups && DateGroups.Count == 0;
@@ -59,6 +75,7 @@ public partial class GalleryViewModel : ObservableObject
         IConfigService configService,
         ISystemShellService systemShell,
         IOssStorageFactory ossFactory,
+        IUploadJobRepository uploadJobRepo,
         Func<Task<bool>>? onOssNotConfigured = null)
     {
         _mediaRepo = mediaRepo;
@@ -66,6 +83,7 @@ public partial class GalleryViewModel : ObservableObject
         _configService = configService;
         _systemShell = systemShell;
         _ossFactory = ossFactory;
+        _uploadJobRepo = uploadJobRepo;
         _onOssNotConfigured = onOssNotConfigured;
         SelectedFiles.CollectionChanged += OnSelectedFilesChanged;
     }
@@ -182,10 +200,37 @@ public partial class GalleryViewModel : ObservableObject
 
             var files = await _mediaRepo.GetByDateAsync(_projectPath, entry.Date, ct);
 
+            // 反推 UploadStatus：upload_jobs 里有未完成 job 的 → Paused，否则按 IsUploaded
+            // 单日最多几千条，直接全表扫成本可接受
+            IReadOnlyList<UploadJob> jobs;
+            try
+            {
+                jobs = await _uploadJobRepo.GetInProgressAsync(_projectPath, ct);
+            }
+            catch
+            {
+                jobs = Array.Empty<UploadJob>();
+            }
+            var pausedSet = new HashSet<string>(
+                jobs.Select(j => j.RelativePath),
+                StringComparer.OrdinalIgnoreCase);
+
             // 批量替换
             CurrentMediaFiles.Clear();
             foreach (var file in files)
             {
+                if (file.IsUploaded)
+                {
+                    file.UploadStatus = UploadStatus.Uploaded;
+                }
+                else if (pausedSet.Contains(file.RelativePath))
+                {
+                    file.UploadStatus = UploadStatus.Paused;
+                }
+                else
+                {
+                    file.UploadStatus = UploadStatus.NotUploaded;
+                }
                 CurrentMediaFiles.Add(file);
             }
 
@@ -322,7 +367,7 @@ public partial class GalleryViewModel : ObservableObject
     [RelayCommand]
     private async Task BatchUpload()
     {
-        if (!IsBatchActionEnabled) return;
+        if (IsUploading || !IsBatchActionEnabled) return;
 
         var storage = _ossFactory.TryCreate();
         if (storage == null)
@@ -332,41 +377,11 @@ public partial class GalleryViewModel : ObservableObject
         }
 
         var files = SelectedFiles.ToList();
-        var count = files.Count;
-        ShowToast($"开始上传 {count} 个文件…");
         ExitMultiSelect();
+        ShowToast($"开始上传 {files.Count} 个文件…");
 
-        var ossCfg = (await _configService.GetAsync<OssConfig>(ConfigKeys.Oss)) ?? new OssConfig();
-
-        var ok = 0;
-        var fail = 0;
-        foreach (var f in files)
-        {
-            try
-            {
-                var localPath = Path.Combine(f.ProjectPath, f.RelativePath);
-                var key = AliyunOssStorage.BuildObjectKey(ossCfg.PathPrefix, f.RelativePath);
-
-                var result = await storage.UploadAsync(localPath, key, _cts?.Token ?? default);
-                if (result.Success)
-                {
-                    f.IsUploaded = true;
-                    f.UploadedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    f.RemoteUrl = await storage.GetCoverUrlAsync(key, TimeSpan.FromHours(1), _cts?.Token ?? default);
-                    ok++;
-                }
-                else
-                {
-                    fail++;
-                }
-            }
-            catch
-            {
-                fail++;
-            }
-        }
-
-        ShowToast(fail == 0 ? $"上传完成：{ok} 个" : $"上传完成：成功 {ok}，失败 {fail}");
+        var ossCfg = await GetOssConfigSnapshotAsync();
+        await UploadManyAsync(files, storage, ossCfg);
     }
 
     [RelayCommand]
@@ -405,7 +420,7 @@ public partial class GalleryViewModel : ObservableObject
     [RelayCommand]
     private async Task UploadSingle(MediaFile? file)
     {
-        if (file == null) return;
+        if (file == null || IsUploading) return;
 
         var storage = _ossFactory.TryCreate();
         if (storage == null)
@@ -414,29 +429,370 @@ public partial class GalleryViewModel : ObservableObject
             return;
         }
 
+        ShowToast($"开始上传 {file.FileName}…");
+
+        var ossCfg = await GetOssConfigSnapshotAsync();
+        await UploadManyAsync(new[] { file }, storage, ossCfg);
+    }
+
+    [RelayCommand]
+    private void CancelUpload()
+    {
+        _uploadCts?.Cancel();
+    }
+
+    /// <summary>
+    /// 启动恢复流程：把 upload_jobs 里的未完成任务投影到当前 Gallery 中的 MediaFile，
+    /// 然后走 <see cref="UploadManyAsync"/>。找不到对应文件（可能已被删）→ 跳过。
+    /// </summary>
+    public async Task ResumeInterruptedAsync(IReadOnlyList<UploadJob> jobs)
+    {
+        if (IsUploading || jobs.Count == 0) return;
+
+        var storage = _ossFactory.TryCreate();
+        if (storage == null) return;
+
+        var files = new List<MediaFile>();
+        foreach (var job in jobs)
+        {
+            var mf = CurrentMediaFiles.FirstOrDefault(m =>
+                string.Equals(m.ProjectPath, job.ProjectPath, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(m.RelativePath, job.RelativePath, StringComparison.OrdinalIgnoreCase));
+            if (mf != null) files.Add(mf);
+        }
+
+        if (files.Count == 0)
+        {
+            ShowToast("找不到可恢复的媒体文件（可能已删除）");
+            return;
+        }
+
+        ShowToast($"开始恢复 {files.Count} 个上传…");
+        var ossCfg = await GetOssConfigSnapshotAsync();
+        await UploadManyAsync(files, storage, ossCfg);
+    }
+
+    // ===== 上传核心流程 =====
+
+    private async Task<OssConfig> GetOssConfigSnapshotAsync()
+    {
+        // 拿到的是一个快照——后续 Settings 改配置不影响本次上传
+        return (await _configService.GetAsync<OssConfig>(ConfigKeys.Oss)) ?? new OssConfig();
+    }
+
+    private async Task UploadManyAsync(IList<MediaFile> files, IOssStorage storage, OssConfig ossCfg)
+    {
+        // Debug 打印：本次上传用到的 OSS 配置（完整 key，方便核对 SignatureDoesNotMatch 等凭据问题）
+        // 用 System.Diagnostics.Debug，IDE 调试输出窗口和 dotnet test 都能看到
+        Debug.WriteLine($"[OSS Upload] provider={ossCfg.Provider}, files={files.Count}, threshold={storage.MultipartThresholdBytes}B");
+        Debug.WriteLine($"[OSS Upload] config: region={ossCfg.Region}, bucket={ossCfg.Bucket}, " +
+            $"accessKeyId={ossCfg.AccessKeyId}, accessKeySecret={ossCfg.AccessKeySecret}, " +
+            $"pathPrefix='{ossCfg.PathPrefix}'");
+
+        IsUploading = true;
+        UploadCompletedCount = 0;
+        UploadTotalCount = files.Count;
+
+        _uploadCts = new CancellationTokenSource();
+        var ct = _uploadCts.Token;
+
+        var ok = 0;
+        var fail = 0;
+        var cancelled = 0;
+        var errors = new List<(string fileName, string error)>();
+
         try
         {
-            var localPath = Path.Combine(file.ProjectPath, file.RelativePath);
-            var ossCfg = (await _configService.GetAsync<OssConfig>(ConfigKeys.Oss)) ?? new OssConfig();
-            var key = AliyunOssStorage.BuildObjectKey(ossCfg.PathPrefix, file.RelativePath);
+            foreach (var f in files)
+            {
+                if (ct.IsCancellationRequested) break;
 
-            ShowToast($"开始上传 {file.FileName}…");
-            var result = await storage.UploadAsync(localPath, key, _cts?.Token ?? default);
-            if (result.Success)
-            {
-                file.IsUploaded = true;
-                file.UploadedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                file.RemoteUrl = await storage.GetCoverUrlAsync(key, TimeSpan.FromHours(1), _cts?.Token ?? default);
-                ShowToast($"已上传 {file.FileName}");
-            }
-            else
-            {
-                ShowToast($"上传失败：{result.Error}");
+                try
+                {
+                    var result = await UploadOneAsync(f, storage, ossCfg, ct);
+                    switch (result)
+                    {
+                        case UploadOneResult.Success: ok++; break;
+                        case UploadOneResult.Cancelled: cancelled++; break;
+                        default:
+                            fail++;
+                            errors.Add((f.FileName, f.UploadError ?? "未知错误"));
+                            break;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    f.UploadStatus = UploadStatus.Failed;
+                    f.UploadError = "已取消";
+                    cancelled++;
+                }
+                catch (Exception ex)
+                {
+                    f.UploadStatus = UploadStatus.Failed;
+                    f.UploadError = ex.Message;
+                    fail++;
+                    errors.Add((f.FileName, ex.Message));
+                }
+
+                UploadCompletedCount++;
             }
         }
-        catch (Exception ex)
+        finally
         {
-            ShowToast($"上传失败：{ex.Message}");
+            _uploadCts?.Dispose();
+            _uploadCts = null;
+            IsUploading = false;
+        }
+
+        // 摘要 toast
+        string summary;
+        if (cancelled > 0)
+            summary = $"已取消：成功 {ok}，失败 {fail}，取消 {cancelled}";
+        else if (fail > 0)
+            summary = $"上传完成：成功 {ok}，失败 {fail}";
+        else
+            summary = $"上传完成：{ok} 个";
+        ShowToast(summary);
+
+        // 失败详情：弹模态对话框列出每个失败文件 + 原因
+        if (errors.Count > 0)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"共 {errors.Count} 个文件上传失败：");
+            sb.AppendLine();
+            foreach (var (name, err) in errors)
+            {
+                sb.AppendLine($"• {name}");
+                sb.AppendLine($"  {err}");
+            }
+            if (errors.Count == 0 && ok == 0)
+            {
+                // 全失败的兜底
+            }
+            else if (ok > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"（其余 {ok} 个已成功）");
+            }
+
+            var window = DialogHelper.GetMainWindow();
+            if (window != null)
+            {
+                await DialogHelper.ShowAlertAsync(window, $"上传失败（{errors.Count}）", sb.ToString());
+            }
+        }
+    }
+
+    private enum UploadOneResult { Success, Failed, Cancelled }
+
+    private async Task<UploadOneResult> UploadOneAsync(MediaFile file, IOssStorage storage, OssConfig ossCfg, CancellationToken ct)
+    {
+        file.UploadStatus = UploadStatus.Uploading;
+        file.UploadError = null;
+
+        var localPath = Path.Combine(file.ProjectPath, file.RelativePath);
+        if (!File.Exists(localPath))
+        {
+            file.UploadStatus = UploadStatus.Failed;
+            file.UploadError = "本地文件不存在";
+            return UploadOneResult.Failed;
+        }
+
+        var fileSize = new FileInfo(localPath).Length;
+        var objectKey = AliyunOssStorage.BuildObjectKey(ossCfg.PathPrefix, file.RelativePath);
+
+        // 查 upload_jobs 是否有未完成 job
+        var existingJob = await _uploadJobRepo.GetByFileAsync(file.ProjectPath, file.RelativePath, ct);
+
+        if (existingJob != null)
+        {
+            return await ResumeUploadAsync(file, storage, existingJob, fileSize, objectKey, ct);
+        }
+
+        // 没有 job：
+        if (fileSize < storage.MultipartThresholdBytes)
+        {
+            return await UploadSinglePutAsync(file, storage, localPath, objectKey, ct);
+        }
+        return await UploadMultipartNewAsync(file, storage, localPath, objectKey, fileSize, ct);
+    }
+
+    private async Task<UploadOneResult> UploadSinglePutAsync(MediaFile file, IOssStorage storage, string localPath, string objectKey, CancellationToken ct)
+    {
+        var result = await storage.UploadAsync(localPath, objectKey, ct);
+        if (result.Success)
+        {
+            var url = await storage.GetCoverUrlAsync(objectKey, TimeSpan.FromHours(1), ct);
+            await ApplyUploadSuccessAsync(file, url);
+            return UploadOneResult.Success;
+        }
+        file.UploadStatus = UploadStatus.Failed;
+        file.UploadError = result.Error ?? "未知错误";
+        return UploadOneResult.Failed;
+    }
+
+    private async Task<UploadOneResult> UploadMultipartNewAsync(
+        MediaFile file, IOssStorage storage, string localPath, string objectKey, long fileSize, CancellationToken ct)
+    {
+        var handle = await storage.InitiateMultipartAsync(objectKey, ct);
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var job = new UploadJob
+        {
+            ProjectPath = file.ProjectPath,
+            RelativePath = file.RelativePath,
+            ObjectKey = objectKey,
+            UploadId = handle.UploadId,
+            FileSize = fileSize,
+            PartSize = handle.PartSize,
+            PartsUploaded = new List<UploadedPart>(),
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        await _uploadJobRepo.UpsertAsync(job, ct);
+
+        try
+        {
+            var uploaded = await UploadMissingPartsAsync(file, storage, localPath, handle, fileSize, job, new HashSet<int>(), ct);
+            var allParts = uploaded.OrderBy(p => p.PartNumber).ToList();
+            await storage.CompleteMultipartAsync(handle, allParts, ct);
+
+            var url = await storage.GetCoverUrlAsync(objectKey, TimeSpan.FromHours(1), ct);
+            await ApplyUploadSuccessAsync(file, url);
+            await _uploadJobRepo.DeleteAsync(job.Id, ct);
+            return UploadOneResult.Success;
+        }
+        catch (OperationCanceledException)
+        {
+            // job 留着不删，下次续传
+            throw;
+        }
+        catch
+        {
+            // 错误路径：job 留着，用户可手动重试
+            throw;
+        }
+    }
+
+    private async Task<UploadOneResult> ResumeUploadAsync(
+        MediaFile file, IOssStorage storage, UploadJob job, long fileSize, string objectKey, CancellationToken ct)
+    {
+        var localPath = Path.Combine(file.ProjectPath, file.RelativePath);
+
+        // 文件大小变了 → job 失效，删掉重新走全新路径
+        if (job.FileSize != fileSize)
+        {
+            await _uploadJobRepo.DeleteAsync(job.Id, ct);
+            file.UploadError = "本地文件已变更，重新上传";
+            if (fileSize < storage.MultipartThresholdBytes)
+            {
+                return await UploadSinglePutAsync(file, storage, localPath, objectKey, ct);
+            }
+            return await UploadMultipartNewAsync(file, storage, localPath, objectKey, fileSize, ct);
+        }
+
+        var handle = new MultipartHandle
+        {
+            ObjectKey = job.ObjectKey,
+            UploadId = job.UploadId,
+            PartSize = job.PartSize,
+        };
+
+        // OSS 端拉已传分片（权威）。如果 job 已被 OSS 清理，ListParts 会抛错 → 删 DB job 重来
+        IReadOnlyList<PartETag> ossParts;
+        try
+        {
+            ossParts = await storage.ListPartsAsync(handle, ct);
+        }
+        catch
+        {
+            await _uploadJobRepo.DeleteAsync(job.Id, ct);
+            file.UploadStatus = UploadStatus.Failed;
+            file.UploadError = "OSS 端任务已失效，重新上传";
+            return UploadOneResult.Failed;
+        }
+
+        // 合并：OSS 已传 ∪ DB 已传（DB 可能落后于 OSS，比如 DB 写失败过）
+        var uploadedSet = new HashSet<int>(ossParts.Select(p => p.PartNumber));
+        foreach (var p in job.PartsUploaded)
+        {
+            uploadedSet.Add(p.PartNumber);
+        }
+
+        // 同步 DB：把 OSS 端多出来的分片也写回 DB，避免下次续传重传
+        job.PartsUploaded = ossParts.Select(p => new UploadedPart { PartNumber = p.PartNumber, ETag = p.ETag }).ToList();
+        job.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        await _uploadJobRepo.UpsertAsync(job, ct);
+
+        // 传缺失分片
+        var newParts = await UploadMissingPartsAsync(file, storage, localPath, handle, fileSize, job, uploadedSet, ct);
+
+        // 合并最终 part 列表：oss parts + 本次新传（去重）
+        var finalParts = new Dictionary<int, PartETag>();
+        foreach (var p in ossParts) finalParts[p.PartNumber] = p;
+        foreach (var p in newParts) finalParts[p.PartNumber] = p;
+
+        var allParts = finalParts.Values.OrderBy(p => p.PartNumber).ToList();
+        await storage.CompleteMultipartAsync(handle, allParts, ct);
+
+        var url = await storage.GetCoverUrlAsync(objectKey, TimeSpan.FromHours(1), ct);
+        await ApplyUploadSuccessAsync(file, url);
+        await _uploadJobRepo.DeleteAsync(job.Id, ct);
+        return UploadOneResult.Success;
+    }
+
+    private async Task<List<PartETag>> UploadMissingPartsAsync(
+        MediaFile file, IOssStorage storage, string localPath,
+        MultipartHandle handle, long fileSize, UploadJob job,
+        HashSet<int> alreadyUploaded, CancellationToken ct)
+    {
+        var partSize = handle.PartSize;
+        var partCount = (int)Math.Ceiling((double)fileSize / partSize);
+        var uploaded = new List<PartETag>();
+
+        await using var stream = File.OpenRead(localPath);
+
+        for (int partNumber = 1; partNumber <= partCount; partNumber++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (alreadyUploaded.Contains(partNumber))
+            {
+                continue;
+            }
+
+            var offset = (long)(partNumber - 1) * partSize;
+            var length = (int)Math.Min(partSize, fileSize - offset);
+
+            stream.Seek(offset, SeekOrigin.Begin);
+            using var bounded = new BoundedReadStream(stream, length);
+            var etag = await storage.UploadPartAsync(handle, partNumber, bounded, length, ct);
+            uploaded.Add(etag);
+
+            // 每片成功 → 立刻写 DB（崩溃后最多少传一片）
+            job.PartsUploaded.Add(new UploadedPart { PartNumber = partNumber, ETag = etag.ETag });
+            job.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            await _uploadJobRepo.UpsertAsync(job, ct);
+        }
+
+        return uploaded;
+    }
+
+    private async Task ApplyUploadSuccessAsync(MediaFile file, string remoteUrl)
+    {
+        file.IsUploaded = true;
+        file.UploadedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        file.RemoteUrl = remoteUrl;
+        file.UploadStatus = UploadStatus.Uploaded;
+        file.UploadError = null;
+
+        try
+        {
+            await _mediaRepo.UpdateUploadStateAsync(file.Id, true, file.UploadedAt, remoteUrl, CancellationToken.None);
+        }
+        catch
+        {
+            // DB 写失败：UI 状态已正确，不撤销；下次重试会重新写。
+            // 错误明细已在 BatchUpload 的 errors 列表里通过 toast 展示。
         }
     }
 

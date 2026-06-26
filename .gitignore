@@ -10,3 +10,6 @@ publish/
 dist/
 .DS_Store
 .vscode/
+
+# Debug 日志（启动时由 Program.cs 自动生成到 cwd）
+starttooler-debug.log
