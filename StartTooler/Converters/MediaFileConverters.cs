@@ -51,13 +51,44 @@ public class MediaFileToTooltipConverter : IValueConverter
         if (value is not MediaFile file)
             return "未知状态";
 
-        var status = file.IsUploaded && file.LocalExists
-            ? "已上传且本地存在"
-            : file.IsUploaded && !file.LocalExists
-                ? "已上传但本地不存在"
-                : "未上传";
+        // 优先展示瞬时 UploadStatus（Failed 时显示原因）
+        string statusText = file.UploadStatus switch
+        {
+            UploadStatus.Uploading => "上传中…",
+            UploadStatus.Failed => string.IsNullOrEmpty(file.UploadError) ? "上传失败" : $"上传失败：{file.UploadError}",
+            UploadStatus.Paused => "上次未完成，可继续上传",
+            UploadStatus.Uploaded => file.IsUploaded && file.LocalExists
+                ? "已上传且本地存在"
+                : file.IsUploaded && !file.LocalExists
+                    ? "已上传但本地不存在"
+                    : "已上传",
+            _ => file.IsUploaded && file.LocalExists
+                ? "已上传且本地存在"
+                : file.IsUploaded && !file.LocalExists
+                    ? "已上传但本地不存在"
+                    : "未上传",
+        };
 
-        return $"{file.FileName}\n{status}";
+        return $"{file.FileName}\n{statusText}";
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// 把 UploadStatus 和 parameter（字符串枚举名）比，相等返回 true（→ IsVisible 可见）。
+/// AXAML 用法：IsVisible="{Binding UploadStatus, Converter={x:Static c}, ConverterParameter=Uploading}"
+/// </summary>
+public class UploadStatusToVisibilityConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not UploadStatus status || parameter is not string p)
+            return false;
+        return Enum.TryParse<UploadStatus>(p, ignoreCase: true, out var target) && status == target;
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

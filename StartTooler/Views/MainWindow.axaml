@@ -111,7 +111,8 @@
                     <Button Classes="toolbar-button"
                             Content="多选"
                             Command="{Binding GalleryViewModel.EnterMultiSelectCommand}"
-                            IsVisible="{Binding !GalleryViewModel.IsMultiSelectMode}"/>
+                            IsVisible="{Binding !GalleryViewModel.IsMultiSelectMode}"
+                            IsEnabled="{Binding !GalleryViewModel.IsUploading}"/>
 
                     <Button Classes="toolbar-button"
                             Content="取消多选"
@@ -129,6 +130,19 @@
                             Command="{Binding GalleryViewModel.BatchDeleteCommand}"
                             IsEnabled="{Binding GalleryViewModel.IsBatchActionEnabled}"
                             IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"/>
+
+                    <!-- 上传中：取消按钮 + 进度文本 -->
+                    <Button Classes="toolbar-button-danger"
+                            Content="取消上传"
+                            Command="{Binding GalleryViewModel.CancelUploadCommand}"
+                            IsVisible="{Binding GalleryViewModel.IsUploading}"/>
+
+                    <TextBlock Text="{Binding GalleryViewModel.UploadProgressText}"
+                               FontSize="12"
+                               Foreground="{DynamicResource Accent.Stellar}"
+                               VerticalAlignment="Center"
+                               Margin="8,0,0,0"
+                               IsVisible="{Binding GalleryViewModel.IsUploading}"/>
 
                     <TextBlock Text="{Binding GalleryViewModel.SelectedCount, StringFormat='已选 {0} 项'}"
                                FontSize="12"
