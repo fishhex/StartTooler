@@ -199,11 +199,11 @@
                                                               VerticalAlignment="Center"
                                                               IsVisible="{Binding ThumbnailPath, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
 
-                                                        <!-- 视频徽章 (右上角) -->
+                                                        <!-- 视频徽章 (左上角) -->
                                                         <Border IsVisible="{Binding MediaType, Converter={StaticResource MediaTypeToVideo}}"
-                                                                HorizontalAlignment="Right"
+                                                                HorizontalAlignment="Left"
                                                                 VerticalAlignment="Top"
-                                                                Margin="6"
+                                                                Margin="6,10,10,6"
                                                                 Width="22" Height="22"
                                                                 Background="#CC0A0E1A"
                                                                 CornerRadius="11">
@@ -227,7 +227,7 @@
                                                         <Border IsVisible="{Binding UploadStatus, Converter={StaticResource UploadStatusToVis}, ConverterParameter=Uploaded}"
                                                                 HorizontalAlignment="Right"
                                                                 VerticalAlignment="Top"
-                                                                Margin="6,32,6,6"
+                                                                Margin="6,10,10,6"
                                                                 Width="24" Height="24"
                                                                 Background="#CCFFFFFF"
                                                                 CornerRadius="12">
@@ -243,7 +243,7 @@
                                                         <Border IsVisible="{Binding UploadStatus, Converter={StaticResource UploadStatusToVis}, ConverterParameter=Uploading}"
                                                                 HorizontalAlignment="Right"
                                                                 VerticalAlignment="Top"
-                                                                Margin="6,32,6,6"
+                                                                Margin="6,10,10,6"
                                                                 Width="24" Height="24"
                                                                 Background="#CCFFFFFF"
                                                                 CornerRadius="12"
@@ -264,7 +264,7 @@
                                                         <Border IsVisible="{Binding UploadStatus, Converter={StaticResource UploadStatusToVis}, ConverterParameter=Failed}"
                                                                 HorizontalAlignment="Right"
                                                                 VerticalAlignment="Top"
-                                                                Margin="6,32,6,6"
+                                                                Margin="6,10,10,6"
                                                                 Width="24" Height="24"
                                                                 Background="#CCFFFFFF"
                                                                 CornerRadius="12">
@@ -289,7 +289,7 @@
                                                         <Border IsVisible="{Binding UploadStatus, Converter={StaticResource UploadStatusToVis}, ConverterParameter=Paused}"
                                                                 HorizontalAlignment="Right"
                                                                 VerticalAlignment="Top"
-                                                                Margin="6,32,6,6"
+                                                                Margin="6,10,10,6"
                                                                 Width="24" Height="24"
                                                                 Background="#CCFFFFFF"
                                                                 CornerRadius="12">
