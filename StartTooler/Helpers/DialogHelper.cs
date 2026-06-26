@@ -113,4 +113,68 @@ public static class DialogHelper
         }
         return null;
     }
+
+    /// <summary>
+    /// 通用通知/告警对话框。单按钮（"知道了"），阻塞直到用户关闭。
+    /// 用途：上传失败汇总、不可恢复错误提示等需要明确告知的场景。
+    /// </summary>
+    /// <param name="message">
+    /// 详细说明。多行 OK，会按 \n 自动换行。
+    /// </param>
+    public static async Task ShowAlertAsync(Window owner, string title, string message, string buttonText = "知道了")
+    {
+        var dialog = new Window
+        {
+            Title = title,
+            Width = 420,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Classes = { "dialog-window" }
+        };
+
+        var root = new StackPanel
+        {
+            Margin = new Thickness(28, 24, 28, 20),
+            Spacing = 12
+        };
+
+        root.Children.Add(new TextBlock
+        {
+            Text = title,
+            Classes = { "dialog-title" }
+        });
+
+        if (!string.IsNullOrEmpty(message))
+        {
+            root.Children.Add(new TextBlock
+            {
+                Text = message,
+                Classes = { "dialog-message" },
+                TextAlignment = TextAlignment.Left,  // 错误列表左对齐更易读
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                MaxWidth = 360,
+            });
+        }
+
+        var buttonRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 12,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+
+        var okButton = new Button
+        {
+            Content = buttonText,
+            Classes = { "dialog-primary" }
+        };
+        okButton.Click += (_, _) => dialog.Close();
+        buttonRow.Children.Add(okButton);
+
+        root.Children.Add(buttonRow);
+        dialog.Content = root;
+
+        await dialog.ShowDialog(owner);
+    }
 }
