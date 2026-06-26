@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -42,6 +43,7 @@ public partial class MainWindowViewModel : ObservableObject
         // 创建服务实例
         var configService = new ConfigService();
         var mediaRepository = new MediaRepository();
+        var uploadJobRepo = new UploadJobRepository();
         var thumbnailService = new ThumbnailService();
         var systemShell = new SystemShellService();
 
@@ -59,7 +61,7 @@ public partial class MainWindowViewModel : ObservableObject
         // 创建 ViewModel
         // onOssNotConfigured: Gallery 触发上传时如果 OSS 未配置，由 MainWindow 弹对话框并提供「去设置」入口
         GalleryViewModel = new GalleryViewModel(
-            mediaRepository, thumbnailService, configService, systemShell, ossFactory,
+            mediaRepository, thumbnailService, configService, systemShell, ossFactory, uploadJobRepo,
             onOssNotConfigured: ShowOssNotConfiguredDialogAsync);
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;
@@ -74,6 +76,48 @@ public partial class MainWindowViewModel : ObservableObject
         await SettingsViewModel.InitializeAsync();
         await GalleryViewModel.InitializeAsync();
         OnPropertyChanged(nameof(HasProject));
+
+        // 启动恢复弹窗：扫描 upload_jobs，如有未完成任务询问用户
+        await TryPromptResumeInterruptedAsync();
+    }
+
+    private bool _resumePrompted;
+    private async Task TryPromptResumeInterruptedAsync()
+    {
+        if (_resumePrompted) return;
+        _resumePrompted = true;
+
+        var projectPath = GalleryViewModel.ProjectPath;
+        if (string.IsNullOrEmpty(projectPath)) return;
+
+        var uploadJobRepo = new UploadJobRepository();
+        IReadOnlyList<UploadJob> jobs;
+        try
+        {
+            jobs = await uploadJobRepo.GetInProgressAsync(projectPath);
+        }
+        catch
+        {
+            // 启动时 DB 错误不该阻塞 UI
+            return;
+        }
+
+        if (jobs.Count == 0) return;
+
+        var window = DialogHelper.GetMainWindow();
+        if (window == null) return;
+
+        var resume = await DialogHelper.ShowConfirmAsync(
+            window,
+            title: "检测到未完成的上传",
+            message: $"有 {jobs.Count} 个文件上次没传完（可能因断网或退出）。是否现在恢复？\n恢复会自动跳过已传的分片。",
+            primaryButtonText: "恢复",
+            secondaryButtonText: "稍后");
+
+        if (resume)
+        {
+            await GalleryViewModel.ResumeInterruptedAsync(jobs);
+        }
     }
 
     [RelayCommand]

@@ -13,6 +13,11 @@ public interface IMediaRepository
     Task<IReadOnlyList<MediaFile>> GetByDateAsync(string projectPath, DateTime date, CancellationToken ct = default);
     Task<ScanResult> ScanDirectoryAsync(string projectPath, IProgress<ScanProgress>? progress = null, CancellationToken ct = default);
     Task GenerateThumbnailsAsync(string projectPath, IThumbnailService thumbnailService, IProgress<ScanProgress>? progress = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// 上传完成后写回 media_files 表的 is_uploaded / uploaded_at / remote_url。
+    /// </summary>
+    Task UpdateUploadStateAsync(long fileId, bool isUploaded, long? uploadedAt, string? remoteUrl, CancellationToken ct = default);
 }
 
 public class ScanResult

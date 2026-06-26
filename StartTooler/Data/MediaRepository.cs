@@ -346,4 +346,25 @@ public class MediaRepository : IMediaRepository
             });
         }
     }
+
+    public async Task UpdateUploadStateAsync(long fileId, bool isUploaded, long? uploadedAt, string? remoteUrl, CancellationToken ct = default)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var sql = @"
+            UPDATE media_files
+            SET is_uploaded = @isUploaded,
+                uploaded_at = @uploadedAt,
+                remote_url = @remoteUrl
+            WHERE id = @id";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@id", fileId);
+        cmd.Parameters.AddWithValue("@isUploaded", isUploaded ? 1 : 0);
+        cmd.Parameters.AddWithValue("@uploadedAt", (object?)uploadedAt ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@remoteUrl", (object?)remoteUrl ?? DBNull.Value);
+
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
 }
