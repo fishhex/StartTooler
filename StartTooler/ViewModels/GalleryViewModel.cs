@@ -20,6 +20,7 @@ public partial class GalleryViewModel : ObservableObject
     private readonly IConfigService _configService;
     private readonly ISystemShellService _systemShell;
     private readonly IOssStorageFactory _ossFactory;
+    private readonly Func<Task<bool>>? _onOssNotConfigured;
     private string? _projectPath;
     private CancellationTokenSource? _cts;
 
@@ -57,13 +58,15 @@ public partial class GalleryViewModel : ObservableObject
         IThumbnailService thumbnailService,
         IConfigService configService,
         ISystemShellService systemShell,
-        IOssStorageFactory ossFactory)
+        IOssStorageFactory ossFactory,
+        Func<Task<bool>>? onOssNotConfigured = null)
     {
         _mediaRepo = mediaRepo;
         _thumbnailService = thumbnailService;
         _configService = configService;
         _systemShell = systemShell;
         _ossFactory = ossFactory;
+        _onOssNotConfigured = onOssNotConfigured;
         SelectedFiles.CollectionChanged += OnSelectedFilesChanged;
     }
 
@@ -324,7 +327,7 @@ public partial class GalleryViewModel : ObservableObject
         var storage = _ossFactory.TryCreate();
         if (storage == null)
         {
-            ShowToast("OSS 未配置，请先到设置页填写");
+            await PromptOssNotConfiguredAsync();
             return;
         }
 
@@ -407,7 +410,7 @@ public partial class GalleryViewModel : ObservableObject
         var storage = _ossFactory.TryCreate();
         if (storage == null)
         {
-            ShowToast("OSS 未配置，请先到设置页填写");
+            await PromptOssNotConfiguredAsync();
             return;
         }
 
@@ -448,5 +451,21 @@ public partial class GalleryViewModel : ObservableObject
     {
         ToastMessage = message;
         _ = Task.Delay(3000).ContinueWith(_ => ToastMessage = null);
+    }
+
+    /// <summary>
+    /// OSS 未配置时唤起对话框。优先用注入的回调（MainWindow 提供，含跳转逻辑），
+    /// 兜底降级为 toast（单元测试 / 异常路径不会崩）。
+    /// </summary>
+    private async Task PromptOssNotConfiguredAsync()
+    {
+        if (_onOssNotConfigured != null)
+        {
+            await _onOssNotConfigured();
+        }
+        else
+        {
+            ShowToast("OSS 未配置，请先到设置页填写");
+        }
     }
 }

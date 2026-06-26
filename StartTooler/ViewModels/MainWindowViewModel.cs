@@ -7,6 +7,7 @@ using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using StartTooler.Data;
+using StartTooler.Helpers;
 using StartTooler.Services;
 
 namespace StartTooler.ViewModels;
@@ -53,9 +54,13 @@ public partial class MainWindowViewModel : ObservableObject
                 .GetAwaiter().GetResult() ?? new OssConfig();
         });
 
-        // 创建 ViewModel
-        GalleryViewModel = new GalleryViewModel(mediaRepository, thumbnailService, configService, systemShell, ossFactory);
         SettingsViewModel = new SettingsViewModel(new DirectoryPickerService(), configService);
+
+        // 创建 ViewModel
+        // onOssNotConfigured: Gallery 触发上传时如果 OSS 未配置，由 MainWindow 弹对话框并提供「去设置」入口
+        GalleryViewModel = new GalleryViewModel(
+            mediaRepository, thumbnailService, configService, systemShell, ossFactory,
+            onOssNotConfigured: ShowOssNotConfiguredDialogAsync);
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;
         CurrentPage = ViewPage.Gallery;
@@ -116,53 +121,40 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// OSS 未配置时弹出的对话框。返回 true 表示用户选择「去设置」并已跳转。
+    /// 给 GalleryViewModel 用，避免在两个 ViewModel 之间循环依赖。
+    /// </summary>
+    public async Task<bool> ShowOssNotConfiguredDialogAsync()
+    {
+        var window = DialogHelper.GetMainWindow();
+        if (window == null) return false;
+
+        var goSettings = await DialogHelper.ShowConfirmAsync(
+            window,
+            title: "OSS 未配置",
+            message: "上传前需要先配置 OSS（Region / Bucket / AccessKey），是否前往设置页？",
+            primaryButtonText: "去设置",
+            secondaryButtonText: "取消");
+
+        if (goSettings)
+        {
+            NavigateToSettings();
+        }
+        return goSettings;
+    }
+
     private async Task<bool> ShowDiscardConfirmDialog()
     {
-        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-        {
-            var window = desktop.MainWindow;
-            if (window != null)
-            {
-                var dialog = new Window
-                {
-                    Title = "确认",
-                    Width = 320,
-                    Height = 160,
-                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                    CanResize = false,
-                    Background = Avalonia.Media.Brushes.Transparent
-                };
+        var window = DialogHelper.GetMainWindow();
+        if (window == null) return false;
 
-                var result = false;
-                var panel = new StackPanel { Margin = new Thickness(24), Spacing = 16 };
-                panel.Children.Add(new TextBlock
-                {
-                    Text = "有未保存的修改",
-                    FontSize = 14,
-                    FontWeight = FontWeight.SemiBold,
-                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center
-                });
-                panel.Children.Add(new TextBlock
-                {
-                    Text = "离开将丢弃所有修改，确定吗？",
-                    FontSize = 12,
-                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center
-                });
-                var buttonPanel = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 12, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center };
-                var cancelButton = new Button { Content = "取消", Width = 80, Padding = new Thickness(12, 6) };
-                cancelButton.Click += (s, e) => { result = false; dialog.Close(); };
-                var confirmButton = new Button { Content = "丢弃", Width = 80, Padding = new Thickness(12, 6) };
-                confirmButton.Click += (s, e) => { result = true; dialog.Close(); };
-                buttonPanel.Children.Add(cancelButton);
-                buttonPanel.Children.Add(confirmButton);
-                panel.Children.Add(buttonPanel);
-                dialog.Content = panel;
-
-                await dialog.ShowDialog(window);
-                return result;
-            }
-        }
-        return false;
+        return await DialogHelper.ShowConfirmAsync(
+            window,
+            title: "有未保存的修改",
+            message: "离开将丢弃所有修改，确定吗？",
+            primaryButtonText: "丢弃",
+            secondaryButtonText: "取消");
     }
 
     partial void OnCurrentPageChanged(ViewPage value)
