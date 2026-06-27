@@ -14,6 +14,7 @@
         <converters:BoolToFontWeightConverter x:Key="BoolToFontWeight"/>
         <converters:BoolToAccentOrSecondaryConverter x:Key="BoolToAccentOrSecondary"/>
         <converters:MediaFileToStatusConverter x:Key="MediaFileToStatus"/>
+        <converters:MediaFileToSyncVisibilityConverter x:Key="MediaFileToSyncVis"/>
         <converters:MediaTypeToVideoConverter x:Key="MediaTypeToVideo"/>
         <converters:FilePathToBitmapConverter x:Key="FilePathToBitmap"/>
         <converters:UploadStatusToVisibilityConverter x:Key="UploadStatusToVis"/>
@@ -216,27 +217,87 @@
                                                         </Border>
 
                                                         <!--
-                                                            上传状态徽章（4 种状态，位置在右上角视频徽章下方）
-                                                            Uploading: 半透明云 + 转圈图标
-                                                            Uploaded:  蓝绿色云（State.Success）
-                                                            Failed:    红色云 + 感叹号
-                                                            Paused:    黄色半云（State.Warning）
+                                                            右上角徽章分两组，互斥显示：
+                                                            A. 瞬时进度态（Uploading/Failed/Paused）—— 由 UploadStatusToVis 绑定 UploadStatus
+                                                            B. 持久同步态（UploadedAndLocal / UploadedButMissingLocal / NotUploaded）—— 由 MediaFileToSyncVis 派生
+
+                                                            A 组在上传过程中优先显示；B 组在静止状态（已上传/未上传）显示。
                                                         -->
 
-                                                        <!-- Uploaded: 蓝绿色云 -->
-                                                        <Border IsVisible="{Binding UploadStatus, Converter={StaticResource UploadStatusToVis}, ConverterParameter=Uploaded}"
+                                                        <!-- 同步态: 已上传且本地存在 (青蓝云 + ✓) -->
+                                                        <Border IsVisible="{Binding ., Converter={StaticResource MediaFileToSyncVis}, ConverterParameter=UploadedAndLocal}"
                                                                 HorizontalAlignment="Right"
                                                                 VerticalAlignment="Top"
                                                                 Margin="6,10,10,6"
                                                                 Width="24" Height="24"
                                                                 Background="#CCFFFFFF"
                                                                 CornerRadius="12">
-                                                            <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
-                                                                  Stretch="Uniform"
-                                                                  Width="14" Height="14"
-                                                                  Fill="{DynamicResource State.Success}"
-                                                                  HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center"/>
+                                                            <Grid>
+                                                                <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
+                                                                      Stretch="Uniform"
+                                                                      Width="14" Height="14"
+                                                                      Fill="#4DD0E1"
+                                                                      HorizontalAlignment="Center"
+                                                                      VerticalAlignment="Center"/>
+                                                                <Path Data="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
+                                                                      Stretch="Uniform"
+                                                                      Width="10" Height="10"
+                                                                      Fill="#FFFFFF"
+                                                                      HorizontalAlignment="Center"
+                                                                      VerticalAlignment="Center"
+                                                                      Margin="0,1,0,0"/>
+                                                            </Grid>
+                                                        </Border>
+
+                                                        <!-- 同步态: 已上传但本地不存在 (橙色云 + ↓) -->
+                                                        <Border IsVisible="{Binding ., Converter={StaticResource MediaFileToSyncVis}, ConverterParameter=UploadedButMissingLocal}"
+                                                                HorizontalAlignment="Right"
+                                                                VerticalAlignment="Top"
+                                                                Margin="6,10,10,6"
+                                                                Width="24" Height="24"
+                                                                Background="#CCFFFFFF"
+                                                                CornerRadius="12">
+                                                            <Grid>
+                                                                <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
+                                                                      Stretch="Uniform"
+                                                                      Width="14" Height="14"
+                                                                      Fill="#FFA726"
+                                                                      HorizontalAlignment="Center"
+                                                                      VerticalAlignment="Center"/>
+                                                                <Path Data="M20 12l-1.41-1.41L13 18.17V4h-2v14.17l-5.58-5.59L4 14l8 8 8-8z"
+                                                                      Stretch="Uniform"
+                                                                      Width="10" Height="10"
+                                                                      Fill="#FFFFFF"
+                                                                      HorizontalAlignment="Center"
+                                                                      VerticalAlignment="Center"
+                                                                      Margin="0,2,0,0"/>
+                                                            </Grid>
+                                                        </Border>
+
+                                                        <!-- 同步态: 未上传 (灰云 + 斜杠) -->
+                                                        <Border IsVisible="{Binding ., Converter={StaticResource MediaFileToSyncVis}, ConverterParameter=NotUploaded}"
+                                                                HorizontalAlignment="Right"
+                                                                VerticalAlignment="Top"
+                                                                Margin="6,10,10,6"
+                                                                Width="24" Height="24"
+                                                                Background="#CCFFFFFF"
+                                                                CornerRadius="12">
+                                                            <Grid>
+                                                                <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
+                                                                      Stretch="Uniform"
+                                                                      Width="14" Height="14"
+                                                                      Fill="#4A5273"
+                                                                      HorizontalAlignment="Center"
+                                                                      VerticalAlignment="Center"/>
+                                                                <Path Data="M4 4 L20 20"
+                                                                      Stroke="#FFFFFF"
+                                                                      StrokeThickness="2.2"
+                                                                      StrokeLineCap="Round"
+                                                                      Width="14" Height="14"
+                                                                      Stretch="Uniform"
+                                                                      HorizontalAlignment="Center"
+                                                                      VerticalAlignment="Center"/>
+                                                            </Grid>
                                                         </Border>
 
                                                         <!-- Uploading: 半透明云 -->
