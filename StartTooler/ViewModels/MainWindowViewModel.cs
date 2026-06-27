@@ -56,7 +56,7 @@ public partial class MainWindowViewModel : ObservableObject
                 .GetAwaiter().GetResult() ?? new OssConfig();
         });
 
-        SettingsViewModel = new SettingsViewModel(new DirectoryPickerService(), configService);
+        SettingsViewModel = new SettingsViewModel(new DirectoryPickerService(), new FilePickerService(), configService);
 
         // 创建 ViewModel
         // onOssNotConfigured: Gallery 触发上传时如果 OSS 未配置，由 MainWindow 弹对话框并提供「去设置」入口
