@@ -163,7 +163,8 @@
                                 <Button Classes="photo-tile"
                                         Margin="8"
                                         Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).ToggleSelectionCommand}"
-                                        CommandParameter="{Binding}">
+                                        CommandParameter="{Binding}"
+                                        DoubleTapped="OnPhotoTileDoubleTapped">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
                                             <Grid>

@@ -7,9 +7,9 @@ namespace StartTooler.Services;
 
 /// <summary>
 /// 跨平台系统 Shell 实现：
-/// - macOS:   <c>open -R &lt;path&gt;</c> 在 Finder 中高亮文件
-/// - Windows: <c>explorer /select,&lt;path&gt;</c> 在资源管理器中高亮文件
-/// - Linux:   <c>xdg-open &lt;dir&gt;</c> 打开文件所在目录
+/// - macOS:   <c>open -R &lt;path&gt;</c> 在 Finder 中高亮文件；<c>open &lt;path&gt;</c> 用默认 app 打开
+/// - Windows: <c>explorer /select,&lt;path&gt;</c> 在资源管理器中高亮文件；ShellExecute 默认关联打开
+/// - Linux:   <c>xdg-open &lt;dir&gt;</c> 打开文件所在目录；<c>xdg-open &lt;path&gt;</c> 用默认 app 打开
 /// </summary>
 public class SystemShellService : ISystemShellService
 {
@@ -74,6 +74,64 @@ public class SystemShellService : ISystemShellService
         catch (Exception ex)
         {
             throw new SystemShellException($"Failed to reveal file: {ex.Message}", ex);
+        }
+    }
+
+    public void OpenWithDefaultApp(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath))
+        {
+            throw new ArgumentException("filePath is null or empty", nameof(filePath));
+        }
+
+        if (!File.Exists(filePath))
+        {
+            throw new FileNotFoundException($"File not found: {filePath}", filePath);
+        }
+
+        try
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                // macOS: open <path> 走 LaunchServices，按扩展名挑默认 app
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "open",
+                    Arguments = $"\"{filePath}\"",
+                    UseShellExecute = false,
+                });
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                // Windows: UseShellExecute=true 走 ShellExecuteEx，按文件关联挑默认 app
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = filePath,
+                    UseShellExecute = true,
+                });
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                // Linux: xdg-open <path> 走 .desktop 关联
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "xdg-open",
+                    Arguments = $"\"{filePath}\"",
+                    UseShellExecute = false,
+                });
+            }
+            else
+            {
+                throw new SystemShellException($"Unsupported platform: {RuntimeInformation.OSDescription}");
+            }
+        }
+        catch (SystemShellException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new SystemShellException($"Failed to open file: {ex.Message}", ex);
         }
     }
 }

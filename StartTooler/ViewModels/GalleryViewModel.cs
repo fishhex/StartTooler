@@ -411,10 +411,95 @@ public partial class GalleryViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ViewFile(MediaFile? file)
+    private async Task OpenFileAsync(MediaFile? file)
     {
         if (file == null) return;
-        ShowToast($"查看 {file.FileName}（待实现）");
+
+        var localPath = Path.Combine(file.ProjectPath, file.RelativePath);
+
+        // 1. 本地存在 → 直接打开
+        if (file.LocalExists && File.Exists(localPath))
+        {
+            try
+            {
+                _systemShell.OpenWithDefaultApp(localPath);
+            }
+            catch (Exception ex)
+            {
+                ShowToast($"打开失败：{ex.Message}");
+            }
+            return;
+        }
+
+        // 2. 本地缺失 → 询问是否下载
+        var window = DialogHelper.GetMainWindow();
+        if (window == null)
+        {
+            ShowToast("无法弹出对话框（未找到主窗口）");
+            return;
+        }
+
+        var sizeText = file.FileSize > 0 ? $"（{FormatSize(file.FileSize)}）" : "";
+        var yes = await DialogHelper.ShowConfirmAsync(
+            window,
+            "本地文件不存在",
+            $"「{file.FileName}」{sizeText} 本地不存在，要从云端下载吗？",
+            "下载",
+            "取消");
+
+        if (!yes) return;
+
+        // 3. OSS 配置检查
+        var storage = _ossFactory.TryCreate();
+        if (storage == null)
+        {
+            await PromptOssNotConfiguredAsync();
+            return;
+        }
+
+        // 4. 下载
+        var ossCfg = await GetOssConfigSnapshotAsync();
+        var objectKey = AliyunOssStorage.BuildObjectKey(ossCfg.PathPrefix, file.RelativePath);
+
+        ShowToast($"正在下载 {file.FileName}…");
+
+        try
+        {
+            await storage.DownloadAsync(objectKey, localPath);
+
+            // 下载成功：更新本地状态
+            file.LocalExists = true;
+            // 缩略图如果也丢了，标记为需要刷新（MediaFile 没有 ThumbnailExists 字段，
+            // 这里保守不动，等下次扫描或下次进入时间轴再自然重建）。
+
+            ShowToast($"已下载：{file.FileName}");
+
+            // 5. 下载完自动打开
+            try
+            {
+                _systemShell.OpenWithDefaultApp(localPath);
+            }
+            catch (Exception ex)
+            {
+                ShowToast($"下载成功，但打开失败：{ex.Message}");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            ShowToast($"已取消下载：{file.FileName}");
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"下载失败：{ex.Message}");
+        }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / 1024.0 / 1024.0:F1} MB";
+        return $"{bytes / 1024.0 / 1024.0 / 1024.0:F2} GB";
     }
 
     [RelayCommand]
