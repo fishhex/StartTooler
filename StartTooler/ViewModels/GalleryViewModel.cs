@@ -467,10 +467,25 @@ public partial class GalleryViewModel : ObservableObject
         {
             await storage.DownloadAsync(objectKey, localPath);
 
-            // 下载成功：更新本地状态
+            // 下载成功：更新本地状态（LocalExists/ThumbnailPath 都是 ObservableProperty，
+            // 直接赋值就会触发 XAML 重绑）
             file.LocalExists = true;
-            // 缩略图如果也丢了，标记为需要刷新（MediaFile 没有 ThumbnailExists 字段，
-            // 这里保守不动，等下次扫描或下次进入时间轴再自然重建）。
+
+            // 视频缩略图常常和本地视频一起被删 / 缓存清掉。下载完后顺手重新生成，
+            // 避免「表里有 ThumbnailPath 字符串但文件不存在」导致卡片显示空 Image。
+            try
+            {
+                var newThumb = await _thumbnailService.GenerateThumbnailAsync(
+                    localPath, file.ProjectPath);
+                if (!string.IsNullOrEmpty(newThumb))
+                {
+                    file.ThumbnailPath = newThumb;
+                }
+            }
+            catch
+            {
+                // 缩略图生成失败不影响主流程，UI 会用占位符兜底
+            }
 
             ShowToast($"已下载：{file.FileName}");
 

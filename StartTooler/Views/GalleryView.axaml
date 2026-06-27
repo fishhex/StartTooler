@@ -17,6 +17,7 @@
         <converters:MediaFileToSyncVisibilityConverter x:Key="MediaFileToSyncVis"/>
         <converters:MediaTypeToVideoConverter x:Key="MediaTypeToVideo"/>
         <converters:FilePathToBitmapConverter x:Key="FilePathToBitmap"/>
+        <converters:FilePathToVisibilityConverter x:Key="FilePathToVis"/>
         <converters:UploadStatusToVisibilityConverter x:Key="UploadStatusToVis"/>
     </UserControl.Resources>
 
@@ -184,12 +185,12 @@
                                                         ClipToBounds="True">
 
                                                     <Grid>
-                                                        <!-- 缩略图 -->
+                                                        <!-- 缩略图（路径有效且文件存在才显示） -->
                                                         <Image Source="{Binding ThumbnailPath, Converter={StaticResource FilePathToBitmap}}"
                                                                Stretch="UniformToFill"
-                                                               IsVisible="{Binding ThumbnailPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                               IsVisible="{Binding ThumbnailPath, Converter={StaticResource FilePathToVis}}"/>
 
-                                                        <!-- 占位星座图标 -->
+                                                        <!-- 占位星座图标（路径空 或 文件不存在时显示） -->
                                                         <Path Data="{DynamicResource Icon.Constellation}"
                                                               Stretch="Uniform"
                                                               Width="48" Height="48"
@@ -199,7 +200,7 @@
                                                               Opacity="0.4"
                                                               HorizontalAlignment="Center"
                                                               VerticalAlignment="Center"
-                                                              IsVisible="{Binding ThumbnailPath, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
+                                                              IsVisible="{Binding ThumbnailPath, Converter={StaticResource FilePathToVis}, ConverterParameter=Invert}"/>
 
                                                         <!-- 视频徽章 (左上角) -->
                                                         <Border IsVisible="{Binding MediaType, Converter={StaticResource MediaTypeToVideo}}"

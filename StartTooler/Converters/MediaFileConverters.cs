@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.IO;
 using Avalonia.Data.Converters;
 using Avalonia.Media;
 using StartTooler.Data;
@@ -126,6 +127,35 @@ public class MediaFileToSyncVisibilityConverter : IValueConverter
             status = SyncStatus.NotUploaded;
 
         return Enum.TryParse<SyncStatus>(p, ignoreCase: true, out var target) && status == target;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// 文件路径 → 可见性。路径非空 **且** File.Exists 才返回 true。
+///
+/// 用法（绑定 Image.Visibility）：IsVisible="{Binding ThumbnailPath, Converter={StaticResource FilePathToVis}}"
+/// 解决了「ThumbnailPath 字符串有值但实际文件被删」的悬空状态——
+/// 这种情况下旧代码 StringConverters.IsNotNullOrEmpty 会让 Image 占据空间但显示为空，
+/// 用本 converter 后 Image 隐藏，下层占位符自然显形。
+///
+/// ConverterParameter="Invert" 取反，用于绑占位符（路径空 / 文件不存在 → 显示占位符）。
+/// </summary>
+public class FilePathToVisibilityConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var path = value as string;
+        var exists = !string.IsNullOrWhiteSpace(path) && File.Exists(path);
+
+        if (parameter is string p && p.Equals("Invert", StringComparison.OrdinalIgnoreCase))
+            return !exists;
+
+        return exists;
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

@@ -38,8 +38,21 @@ public partial class MediaFile : ObservableObject
     public long LastModified { get; set; }
     public long? ShotAt { get; set; }
     public bool IsUploaded { get; set; }
-    public bool LocalExists { get; set; } = true;
-    public string? ThumbnailPath { get; set; }
+
+    /// <summary>
+    /// 本地文件是否存在（驱动 SyncStatus 徽章和 Image 渲染）。
+    /// 由下载完成 / 本地扫描维护。
+    /// </summary>
+    [ObservableProperty]
+    private bool _localExists = true;
+
+    /// <summary>
+    /// 缩略图缓存路径（绝对路径，存 DB 后跨会话有效）。
+    /// 文件可能因缓存清理而丢失——这种情况下 FilePathToVisibilityConverter 会自动隐藏 Image。
+    /// </summary>
+    [ObservableProperty]
+    private string? _thumbnailPath;
+
     public string? RemoteUrl { get; set; }
     public long? UploadedAt { get; set; }
     public long ScannedAt { get; set; }
