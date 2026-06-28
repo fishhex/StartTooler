@@ -42,7 +42,7 @@
         <Border Grid.Row="3" Background="{DynamicResource Bg.Surface}">
          <Panel>
             <!-- 通用 Tab -->
-            <Grid RowDefinitions="Auto,Auto,Auto,*"
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,*"
                   IsVisible="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.General}}">
                 <!-- 项目目录 FormRow -->
                 <Border Grid.Row="0" Padding="40,16" Background="{DynamicResource Bg.Surface}">
@@ -142,8 +142,27 @@
                     </Grid>
                 </Border>
 
+                <!-- FFprobe 路径 FormRow -->
+                <Border Grid.Row="3" Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*" Height="64">
+                        <TextBlock Grid.Column="0" Text="FFprobe 路径"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <TextBox Text="{Binding FfprobePath, Mode=TwoWay}"
+                                     FontSize="13"
+                                     Watermark="留空走 PATH（如 /Users/you/.local/bin/ffprobe）"
+                                     Width="360"
+                                     VerticalAlignment="Center"/>
+                            <Button Content="浏览..."
+                                    Classes="secondary-button"
+                                    Command="{Binding BrowseFFprobeCommand}"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
                 <!-- 空区域填充 -->
-                <Border Grid.Row="3" Background="{DynamicResource Bg.Surface}"/>
+                <Border Grid.Row="4" Background="{DynamicResource Bg.Surface}"/>
             </Grid>
 
             <!-- OSS Tab -->

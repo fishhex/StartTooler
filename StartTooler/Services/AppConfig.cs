@@ -6,7 +6,12 @@ public class AppConfig
 
     /// <summary>
     /// ffmpeg 可执行文件绝对路径。空 = 走 PATH。
-    /// ffprobe 必须在同一目录（FFMpegCore 按父目录找两个二进制）。
     /// </summary>
     public string? FFmpegPath { get; set; }
+
+    /// <summary>
+    /// ffprobe 可执行文件绝对路径。空 = 走 PATH。
+    /// 跟 FFmpegPath 独立，允许两个二进制放在不同目录。
+    /// </summary>
+    public string? FFprobePath { get; set; }
 }

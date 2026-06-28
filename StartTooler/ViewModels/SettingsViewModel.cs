@@ -24,6 +24,7 @@ public partial class SettingsViewModel : ObservableObject
     private string? _lastSavedDirectory;
     private int _lastSavedTheme;  // 0=DeepSpace, 1=RedNight
     private string? _lastSavedFfmpegPath;
+    private string? _lastSavedFfprobePath;
 
     // OSS Tab 快照
     private OssConfig? _lastSavedOss;
@@ -38,6 +39,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private ObservableCollection<string> recentDirectories;
     [ObservableProperty] private int selectedTheme;
     [ObservableProperty] private string? ffmpegPath;
+    [ObservableProperty] private string? ffprobePath;
 
     // OSS Tab 字段
     // OssProvider 是 UI 占位字段，目前只支持 Aliyun (index 0)，为未来扩展留入口。
@@ -79,6 +81,8 @@ public partial class SettingsViewModel : ObservableObject
 
             _lastSavedFfmpegPath = appConfig.FFmpegPath;
             FfmpegPath = appConfig.FFmpegPath;
+            _lastSavedFfprobePath = appConfig.FFprobePath;
+            FfprobePath = appConfig.FFprobePath;
         }
 
         // 先设置 _lastSavedDirectory
@@ -151,6 +155,13 @@ public partial class SettingsViewModel : ObservableObject
         StatusMessage = null;
     }
 
+    partial void OnFfprobePathChanged(string? value)
+    {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+        StatusMessage = null;
+    }
+
     partial void OnOssRegionChanged(string value)
     {
         if (!_isInitialized) return;
@@ -187,7 +198,8 @@ public partial class SettingsViewModel : ObservableObject
 
         var generalDirty = SelectedProjectDirectory != _lastSavedDirectory
                         || SelectedTheme != _lastSavedTheme
-                        || FfmpegPath != _lastSavedFfmpegPath;
+                        || FfmpegPath != _lastSavedFfmpegPath
+                        || FfprobePath != _lastSavedFfprobePath;
 
         var currentOss = BuildOssConfigFromVm();
         var ossDirty = !OssConfigEquals(currentOss, _lastSavedOss);
@@ -216,6 +228,7 @@ public partial class SettingsViewModel : ObservableObject
         SelectedProjectDirectory = _lastSavedDirectory;
         SelectedTheme = _lastSavedTheme;
         FfmpegPath = _lastSavedFfmpegPath;
+        FfprobePath = _lastSavedFfprobePath;
 
         RecentDirectories.Clear();
         if (_projectConfig != null)
@@ -280,6 +293,21 @@ public partial class SettingsViewModel : ObservableObject
         FfmpegPath = file;
     }
 
+    [RelayCommand]
+    private async Task BrowseFFprobe()
+    {
+        var ext = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+            System.Runtime.InteropServices.OSPlatform.Windows)
+            ? new[] { "exe" }
+            : null;
+
+        var file = await _filePicker.PickFileAsync("选择 ffprobe 可执行文件", ext);
+        if (string.IsNullOrEmpty(file))
+            return;
+
+        FfprobePath = file;
+    }
+
     private void AddToRecentDirectories(string directory)
     {
         if (RecentDirectories.Contains(directory))
@@ -320,6 +348,22 @@ public partial class SettingsViewModel : ObservableObject
             }
         }
 
+        // FFprobe 路径校验：规则跟 ffmpeg 一致
+        var trimmedFfprobePath = string.IsNullOrWhiteSpace(FfprobePath) ? null : FfprobePath.Trim();
+        if (!string.IsNullOrEmpty(trimmedFfprobePath))
+        {
+            if (Directory.Exists(trimmedFfprobePath))
+            {
+                StatusMessage = $"FFprobe 路径不能是目录：{trimmedFfprobePath}";
+                return;
+            }
+            if (!File.Exists(trimmedFfprobePath))
+            {
+                StatusMessage = $"FFprobe 文件不存在：{trimmedFfprobePath}";
+                return;
+            }
+        }
+
         IsSaving = true;
         StatusMessage = null;
 
@@ -339,23 +383,28 @@ public partial class SettingsViewModel : ObservableObject
                 await _configService.SetAsync(ConfigKeys.Project, _projectConfig);
             }
 
-            // 保存 App 配置（主题 + FFmpeg 路径）
+            // 保存 App 配置（主题 + FFmpeg / FFprobe 路径）
             var theme = SelectedTheme == 1 ? "RedNight" : "DeepSpace";
             var appConfig = new AppConfig
             {
                 Theme = theme,
                 FFmpegPath = trimmedFfmpegPath,
+                FFprobePath = trimmedFfprobePath,
             };
             await _configService.SetAsync(ConfigKeys.App, appConfig);
             ThemeManager.SetTheme(SelectedTheme == 1);
 
-            // 立即把 FfmpegPath 应用到 FFMpegCore，不需要重启
-            FFmpegConfigurator.Apply(trimmedFfmpegPath);
+            // 立即把 FfmpegPath / FfprobePath 应用到 FFmpegConfigurator，不需要重启
+            FFmpegConfigurator.Apply(trimmedFfmpegPath, trimmedFfprobePath);
 
             // 把 trim 后的值同步回 UI（用户输入带首尾空格的场景）
             if (FfmpegPath != trimmedFfmpegPath)
             {
                 FfmpegPath = trimmedFfmpegPath;
+            }
+            if (FfprobePath != trimmedFfprobePath)
+            {
+                FfprobePath = trimmedFfprobePath;
             }
 
             // 保存 OSS 配置
@@ -366,6 +415,7 @@ public partial class SettingsViewModel : ObservableObject
             _lastSavedDirectory = SelectedProjectDirectory;
             _lastSavedTheme = SelectedTheme;
             _lastSavedFfmpegPath = trimmedFfmpegPath;
+            _lastSavedFfprobePath = trimmedFfprobePath;
             _lastSavedOss = ossConfig;
 
             IsDirty = false;

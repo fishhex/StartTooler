@@ -29,18 +29,26 @@
                 Background="{DynamicResource Bg.SurfaceElevated}"
                 IsVisible="{Binding IsScanning}">
             <Panel>
-                <!-- 确定进度条 (Total > 0) -->
-                <Border Background="{DynamicResource Accent.Stellar}"
-                        HorizontalAlignment="Left"
-                        BoxShadow="0 0 8 0 #404FC3F7"
-                        IsVisible="{Binding ScanProgress.Total, Converter={x:Static ObjectConverters.IsNotNull}}">
-                    <Border.Width>
-                        <MultiBinding Converter="{x:Static converters:ScanProgressConverters.ProgressWidth}">
-                            <Binding Path="ScanProgress.Processed"/>
-                            <Binding Path="ScanProgress.Total"/>
-                        </MultiBinding>
-                    </Border.Width>
-                </Border>
+                <!-- 确定进度条 (Total > 0)
+                     进度用 Grid + ColumnDefinitions 实现，ColumnDefinition.Width 是 GridLength 类型，
+                     正好承接 ProgressWidthConverter 返回的 GridLength(ratio, Star)。
+                     原本写在 Border.Width 上是错的（Border.Width 是 double），会抛 cast 异常。 -->
+                <Grid IsVisible="{Binding ScanProgress.Total, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition>
+                            <ColumnDefinition.Width>
+                                <MultiBinding Converter="{x:Static converters:ScanProgressConverters.ProgressWidth}">
+                                    <Binding Path="ScanProgress.Processed"/>
+                                    <Binding Path="ScanProgress.Total"/>
+                                </MultiBinding>
+                            </ColumnDefinition.Width>
+                        </ColumnDefinition>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0"
+                            Background="{DynamicResource Accent.Stellar}"
+                            BoxShadow="0 0 8 0 #404FC3F7"/>
+                </Grid>
 
                 <!-- 不确定进度条 (Total = 0) -->
                 <Border ClipToBounds="True"

@@ -3,6 +3,8 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using StartTooler.Services;
 using StartTooler.Views;
+using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 
 namespace StartTooler;
@@ -35,14 +37,19 @@ public partial class App : Application
             var appConfig = await configService.GetAsync<AppConfig>(ConfigKeys.App);
             if (appConfig != null)
             {
+                Trace.WriteLine($"[App] LoadSavedAppConfig: theme={appConfig.Theme} FFmpegPath={appConfig.FFmpegPath ?? "(null)"} FFprobePath={appConfig.FFprobePath ?? "(null)"}");
                 ThemeManager.SetTheme(appConfig.Theme == "RedNight");
-                // 把保存的 FFmpeg 路径配到 FFMpegCore，缩略图生成时即用此路径
-                FFmpegConfigurator.Apply(appConfig.FFmpegPath);
+                // 把保存的 FFmpeg / FFprobe 路径应用到 FFmpegConfigurator，缩略图生成时即用此路径
+                FFmpegConfigurator.Apply(appConfig.FFmpegPath, appConfig.FFprobePath);
+            }
+            else
+            {
+                Trace.WriteLine("[App] LoadSavedAppConfig: no saved AppConfig, using defaults");
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // 忽略加载错误，使用默认主题 + 默认 PATH
+            Trace.WriteLine($"[App] LoadSavedAppConfig FAILED: {ex}");
         }
     }
 }

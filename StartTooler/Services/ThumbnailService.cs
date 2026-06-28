@@ -1,9 +1,8 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using FFMpegCore;
-using FFMpegCore.Enums;
 using SkiaSharp;
 
 namespace StartTooler.Services;
@@ -27,14 +26,17 @@ public class ThumbnailService : IThumbnailService
             "thumbnails");
 
         Directory.CreateDirectory(_thumbnailDir);
+        Trace.WriteLine($"[ThumbnailService] dir={_thumbnailDir}");
     }
 
     public async Task<string?> GenerateThumbnailAsync(string sourcePath, string projectPath, CancellationToken ct = default)
     {
+        Trace.WriteLine($"[ThumbnailService] Generate start: source={sourcePath}");
         try
         {
             var ext = Path.GetExtension(sourcePath).ToLowerInvariant();
             var isVideo = IsVideoFile(ext);
+            Trace.WriteLine($"[ThumbnailService] ext={ext} isVideo={isVideo}");
 
             // 生成缩略图文件名：使用路径的哈希值确保唯一性
             var relativePath = Path.GetRelativePath(projectPath, sourcePath);
@@ -44,6 +46,7 @@ public class ThumbnailService : IThumbnailService
             // 如果缩略图已存在，直接返回
             if (File.Exists(thumbnailPath))
             {
+                Trace.WriteLine($"[ThumbnailService] cache hit: {thumbnailPath}");
                 return thumbnailPath;
             }
 
@@ -56,11 +59,13 @@ public class ThumbnailService : IThumbnailService
                 await GenerateImageThumbnailAsync(sourcePath, thumbnailPath, ct);
             }
 
+            Trace.WriteLine($"[ThumbnailService] Generate ok: {thumbnailPath}");
             return thumbnailPath;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // 缩略图生成失败时返回 null
+            // 不要再吞异常不写日志了——上次坑就坑在这
+            Trace.WriteLine($"[ThumbnailService] Generate FAILED: source={sourcePath} ex={ex}");
             return null;
         }
     }
@@ -96,24 +101,97 @@ public class ThumbnailService : IThumbnailService
 
     private async Task GenerateVideoThumbnailAsync(string sourcePath, string thumbnailPath, CancellationToken ct)
     {
+        Trace.WriteLine($"[ThumbnailService] ============================================");
+        Trace.WriteLine($"[ThumbnailService] Video thumbnail generation (direct CLI)");
+        Trace.WriteLine($"[ThumbnailService]   input:  {sourcePath}");
+
         try
         {
-            // 使用 FFMpegCore 提取视频第一帧
-            var mediaInfo = await FFProbe.AnalyseAsync(sourcePath, cancellationToken: ct);
-            var duration = mediaInfo.Duration.TotalSeconds;
-
-            // 从 5% 位置取帧（避免黑屏）
-            var grabPosition = Math.Max(1, duration * 0.05);
-
-            await FFMpeg.SnapshotAsync(sourcePath, thumbnailPath,
-                new System.Drawing.Size(ThumbnailWidth, ThumbnailHeight),
-                captureTime: TimeSpan.FromSeconds(grabPosition));
+            if (File.Exists(sourcePath))
+            {
+                var size = new FileInfo(sourcePath).Length;
+                Trace.WriteLine($"[ThumbnailService]   input exists, size={size} bytes");
+            }
+            else
+            {
+                Trace.WriteLine($"[ThumbnailService]   input NOT FOUND on disk!");
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            // FFMpeg 失败时尝试使用 SkiaSharp 加载（可能失败）
-            await GenerateImageThumbnailAsync(sourcePath, thumbnailPath, ct);
+            Trace.WriteLine($"[ThumbnailService]   input stat FAILED: {ex.Message}");
         }
+
+        Trace.WriteLine($"[ThumbnailService]   ffprobe binary: {FFmpegConfigurator.GetFFprobeBinaryPath()}");
+        Trace.WriteLine($"[ThumbnailService]   ffmpeg binary:  {FFmpegConfigurator.GetFFmpegBinaryPath()}");
+
+        // ========== Step 1: ffprobe 解析媒体信息 ==========
+        Trace.WriteLine($"[ThumbnailService] step 1/3: FfprobeRunner.ProbeAsync");
+        VideoProbeResult? mediaInfo = null;
+        try
+        {
+            mediaInfo = await FfprobeRunner.ProbeAsync(sourcePath, ct);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[ThumbnailService] step 1/3 FAILED: {ex.GetType().Name}: {ex.Message}");
+            Trace.WriteLine($"[ThumbnailService]   hint: 检查「设置 → 通用 → FFprobe 路径」是否配置正确");
+            // ffprobe 失败时尝试用 SkiaSharp 加载（对视频几乎肯定失败，但写日志能看到尝试过）
+            await GenerateImageThumbnailAsync(sourcePath, thumbnailPath, ct);
+            return;
+        }
+
+        if (mediaInfo == null)
+        {
+            Trace.WriteLine($"[ThumbnailService] step 1/3 FAILED: ffprobe returned no usable info (no video stream?)");
+            await GenerateImageThumbnailAsync(sourcePath, thumbnailPath, ct);
+            return;
+        }
+
+        // ========== Step 2: 解析媒体信息 ==========
+        var duration = mediaInfo.Duration.TotalSeconds;
+        Trace.WriteLine($"[ThumbnailService] step 2/3: media info parsed");
+        Trace.WriteLine($"[ThumbnailService]   duration:  {duration:F2}s");
+        Trace.WriteLine($"[ThumbnailService]   video:     {mediaInfo.Width}x{mediaInfo.Height} @ {mediaInfo.FrameRate:F2}fps codec={mediaInfo.Codec}");
+        Trace.WriteLine($"[ThumbnailService]   frame selection: thumbnail filter (auto-picks most energetic frame, ignores rawvideo seek issues)");
+
+        // ========== Step 3: 调 ffmpeg 抓快照 ==========
+        Trace.WriteLine($"[ThumbnailService] step 3/3: FfmpegSnapshotRunner.SnapshotAsync");
+        Trace.WriteLine($"[ThumbnailService]   output:    {thumbnailPath}");
+        Trace.WriteLine($"[ThumbnailService]   size:      {ThumbnailWidth}x{ThumbnailHeight}");
+
+        try
+        {
+            var exists = await FfmpegSnapshotRunner.SnapshotAsync(
+                sourcePath,
+                thumbnailPath,
+                TimeSpan.FromSeconds(duration * 0.05),  // 历史保留参数，未实际使用
+                ThumbnailWidth,
+                ThumbnailHeight,
+                ct);
+
+            if (exists && File.Exists(thumbnailPath))
+            {
+                var fileSize = new FileInfo(thumbnailPath).Length;
+                Trace.WriteLine($"[ThumbnailService]   output file exists, size={fileSize} bytes");
+                if (fileSize == 0)
+                {
+                    Trace.WriteLine($"[ThumbnailService]   WARN: output file is 0 bytes!");
+                }
+            }
+            else
+            {
+                Trace.WriteLine($"[ThumbnailService]   WARN: runner reported success but output file NOT created");
+            }
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[ThumbnailService] step 3/3 FAILED: {ex.GetType().Name}: {ex.Message}");
+            throw;  // 让外层 GenerateThumbnailAsync 记到
+        }
+
+        Trace.WriteLine($"[ThumbnailService] Video thumbnail generation done");
+        Trace.WriteLine($"[ThumbnailService] ============================================");
     }
 
     private static bool IsVideoFile(string extension)
