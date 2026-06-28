@@ -18,7 +18,10 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _cts;
 
     [ObservableProperty] private int _port = 8765;
-    [ObservableProperty] private bool _isRunning;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(StartServerCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StopServerCommand))]
+    private bool _isRunning;
     [ObservableProperty] private string? _uploadUrl;
     [ObservableProperty] private Bitmap? _qrCodeImage;
     [ObservableProperty] private string? _statusMessage;
@@ -69,9 +72,6 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
             IsRunning = true;
             StatusMessage = "服务已启动";
             GenerateQrCode(_server.UploadUrl);
-
-            OnPropertyChanged(nameof(CanStart));
-            OnPropertyChanged(nameof(CanStop));
         }
         catch (Exception ex)
         {
@@ -97,9 +97,6 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         QrCodeImage = null;
         StatusMessage = "服务已停止";
         ErrorMessage = null;
-
-        OnPropertyChanged(nameof(CanStart));
-        OnPropertyChanged(nameof(CanStop));
     }
 
     private void GenerateQrCode(string url)
