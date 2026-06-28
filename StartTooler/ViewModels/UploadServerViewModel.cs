@@ -111,11 +111,10 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
             using var qrCode = new PngByteQRCode(qrCodeData);
             var pngBytes = qrCode.GetGraphic(5);
 
-            using var ms = new MemoryStream(pngBytes);
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
                 QrCodeImage?.Dispose();
-                QrCodeImage = new Bitmap(ms);
+                QrCodeImage = new Bitmap(new MemoryStream(pngBytes));
             });
         }
         catch (Exception ex)
