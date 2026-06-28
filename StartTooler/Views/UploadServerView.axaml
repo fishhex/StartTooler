@@ -13,97 +13,97 @@
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource Text.Primary}"/>
 
-            <!-- 服务控制区 -->
+            <!-- 服务控制 + 二维码（合并 card，运行时二维码在右侧） -->
             <Border Background="{DynamicResource Bg.Surface}"
                     CornerRadius="8"
                     Padding="24">
-                <StackPanel Spacing="16">
-                    <TextBlock Text="局域网上传"
-                               FontSize="14"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource Text.Primary}"/>
+                <Grid ColumnDefinitions="*,Auto">
+                    <!-- 左：服务控制 -->
+                    <StackPanel Grid.Column="0" Spacing="16">
+                        <TextBlock Text="局域网上传"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}"/>
 
-                    <TextBlock Text="在其他设备上打开以下链接，上传图片或视频。文件会自动按日期归档到当前项目目录。"
-                               FontSize="12"
-                               Foreground="{DynamicResource Text.Secondary}"
-                               TextWrapping="Wrap"/>
+                        <TextBlock Text="在其他设备上打开以下链接，上传图片或视频。文件会自动按日期归档到当前项目目录。"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource Text.Secondary}"
+                                   TextWrapping="Wrap"/>
 
-                    <!-- 端口配置 -->
-                    <Grid ColumnDefinitions="100,*">
-                        <TextBlock Grid.Column="0"
-                                   Text="端口"
-                                   FontSize="13"
-                                   Foreground="{DynamicResource Text.Primary}"
-                                   VerticalAlignment="Center"/>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
-                            <NumericUpDown Value="{Binding Port}"
-                                           Minimum="1024"
-                                           Maximum="65535"
-                                           Width="120"
-                                           IsEnabled="{Binding !IsRunning}"
-                                           VerticalAlignment="Center"/>
+                        <!-- 端口配置 -->
+                        <Grid ColumnDefinitions="100,*">
+                            <TextBlock Grid.Column="0"
+                                       Text="端口"
+                                       FontSize="13"
+                                       Foreground="{DynamicResource Text.Primary}"
+                                       VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
+                                <NumericUpDown Value="{Binding Port}"
+                                               Minimum="1024"
+                                               Maximum="65535"
+                                               Width="120"
+                                               IsEnabled="{Binding !IsRunning}"
+                                               VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 启动按钮 -->
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Content="启动服务"
+                                    Classes="primary-button"
+                                    Command="{Binding StartServerCommand}"
+                                    IsVisible="{Binding !IsRunning}"/>
+                            <Button Content="停止服务"
+                                    Classes="secondary-button"
+                                    Command="{Binding StopServerCommand}"
+                                    IsVisible="{Binding IsRunning}"/>
                         </StackPanel>
-                    </Grid>
 
-                    <!-- 启动按钮 -->
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <Button Content="启动服务"
-                                Classes="primary-button"
-                                Command="{Binding StartServerCommand}"
-                                IsVisible="{Binding !IsRunning}"/>
-                        <Button Content="停止服务"
-                                Classes="secondary-button"
-                                Command="{Binding StopServerCommand}"
-                                IsVisible="{Binding IsRunning}"/>
+                        <!-- 状态消息 -->
+                        <TextBlock Text="{Binding StatusMessage}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource State.Success}"
+                                   IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <!-- 错误消息 -->
+                        <TextBlock Text="{Binding ErrorMessage}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource State.Error}"
+                                   IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     </StackPanel>
 
-                    <!-- 状态消息 -->
-                    <TextBlock Text="{Binding StatusMessage}"
-                               FontSize="12"
-                               Foreground="{DynamicResource State.Success}"
-                               IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <!-- 右：二维码（运行时显示） -->
+                    <StackPanel Grid.Column="1"
+                                Spacing="12"
+                                Margin="24,0,0,0"
+                                VerticalAlignment="Top"
+                                IsVisible="{Binding IsRunning}">
+                        <TextBlock Text="扫码上传"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}"
+                                   HorizontalAlignment="Center"/>
 
-                    <!-- 错误消息 -->
-                    <TextBlock Text="{Binding ErrorMessage}"
-                               FontSize="12"
-                               Foreground="{DynamicResource State.Error}"
-                               IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                </StackPanel>
-            </Border>
-
-            <!-- 服务运行时的二维码区 -->
-            <Border Background="{DynamicResource Bg.Surface}"
-                    CornerRadius="8"
-                    Padding="24"
-                    IsVisible="{Binding IsRunning}">
-                <StackPanel Spacing="16" HorizontalAlignment="Center">
-                    <TextBlock Text="扫码上传"
-                               FontSize="14"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource Text.Primary}"
+                        <Image Source="{Binding QrCodeImage}"
+                               Width="180"
+                               Height="180"
                                HorizontalAlignment="Center"/>
 
-                    <!-- 二维码 -->
-                    <Image Source="{Binding QrCodeImage}"
-                           Width="200"
-                           Height="200"
-                           HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding UploadUrl}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource Text.Secondary}"
+                                   HorizontalAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Center"
+                                   MaxWidth="220"/>
 
-                    <!-- 上传链接 -->
-                    <TextBlock Text="{Binding UploadUrl}"
-                               FontSize="12"
-                               Foreground="{DynamicResource Text.Secondary}"
-                               HorizontalAlignment="Center"
-                               TextWrapping="Wrap"
-                               TextAlignment="Center"/>
-
-                    <!-- 最近上传提示 -->
-                    <TextBlock Text="{Binding RecentUploadMessage}"
-                               FontSize="12"
-                               Foreground="{DynamicResource Accent.Stellar}"
-                               HorizontalAlignment="Center"
-                               IsVisible="{Binding RecentUploadMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                </StackPanel>
+                        <TextBlock Text="{Binding RecentUploadMessage}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource Accent.Stellar}"
+                                   HorizontalAlignment="Center"
+                                   IsVisible="{Binding RecentUploadMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    </StackPanel>
+                </Grid>
             </Border>
 
         </StackPanel>
