@@ -101,6 +101,14 @@ public class UploadServerService : IDisposable
         var request = context.Request;
         var response = context.Response;
 
+        // GET /upload 返回 HTML 上传页面（局域网扫码 / 公网复用同一模板）
+        if (request.HttpMethod == "GET" &&
+            request.Url?.AbsolutePath.Equals("/upload", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            await ServeUploadPageAsync(response);
+            return;
+        }
+
         // 只接受 POST /upload
         if (request.HttpMethod != "POST" || !request.Url?.AbsolutePath.Equals("/upload", StringComparison.OrdinalIgnoreCase) == true)
         {
@@ -159,6 +167,58 @@ public class UploadServerService : IDisposable
             Debug.WriteLine($"[UploadServer] Upload error: {ex}");
             OnUploadError?.Invoke(ex.Message);
             await WriteResponseAsync(response, 500, $"{{\"error\":\"{EscapeJson(ex.Message)}\"}}");
+        }
+    }
+
+    /// <summary>
+    /// 返回内嵌的 upload.html 模板，运行时替换 {{STARTOOLER_BASE}} 占位符为当前服务地址。
+    /// HTML 直接打开（无服务端注入）时占位符不被替换，JS 走 fallback 相对路径。
+    /// </summary>
+    private async Task ServeUploadPageAsync(HttpListenerResponse response)
+    {
+        var templatePath = Path.Combine(AppContext.BaseDirectory, "Resources", "upload.html");
+
+        try
+        {
+            string html;
+            if (File.Exists(templatePath))
+            {
+                html = await File.ReadAllTextAsync(templatePath);
+                // 注入运行时上下文：局域网扫码场景填完整 URL，方便 fetch 直接用
+                var baseUrl = $"http://{GetLocalIp()}:{Port}";
+                html = html.Replace("{{STARTOOLER_BASE}}", baseUrl);
+            }
+            else
+            {
+                // 模板缺失的 fallback（不应该发生 —— csproj 已配 CopyToOutputDirectory）
+                Debug.WriteLine($"[UploadServer] Template not found: {templatePath}");
+                html =
+                    "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Upload</title></head>" +
+                    "<body style=\"font-family:sans-serif;padding:24px;\">" +
+                    "<h2>Upload page unavailable</h2>" +
+                    "<p>Template not found: <code>" + templatePath + "</code></p>" +
+                    "</body></html>";
+            }
+
+            var buffer = Encoding.UTF8.GetBytes(html);
+            response.StatusCode = 200;
+            response.ContentType = "text/html; charset=utf-8";
+            response.ContentLength64 = buffer.Length;
+            await response.OutputStream.WriteAsync(buffer);
+            response.Close();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[UploadServer] Serve page error: {ex}");
+            try
+            {
+                response.StatusCode = 500;
+                response.Close();
+            }
+            catch
+            {
+                // response 已关闭，忽略
+            }
         }
     }
 

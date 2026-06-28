@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>上传到 StartTooler</title>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --surface: #ffffff;
+      --text: #1a202c;
+      --text-secondary: #718096;
+      --primary: #4299e1;
+      --primary-hover: #3182ce;
+      --success: #48bb78;
+      --error: #e53e3e;
+      --border: #e2e8f0;
+      --radius: 8px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a202c;
+        --surface: #2d3748;
+        --text: #f7fafc;
+        --text-secondary: #a0aec0;
+        --border: #4a5568;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 16px;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 480px;
+      margin: 0 auto;
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 13px;
+      margin-bottom: 20px;
+    }
+    .drop-zone {
+      display: block;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 32px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 16px;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--primary);
+      background: rgba(66, 153, 225, 0.05);
+    }
+    .drop-zone svg {
+      width: 36px;
+      height: 36px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+    .drop-zone p {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+    .drop-zone strong { color: var(--primary); }
+    .file-list { margin-bottom: 16px; }
+    .file-item {
+      padding: 10px 12px;
+      background: var(--bg);
+      border-radius: 6px;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+    .file-item .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .file-item .name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .file-item .size {
+      color: var(--text-secondary);
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .file-item .remove {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 4px 8px;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .file-item .remove:hover { color: var(--error); }
+    .file-item .progress {
+      width: 100%;
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+    .file-item .progress-bar {
+      height: 100%;
+      background: var(--primary);
+      transition: width 0.15s;
+      width: 0%;
+    }
+    .file-item.success .progress-bar { background: var(--success); width: 100% !important; }
+    .file-item.error .progress-bar { background: var(--error); width: 100% !important; }
+    button.upload-btn {
+      width: 100%;
+      padding: 12px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button.upload-btn:hover:not(:disabled) { background: var(--primary-hover); }
+    button.upload-btn:disabled {
+      background: var(--border);
+      color: var(--text-secondary);
+      cursor: not-allowed;
+    }
+    .status {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      display: none;
+    }
+    .status.success { display: block; background: rgba(72,187,120,0.1); color: var(--success); }
+    .status.error { display: block; background: rgba(229,62,62,0.1); color: var(--error); }
+    input[type="file"] { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline points="17 8 12 3 7 8"></polyline>
+        <line x1="12" y1="3" x2="12" y2="15"></line>
+      </svg>
+      上传文件
+    </h1>
+    <p class="subtitle">选择或拖拽文件上传到当前项目</p>
+
+    <label class="drop-zone" id="dropZone">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+        <line x1="12" y1="18" x2="12" y2="12"></line>
+        <polyline points="9 15 12 12 15 15"></polyline>
+      </svg>
+      <p><strong>点击选择文件</strong> 或拖拽到此处</p>
+      <p style="font-size:11px; margin-top:4px;">支持 jpg / png / raw / avi / mp4 / mov 等</p>
+      <input type="file" id="fileInput" multiple>
+    </label>
+
+    <div class="file-list" id="fileList"></div>
+
+    <button class="upload-btn" id="uploadBtn" disabled>开始上传</button>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <script>
+    // ============================================================
+    // STARTOOLER_BASE 由服务端运行时替换为完整 URL（如 http://192.168.31.82:8765）。
+    // HTML 直接打开（无服务端）时，{{STARTOOLER_BASE}} 占位符未被替换，走 fallback 相对路径。
+    // ============================================================
+    const STARTOOLER_BASE = '{{STARTOOLER_BASE}}';
+    const UPLOAD_BASE = (STARTOOLER_BASE && STARTOOLER_BASE !== '{{STARTOOLER_BASE}}')
+      ? STARTOOLER_BASE
+      : '.';
+
+    const fileInput = document.getElementById('fileInput');
+    const dropZone = document.getElementById('dropZone');
+    const fileList = document.getElementById('fileList');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const status = document.getElementById('status');
+
+    let files = [];
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+      return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GB';
+    }
+
+    function renderFiles() {
+      fileList.innerHTML = '';
+      files.forEach((file, idx) => {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        item.innerHTML =
+          '<div class="row">' +
+            '<span class="name"></span>' +
+            '<span class="size"></span>' +
+            '<button class="remove" type="button">×</button>' +
+          '</div>' +
+          '<div class="progress"><div class="progress-bar"></div></div>';
+        item.querySelector('.name').textContent = file.name;
+        item.querySelector('.name').title = file.name;
+        item.querySelector('.size').textContent = formatSize(file.size);
+        item.querySelector('.remove').addEventListener('click', () => {
+          files.splice(idx, 1);
+          renderFiles();
+        });
+        fileList.appendChild(item);
+      });
+      uploadBtn.disabled = files.length === 0;
+    }
+
+    function addFiles(newFiles) {
+      for (const file of newFiles) {
+        files.push(file);
+      }
+      renderFiles();
+    }
+
+    fileInput.addEventListener('change', e => {
+      addFiles(Array.from(e.target.files));
+      fileInput.value = '';
+    });
+
+    ['dragenter', 'dragover'].forEach(evt => {
+      dropZone.addEventListener(evt, e => {
+        e.preventDefault();
+        dropZone.classList.add('drag-over');
+      });
+    });
+    ['dragleave', 'drop'].forEach(evt => {
+      dropZone.addEventListener(evt, e => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+      });
+    });
+    dropZone.addEventListener('drop', e => {
+      addFiles(Array.from(e.dataTransfer.files));
+    });
+
+    function setStatus(type, msg) {
+      status.className = 'status ' + type;
+      status.textContent = msg;
+    }
+
+    uploadBtn.addEventListener('click', async () => {
+      if (files.length === 0) return;
+      uploadBtn.disabled = true;
+      const origText = '开始上传';
+      uploadBtn.textContent = '上传中...';
+      setStatus('success', '');
+
+      // 一次 POST 携带所有文件（multipart/form-data 多 parts，服务端一次解析全部）
+      const formData = new FormData();
+      files.forEach(f => formData.append('file', f, f.name));
+
+      const items = Array.from(fileList.children);
+      const progressBars = items.map(item => item.querySelector('.progress-bar'));
+
+      try {
+        await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', UPLOAD_BASE + '/upload');
+          xhr.upload.addEventListener('progress', e => {
+            if (e.lengthComputable) {
+              const pct = (e.loaded / e.total) * 100;
+              progressBars.forEach(bar => { bar.style.width = pct.toFixed(1) + '%'; });
+            }
+          });
+          xhr.addEventListener('load', () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve(xhr.responseText);
+            } else {
+              reject(new Error(xhr.responseText || 'HTTP ' + xhr.status));
+            }
+          });
+          xhr.addEventListener('error', () => reject(new Error('网络错误')));
+          xhr.send(formData);
+        });
+
+        // 全部成功
+        items.forEach(item => item.classList.add('success'));
+        setStatus('success', '✓ 成功上传 ' + files.length + ' 个文件');
+        files = [];
+        renderFiles();
+      } catch (err) {
+        // 失败：尝试从服务端 JSON 错误里提取信息
+        let msg = err.message || '未知错误';
+        try {
+          const parsed = JSON.parse(msg);
+          if (parsed && parsed.error) msg = parsed.error;
+        } catch { /* 不是 JSON，保持原消息 */ }
+        items.forEach(item => item.classList.add('error'));
+        setStatus('error', '✗ 上传失败：' + msg);
+        console.error('Upload failed:', err);
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = origText;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -12,6 +12,12 @@
         <AvaloniaResource Include="Assets\**" />
     </ItemGroup>
 
+    <ItemGroup>
+        <None Include="Resources\upload.html">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+
     <ItemGroup Condition="'$(RuntimeIdentifier)' == 'osx-x64' OR '$(RuntimeIdentifier)' == 'osx-arm64'">
         <Content Include="Assets\orion_nebula_icon.icns">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
