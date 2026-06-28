@@ -16,13 +16,15 @@ namespace StartTooler.ViewModels;
 public enum ViewPage
 {
     Gallery,
-    Settings
+    Settings,
+    UploadServer
 }
 
 public partial class MainWindowViewModel : ObservableObject
 {
     [ObservableProperty] private GalleryViewModel galleryViewModel;
     [ObservableProperty] private SettingsViewModel settingsViewModel;
+    [ObservableProperty] private UploadServerViewModel uploadServerViewModel;
     [ObservableProperty] private object currentView;
     [ObservableProperty] private string title = "星助";
     [ObservableProperty] private bool isSettingsPage;
@@ -33,6 +35,8 @@ public partial class MainWindowViewModel : ObservableObject
     public bool IsMediaActive => CurrentPage == ViewPage.Gallery;
 
     public bool IsSettingsActive => CurrentPage == ViewPage.Settings;
+
+    public bool IsUploadServerActive => CurrentPage == ViewPage.UploadServer;
 
     public bool IsGalleryPage => CurrentPage == ViewPage.Gallery;
 
@@ -63,6 +67,7 @@ public partial class MainWindowViewModel : ObservableObject
         GalleryViewModel = new GalleryViewModel(
             mediaRepository, thumbnailService, configService, systemShell, ossFactory, uploadJobRepo,
             onOssNotConfigured: ShowOssNotConfiguredDialogAsync);
+        UploadServerViewModel = new UploadServerViewModel(GalleryViewModel.ProjectPath ?? "");
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;
         CurrentPage = ViewPage.Gallery;
@@ -151,6 +156,19 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void NavigateToUploadServer()
+    {
+        // 如果没有项目路径，传入空字符串，UploadServerService 会报错
+        if (UploadServerViewModel == null)
+        {
+            UploadServerViewModel = new UploadServerViewModel(GalleryViewModel?.ProjectPath ?? "");
+        }
+        CurrentView = UploadServerViewModel;
+        IsSettingsPage = false;
+        CurrentPage = ViewPage.UploadServer;
+    }
+
+    [RelayCommand]
     private void NavigateToMedia()
     {
         NavigateToGalleryCommand.Execute(null);
@@ -207,5 +225,6 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSettingsActive));
         OnPropertyChanged(nameof(IsGalleryPage));
         OnPropertyChanged(nameof(IsSettingsPageVisible));
+        OnPropertyChanged(nameof(IsUploadServerActive));
     }
 }

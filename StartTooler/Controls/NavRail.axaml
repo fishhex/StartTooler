@@ -7,7 +7,7 @@
              x:Class="StartTooler.Controls.NavRail"
              x:DataType="vm:MainWindowViewModel">
 
-    <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="Auto,Auto,*">
         <!-- 媒体按钮 (C15 NavItem) -->
         <Button Grid.Row="0"
                 x:Name="MediaButton"
@@ -27,8 +27,27 @@
                        VerticalAlignment="Center"/>
         </Button>
 
-        <!-- 设置按钮 (C15 NavItem) -->
+        <!-- 上传服务按钮（紧贴媒体） -->
         <Button Grid.Row="1"
+                x:Name="UploadServerButton"
+                Height="48"
+                Classes="nav-item"
+                Classes.active="{Binding IsUploadServerActive}"
+                Command="{Binding NavigateToUploadServerCommand}"
+                VerticalAlignment="Center"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Padding="0">
+            <TextBlock Text="上传"
+                       FontSize="11"
+                       LineHeight="14"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"/>
+        </Button>
+
+        <!-- 设置按钮 (C15 NavItem) -->
+        <Button Grid.Row="2"
                 x:Name="SettingsButton"
                 Height="48"
                 Classes="nav-item"

@@ -32,5 +32,6 @@
         <PackageReference Include="SkiaSharp" Version="2.88.9" />
         <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="2.88.9" />
         <PackageReference Include="Aliyun.OSS.SDK.NetCore" Version="2.14.1" />
+        <PackageReference Include="QRCoder" Version="1.6.0" />
     </ItemGroup>
 </Project>
