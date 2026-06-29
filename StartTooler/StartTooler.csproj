@@ -13,10 +13,39 @@
     </ItemGroup>
 
     <ItemGroup>
+        <!-- upload.html：局域网 UploadServerService 运行时模板。这份同时也是
+             公网代理 Go 二进制的 go:embed 源（脚本自动同步到 tools/upload-relay/web/）。 -->
         <None Include="Resources\upload.html">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </None>
     </ItemGroup>
+
+    <!-- Go relay 二进制作为嵌入资源；运行时由 RelayBinaryExtractor 解压到 temp。
+         Linux amd64/arm64 两个架构都编进 .NET dll，部署时按 VPS arch 选。 -->
+    <ItemGroup>
+        <EmbeddedResource Include="Resources\relay-binaries\upload-relay-linux-amd64">
+            <LogicalName>StartTooler.Resources.relay-binaries.upload-relay-linux-amd64</LogicalName>
+            <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+        </EmbeddedResource>
+        <EmbeddedResource Include="Resources\relay-binaries\upload-relay-linux-arm64">
+            <LogicalName>StartTooler.Resources.relay-binaries.upload-relay-linux-arm64</LogicalName>
+            <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+        </EmbeddedResource>
+    </ItemGroup>
+
+    <!--
+      BeforeBuild：调 scripts/build-relay.sh 编译 Go 二进制（mtime-aware，跳过未变化）。
+      命令没有时只 warn 不 fail，让 dev/build 机可以没有 Go 工具链（用上次产物）。
+      Windows 上调 .ps1 版本。
+    -->
+    <Target Name="RelayGoBuild" BeforeTargets="BeforeBuild">
+        <Message Importance="High" Text="[RelayGo] checking Go relay binaries..." />
+        <Exec Command='bash "$(MSBuildThisFileDirectory)..\scripts\build-relay.sh"'
+              WorkingDirectory="$(MSBuildThisFileDirectory).."
+              ContinueOnError="true"
+              IgnoreExitCode="true"
+              ConsoleToMSBuild="false" />
+    </Target>
 
     <ItemGroup Condition="'$(RuntimeIdentifier)' == 'osx-x64' OR '$(RuntimeIdentifier)' == 'osx-arm64'">
         <Content Include="Assets\orion_nebula_icon.icns">
@@ -39,5 +68,6 @@
         <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="2.88.9" />
         <PackageReference Include="Aliyun.OSS.SDK.NetCore" Version="2.14.1" />
         <PackageReference Include="QRCoder" Version="1.6.0" />
+        <PackageReference Include="SSH.NET" Version="2024.2.0" />
     </ItemGroup>
 </Project>

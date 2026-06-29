@@ -67,10 +67,27 @@ public partial class MainWindowViewModel : ObservableObject
         GalleryViewModel = new GalleryViewModel(
             mediaRepository, thumbnailService, configService, systemShell, ossFactory, uploadJobRepo,
             onOssNotConfigured: ShowOssNotConfiguredDialogAsync);
-        UploadServerViewModel = new UploadServerViewModel(GalleryViewModel.ProjectPath ?? "");
+        UploadServerViewModel = new UploadServerViewModel(
+            GalleryViewModel,
+            new PublicRelayViewModel(configService, new PublicRelayService(), new FilePickerService(), GalleryViewModel));
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;
         CurrentPage = ViewPage.Gallery;
+
+        // 退出兜底：进程退出前杀掉 VPS 上的 nohup 进程（fire-and-forget，5s timeout）
+        AppDomain.CurrentDomain.ProcessExit += (s, e) =>
+        {
+            try
+            {
+                UploadServerViewModel?.PublicRelayViewModel
+                    ?.EnsureRemoteKilledOnExitAsync()
+                    .Wait(TimeSpan.FromSeconds(5));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.WriteLine($"[MainWindow] exit cleanup failed: {ex.Message}");
+            }
+        };
 
         // 初始化
         _ = InitializeAsync();
@@ -80,6 +97,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         await SettingsViewModel.InitializeAsync();
         await GalleryViewModel.InitializeAsync();
+        await UploadServerViewModel.InitializeAsync();
         OnPropertyChanged(nameof(HasProject));
 
         // 启动恢复弹窗：扫描 upload_jobs，如有未完成任务询问用户
@@ -161,7 +179,9 @@ public partial class MainWindowViewModel : ObservableObject
         // 如果没有项目路径，传入空字符串，UploadServerService 会报错
         if (UploadServerViewModel == null)
         {
-            UploadServerViewModel = new UploadServerViewModel(GalleryViewModel?.ProjectPath ?? "");
+            UploadServerViewModel = new UploadServerViewModel(
+                GalleryViewModel,
+                new PublicRelayViewModel(new ConfigService(), new PublicRelayService(), new FilePickerService(), GalleryViewModel));
         }
         CurrentView = UploadServerViewModel;
         IsSettingsPage = false;

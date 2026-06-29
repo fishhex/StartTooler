@@ -13,7 +13,7 @@ namespace StartTooler.ViewModels;
 
 public partial class UploadServerViewModel : ObservableObject, IDisposable
 {
-    private readonly string _projectPath;
+    private readonly GalleryViewModel _gallery;
     private UploadServerService? _server;
     private CancellationTokenSource? _cts;
 
@@ -28,12 +28,15 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string? _errorMessage;
     [ObservableProperty] private string? _recentUploadMessage;
 
+    [ObservableProperty] private PublicRelayViewModel publicRelayViewModel;
+
     public bool CanStart => !IsRunning;
     public bool CanStop => IsRunning;
 
-    public UploadServerViewModel(string projectPath)
+    public UploadServerViewModel(GalleryViewModel gallery, PublicRelayViewModel publicRelayViewModel)
     {
-        _projectPath = projectPath;
+        _gallery = gallery;
+        PublicRelayViewModel = publicRelayViewModel;
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
@@ -44,7 +47,7 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
 
         try
         {
-            _server = new UploadServerService(_projectPath);
+            _server = new UploadServerService(_gallery.ProjectPath ?? "");
             _cts = new CancellationTokenSource();
 
             _server.OnUploadSuccess += path =>
@@ -118,6 +121,11 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         {
             Trace.WriteLine($"[UploadServerVM] QR code error: {ex}");
         }
+    }
+
+    public async Task InitializeAsync()
+    {
+        await PublicRelayViewModel.InitializeAsync();
     }
 
     public void Dispose()
