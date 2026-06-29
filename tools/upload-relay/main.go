@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -52,15 +53,18 @@ type pendingFile struct {
 }
 
 type State struct {
-	mu      sync.Mutex
-	tmpDir  string
-	pending map[string]pendingFile
+	mu         sync.Mutex
+	tmpDir     string
+	pending    map[string]pendingFile
+	startedAt  time.Time
+	tcpClients int32 // atomic, 当前已连接 TCP 客户端数
 }
 
 func newState(tmpDir string) *State {
 	return &State{
-		tmpDir:  tmpDir,
-		pending: make(map[string]pendingFile),
+		tmpDir:    tmpDir,
+		pending:   make(map[string]pendingFile),
+		startedAt: time.Now(),
 	}
 }
 
@@ -125,6 +129,24 @@ func runHTTP(port int, html string) {
 
 	mux.HandleFunc("/upload", func(w http.ResponseWriter, r *http.Request) {
 		handleUpload(w, r, state)
+	})
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		// 健康检查：返回进程状态 + 运行时指标
+		// 用途：监控 / 探活 / StartTooler 远程确认服务在线
+		if r.Method != http.MethodGet {
+			http.Error(w, "GET required", http.StatusMethodNotAllowed)
+			return
+		}
+		pending := state.listPending()
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":         "ok",
+			"version":        version,
+			"uptime_seconds": int64(time.Since(state.startedAt).Seconds()),
+			"pending_files":  len(pending),
+			"tcp_clients":    atomic.LoadInt32(&state.tcpClients),
+		})
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// GET / 和 /upload 都返回同一个 HTML（兼容性跟 Python 版一致）
@@ -234,7 +256,11 @@ func runTCP(port int, state *State) {
 }
 
 func handleTCPClient(conn net.Conn, state *State) {
-	defer conn.Close()
+	atomic.AddInt32(&state.tcpClients, 1)
+	defer func() {
+		atomic.AddInt32(&state.tcpClients, -1)
+		conn.Close()
+	}()
 	log.Printf("TCP client connected: %s", conn.RemoteAddr())
 	reader := bufio.NewReader(conn)
 
