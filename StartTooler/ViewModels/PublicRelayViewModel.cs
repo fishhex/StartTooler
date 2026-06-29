@@ -357,6 +357,20 @@ public partial class PublicRelayViewModel : ObservableObject, IDisposable
         LastError = _relayService.LastError;
     }
 
+    /// <summary>远端 relay 进程是否在跑。</summary>
+    public bool IsPublicRelayRunning => _relayService.State == PublicRelayService.RelayState.Running;
+
+    /// <summary>
+    /// 拼出公网上传 URL（用于二维码显示）。
+    /// 优先级：PublicHost → SshHost。任何一项缺失返回 null。
+    /// </summary>
+    public string? BuildPublicUploadUrl()
+    {
+        var host = !string.IsNullOrWhiteSpace(PublicHost) ? PublicHost : SshHost;
+        if (string.IsNullOrWhiteSpace(host)) return null;
+        return $"http://{host}:{HttpPort}/upload";
+    }
+
     /// <summary>退出时确保远端进程被杀（不抛异常）。</summary>
     public async Task EnsureRemoteKilledOnExitAsync()
     {

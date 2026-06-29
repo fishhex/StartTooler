@@ -1,9 +1,11 @@
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QRCoder;
@@ -28,6 +30,9 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string? _errorMessage;
     [ObservableProperty] private string? _recentUploadMessage;
 
+    /// <summary>当前 QR/URL 是否指向公网地址（公网 relay 在跑）。</summary>
+    [ObservableProperty] private bool _isPublicMode;
+
     [ObservableProperty] private PublicRelayViewModel publicRelayViewModel;
 
     public bool CanStart => !IsRunning;
@@ -37,6 +42,8 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     {
         _gallery = gallery;
         PublicRelayViewModel = publicRelayViewModel;
+        // 订阅公网代理状态/URL 变化，让二维码跟着切换
+        publicRelayViewModel.PropertyChanged += OnPublicRelayPropertyChanged;
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
@@ -71,10 +78,10 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
 
             await _server.StartAsync(Port, _cts.Token);
 
-            UploadUrl = _server.UploadUrl;
             IsRunning = true;
             StatusMessage = "服务已启动";
-            GenerateQrCode(_server.UploadUrl);
+            // 决定 QR 用哪个 URL：公网 relay 在跑就用公网，否则用局域网
+            UpdateQrForMode();
         }
         catch (Exception ex)
         {
@@ -98,8 +105,45 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         UploadUrl = null;
         QrCodeImage?.Dispose();
         QrCodeImage = null;
+        IsPublicMode = false;
         StatusMessage = "服务已停止";
         ErrorMessage = null;
+    }
+
+    private void OnPublicRelayPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // 只在以下几种变化时刷新 QR：
+        //   - relay 状态切换（Running ↔ Idle）
+        //   - 公网 URL 组成字段（host/port）被改
+        if (e.PropertyName != nameof(PublicRelayViewModel.RelayStateText)
+            && e.PropertyName != nameof(PublicRelayViewModel.PublicHost)
+            && e.PropertyName != nameof(PublicRelayViewModel.SshHost)
+            && e.PropertyName != nameof(PublicRelayViewModel.HttpPort))
+            return;
+
+        Trace.WriteLine($"[UploadServerVM] QR refresh trigger: prop={e.PropertyName}, IsRunning={IsRunning}");
+
+        // PropertyChanged 可能在后台线程触发（relay state 由 TCP loop 变更），统一 marshal 到 UI 线程
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (IsRunning) UpdateQrForMode();
+        });
+    }
+
+    private void UpdateQrForMode()
+    {
+        if (_server == null) return;
+
+        // 公网模式：relay 在跑 + 公网 URL 可拼出
+        var publicUrl = PublicRelayViewModel.BuildPublicUploadUrl();
+        var isPublic = PublicRelayViewModel.IsPublicRelayRunning && !string.IsNullOrEmpty(publicUrl);
+
+        Trace.WriteLine($"[UploadServerVM] UpdateQrForMode: IsPublicRelayRunning={PublicRelayViewModel.IsPublicRelayRunning}, publicUrl={publicUrl ?? "<null>"}, isPublic={isPublic}");
+
+        IsPublicMode = isPublic;
+        var url = isPublic ? publicUrl! : _server.UploadUrl;
+        UploadUrl = url;
+        GenerateQrCode(url);
     }
 
     private void GenerateQrCode(string url)
@@ -110,6 +154,8 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
             using var qrCodeData = qrGenerator.CreateQrCode(url, QRCodeGenerator.ECCLevel.M);
             using var qrCode = new PngByteQRCode(qrCodeData);
             var pngBytes = qrCode.GetGraphic(5);
+
+            Trace.WriteLine($"[UploadServerVM] GenerateQrCode: url={url}, pngBytes={pngBytes.Length}");
 
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
@@ -130,6 +176,7 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        PublicRelayViewModel.PropertyChanged -= OnPublicRelayPropertyChanged;
         StopServer();
         _cts?.Dispose();
     }

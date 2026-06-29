@@ -128,7 +128,18 @@ func runHTTP(port int, html string) {
 	state := getHTTPState()
 
 	mux.HandleFunc("/upload", func(w http.ResponseWriter, r *http.Request) {
-		handleUpload(w, r, state)
+		// 关键：GET /upload 要返回 HTML 上传页（QR 扫码进来是 GET）
+		// POST /upload 才是接收 multipart 文件
+		// Go ServeMux 1.22 之前 HandleFunc("/upload",...) 是精确匹配，
+		// 不会 fall through 到下面 "/" 兜底 handler，所以 method 分流必须在这里完成。
+		switch r.Method {
+		case http.MethodGet:
+			serveIndexHTML(w, r, html)
+		case http.MethodPost:
+			handleUpload(w, r, state)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
 	})
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		// 健康检查：返回进程状态 + 运行时指标
@@ -149,21 +160,13 @@ func runHTTP(port int, html string) {
 		})
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// GET / 和 /upload 都返回同一个 HTML（兼容性跟 Python 版一致）
-		path := strings.SplitN(r.URL.Path, "?", 2)[0]
-		if path != "/" && !strings.HasPrefix(path, "/upload") {
-			http.NotFound(w, r)
+		// 兜底：/ 或任何非 /upload / /health 的 GET 路径都返回 HTML
+		// /upload 会被上面的 handler 精确匹配抢走，POST /upload 才进 handleUpload
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		// 模板替换：{{STARTOOLER_BASE}} -> http://host
-		host := r.Host
-		if host == "" {
-			host = "localhost"
-		}
-		body := strings.ReplaceAll(html, "{{STARTOOLER_BASE}}", "http://"+host)
-		_, _ = io.WriteString(w, body)
+		serveIndexHTML(w, r, html)
 	})
 
 	addr := fmt.Sprintf(":%d", port)
@@ -177,6 +180,18 @@ func runHTTP(port int, html string) {
 var httpState *State
 
 func getHTTPState() *State { return httpState }
+
+func serveIndexHTML(w http.ResponseWriter, r *http.Request, html string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	// 模板替换：{{STARTOOLER_BASE}} -> http://host
+	host := r.Host
+	if host == "" {
+		host = "localhost"
+	}
+	body := strings.ReplaceAll(html, "{{STARTOOLER_BASE}}", "http://"+host)
+	_, _ = io.WriteString(w, body)
+}
 
 func handleUpload(w http.ResponseWriter, r *http.Request, state *State) {
 	if r.Method != http.MethodPost {

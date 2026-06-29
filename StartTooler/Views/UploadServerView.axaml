@@ -84,6 +84,17 @@
                                    Foreground="{DynamicResource Text.Primary}"
                                    HorizontalAlignment="Center"/>
 
+                        <Border Background="{DynamicResource Accent.Stellar}"
+                                CornerRadius="3"
+                                Padding="6,2"
+                                HorizontalAlignment="Center"
+                                IsVisible="{Binding IsPublicMode}">
+                            <TextBlock Text="公网中转中"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="White"/>
+                        </Border>
+
                         <Image Source="{Binding QrCodeImage}"
                                Width="180"
                                Height="180"

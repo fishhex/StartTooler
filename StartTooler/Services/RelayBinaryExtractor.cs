@@ -31,6 +31,8 @@ public static class RelayBinaryExtractor
     /// <summary>
     /// 把指定架构的 Linux 二进制从嵌入资源解压到本地 temp，返回绝对路径。
     /// 找不到资源或 IO 失败抛异常。
+    /// **总是覆盖**：嵌入资源每次 build 都可能变，scp 出去必须是最新版。
+    /// 二进制 ~6MB，解压 <50ms，速度差异可忽略。
     /// </summary>
     public static string Extract(string arch)
     {
@@ -41,9 +43,6 @@ public static class RelayBinaryExtractor
 
         lock (_lock)
         {
-            if (File.Exists(dest) && new FileInfo(dest).Length > 0)
-                return dest;
-
             var resourceName = ResourcePrefix + $"upload-relay-linux-{arch}";
             var assembly = typeof(RelayBinaryExtractor).Assembly;
             using var stream = assembly.GetManifestResourceStream(resourceName);
@@ -52,6 +51,7 @@ public static class RelayBinaryExtractor
                     $"Embedded relay binary not found: '{resourceName}'. " +
                     $"Available: {string.Join(", ", assembly.GetManifestResourceNames())}");
 
+            // File.Create 会 truncate 已有文件，等同于"总是覆盖"
             using var fs = File.Create(dest);
             stream.CopyTo(fs);
         }
