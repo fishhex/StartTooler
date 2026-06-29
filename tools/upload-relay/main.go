@@ -1,12 +1,16 @@
 // StartTooler 公网代理（Go 实现）
 //
 // VPS 上跑，监听两个端口：
-//   - HTTP_PORT: 返回 index.html + 接收 multipart 上传
-//   - TCP_PORT: 接受本地 StartTooler 长连接，推送已上传文件
+//   - HTTP_PORT: 返回 index.html + 接收 multipart 上传 + /ack/{id}
+//   - TCP_PORT: 接受本地 StartTooler 长连接，单向推送 file_pending 通知
 //
-// 文件流转：HTTP 接收 → tmp/<id>.bin + tmp/<id>.meta → 通过 TCP 推给所有已连接客户端 → 等 ack → 删文件
+// 文件流转：
+//   1. HTTP 接收 → tmp/<id>.bin + tmp/<id>.meta → 写入 state.pending
+//   2. State.Broadcast(p) 通知所有已连 TCP 客户端（C# 端收 file_pending）
+//   3. C# 端用 SSH scp 拉文件到本地项目目录（按日期归档）
+//   4. C# 端拉完调 HTTP POST /ack/{id} → Go relay 从 pending 删 + rm tmp 文件
 //
-// 依赖：纯 Go 标准库，零第三方包。编译为单文件二进制，HTML 用 go:embed 内嵌。
+// 依赖：纯 Go 标准库，零第三方包。HTML 用 go:embed 内嵌。
 //
 // Usage:
 //   upload-relay --http-port 8765 --tcp-port 8766 --tmp-dir /tmp/uploads
@@ -15,16 +19,14 @@
 package main
 
 import (
-	"bufio"
-	"crypto/rand"
 	_ "embed"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -32,7 +34,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -53,11 +54,12 @@ type pendingFile struct {
 }
 
 type State struct {
-	mu         sync.Mutex
-	tmpDir     string
-	pending    map[string]pendingFile
-	startedAt  time.Time
-	tcpClients int32 // atomic, 当前已连接 TCP 客户端数
+	mu          sync.Mutex
+	tmpDir      string
+	pending     map[string]pendingFile
+	startedAt   time.Time
+	subMu       sync.Mutex
+	subscribers []chan pendingFile
 }
 
 func newState(tmpDir string) *State {
@@ -71,7 +73,10 @@ func newState(tmpDir string) *State {
 func newID() string {
 	// 32 字符 hex，跟 Python 版 `uuid.uuid4().hex` 完全兼容
 	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
+	// math/rand 用于生成 id（不要求密码学强度，但要 unique）
+	// 注意：Go 1.20+ math/rand 自动 seed，1.19- 需要手动 seed
+	b[0] = byte(rand.Intn(256))
+	if _, err := rand.Read(b[1:]); err != nil {
 		log.Fatalf("rand.Read: %v", err)
 	}
 	return hex.EncodeToString(b)
@@ -96,6 +101,9 @@ func (s *State) saveUploaded(filename string, data []byte) (string, error) {
 	s.mu.Unlock()
 
 	log.Printf("saved %s -> %s (%d bytes)", filename, id, len(data))
+
+	// 通知所有已连 TCP 客户端
+	s.Broadcast(pendingFile{ID: id, Name: filename, Path: binPath})
 	return id, nil
 }
 
@@ -111,12 +119,92 @@ func (s *State) listPending() []pendingFile {
 	return out
 }
 
-func (s *State) delete(id string) {
+func (s *State) getPending(id string) (pendingFile, bool) {
 	s.mu.Lock()
-	delete(s.pending, id)
+	defer s.mu.Unlock()
+	p, ok := s.pending[id]
+	return p, ok
+}
+
+// Ack: C# 端拉完文件后调用，从 pending 删 + 删 tmp 文件
+func (s *State) Ack(id string) error {
+	s.mu.Lock()
+	p, ok := s.pending[id]
+	if ok {
+		delete(s.pending, id)
+	}
 	s.mu.Unlock()
-	os.Remove(filepath.Join(s.tmpDir, id+".bin"))
-	os.Remove(filepath.Join(s.tmpDir, id+".meta"))
+	if !ok {
+		return fmt.Errorf("unknown id: %s", id)
+	}
+	binErr := os.Remove(p.Path)
+	metaErr := os.Remove(p.Path[:len(p.Path)-4] + ".meta")
+	if binErr != nil && !os.IsNotExist(binErr) {
+		return binErr
+	}
+	if metaErr != nil && !os.IsNotExist(metaErr) {
+		return metaErr
+	}
+	log.Printf("acked & deleted %s (%s)", p.Name, id)
+	return nil
+}
+
+// Subscribe: TCP 客户端连上时订阅通知
+func (s *State) Subscribe() chan pendingFile {
+	ch := make(chan pendingFile, 16)
+	s.subMu.Lock()
+	s.subscribers = append(s.subscribers, ch)
+	s.subMu.Unlock()
+	return ch
+}
+
+// Unsubscribe: TCP 客户端断开时取消订阅
+func (s *State) Unsubscribe(ch chan pendingFile) {
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+	for i, c := range s.subscribers {
+		if c == ch {
+			s.subscribers = append(s.subscribers[:i], s.subscribers[i+1:]...)
+			close(ch)
+			return
+		}
+	}
+}
+
+// ReplayPending: 新 client subscribe 后补发当前所有 pending。
+// 解决：client 断线期间上传的文件，重连后会重新收到通知。
+// 满了丢（client 来不及消费就丢，反正 pending map 还在，client 端 ack 失败可以重试）。
+func (s *State) ReplayPending(ch chan pendingFile) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range s.pending {
+		select {
+		case ch <- p:
+		default:
+		}
+	}
+}
+
+// Broadcast: handleUpload 收完文件后调用，fan-out 给所有已订阅客户端
+// 满了丢（client 来不及处理就丢，不会阻塞）
+func (s *State) Broadcast(p pendingFile) {
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+	for _, ch := range s.subscribers {
+		select {
+		case ch <- p:
+		default:
+			// 客户端 buffer 满，跳过这一条；下次 ping 触发重传（但本协议没 ping 机制）
+			// 实际影响极小：单 client + 16 buffer，正常场景下不会满
+		}
+	}
+}
+
+// SubscriberCount: /health 用
+func (s *State) SubscriberCount() int {
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+	return len(s.subscribers)
 }
 
 // ============================================================
@@ -156,11 +244,31 @@ func runHTTP(port int, html string) {
 			"version":        version,
 			"uptime_seconds": int64(time.Since(state.startedAt).Seconds()),
 			"pending_files":  len(pending),
-			"tcp_clients":    atomic.LoadInt32(&state.tcpClients),
+			"tcp_clients":    state.SubscriberCount(),
 		})
 	})
+	mux.HandleFunc("/ack/", func(w http.ResponseWriter, r *http.Request) {
+		// C# 端 SSH scp 拉完文件后回调，删 VPS 端 tmp 文件
+		// URL: POST /ack/{id}
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST required", http.StatusMethodNotAllowed)
+			return
+		}
+		// r.URL.Path = "/ack/{id}"，取最后一段
+		id := strings.TrimPrefix(r.URL.Path, "/ack/")
+		if id == "" || strings.Contains(id, "/") {
+			http.Error(w, "missing or invalid id", http.StatusBadRequest)
+			return
+		}
+		if err := state.Ack(id); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"ok":true}`+"\n")
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// 兜底：/ 或任何非 /upload / /health 的 GET 路径都返回 HTML
+		// 兜底：/ 或任何非 /upload / /health / /ack 的 GET 路径都返回 HTML
 		// /upload 会被上面的 handler 精确匹配抢走，POST /upload 才进 handleUpload
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -249,7 +357,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request, state *State) {
 }
 
 // ============================================================
-// TCP server
+// TCP server（单向推送 file_pending 通知）
 // ============================================================
 
 func runTCP(port int, state *State) {
@@ -258,7 +366,7 @@ func runTCP(port int, state *State) {
 		log.Fatalf("TCP listen: %v", err)
 	}
 	defer ln.Close()
-	log.Printf("TCP server listening on :%d", port)
+	log.Printf("TCP server listening on :%d (file_pending notify)", port)
 
 	for {
 		conn, err := ln.Accept()
@@ -266,133 +374,71 @@ func runTCP(port int, state *State) {
 			log.Printf("TCP accept: %v", err)
 			continue
 		}
+		// TCP keepalive：防 NAT 老化
+		if tcpConn, ok := conn.(*net.TCPConn); ok {
+			_ = tcpConn.SetKeepAlive(true)
+			_ = tcpConn.SetKeepAlivePeriod(30 * time.Second)
+		}
 		go handleTCPClient(conn, state)
 	}
 }
 
 func handleTCPClient(conn net.Conn, state *State) {
-	atomic.AddInt32(&state.tcpClients, 1)
-	defer func() {
-		atomic.AddInt32(&state.tcpClients, -1)
-		conn.Close()
-	}()
-	log.Printf("TCP client connected: %s", conn.RemoteAddr())
-	reader := bufio.NewReader(conn)
+	defer conn.Close()
+	remote := conn.RemoteAddr().String()
+	log.Printf("TCP client connected: %s", remote)
 
-	// 主循环：等客户端心跳 / 新指令，推所有 pending
-	for {
-		// 等客户端消息（ping）或新指令，带超时用于心跳触发
-		conn.SetReadDeadline(time.Now().Add(120 * time.Second))
-		line, err := reader.ReadBytes('\n')
-		if err != nil {
-			if ne, ok := err.(net.Error); ok && ne.Timeout() {
-				// 心跳超时，扫一次 pending 即可
-				if !pushAllPending(conn, reader, state) {
-					return
-				}
-				continue
+	ch := state.Subscribe()
+	defer state.Unsubscribe(ch)
+
+	// 新连接补发当前所有 pending（断线期间上传的文件也能收到通知）
+	state.ReplayPending(ch)
+
+	// 单独 goroutine 跑 read：仅用于消费 client 消息（暂时忽略），保持 TCP 活跃
+	readErr := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 1024)
+		for {
+			conn.SetReadDeadline(time.Now().Add(180 * time.Second))
+			_, err := conn.Read(buf)
+			if err != nil {
+				readErr <- err
+				return
 			}
-			log.Printf("TCP read: %v", err)
+		}
+	}()
+
+	for {
+		select {
+		case err := <-readErr:
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				log.Printf("TCP client %s idle timeout", remote)
+			} else {
+				log.Printf("TCP client %s read err: %v", remote, err)
+			}
 			return
-		}
-
-		var msg map[string]interface{}
-		if err := json.Unmarshal(bytesTrimSpace(line), &msg); err != nil {
-			log.Printf("TCP parse: %v", err)
-			continue
-		}
-
-		switch msg["type"] {
-		case "ping":
-			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			_, _ = conn.Write([]byte(`{"type":"pong"}` + "\n"))
-		}
-		// 任何消息都触发一次 pending 扫描推送
-		if !pushAllPending(conn, reader, state) {
-			return
-		}
-	}
-}
-
-func bytesTrimSpace(b []byte) []byte {
-	start, end := 0, len(b)
-	for start < end && (b[start] == ' ' || b[start] == '\t' || b[start] == '\r') {
-		start++
-	}
-	for end > start && (b[end-1] == ' ' || b[end-1] == '\t' || b[end-1] == '\r' || b[end-1] == '\n') {
-		end--
-	}
-	return b[start:end]
-}
-
-func pushAllPending(conn net.Conn, reader *bufio.Reader, state *State) bool {
-	pending := state.listPending()
-	for _, p := range pending {
-		if !pushOne(conn, reader, state, p) {
-			return false
+		case p, ok := <-ch:
+			if !ok {
+				log.Printf("TCP client %s: state shutting down", remote)
+				return
+			}
+			stat, statErr := os.Stat(p.Path)
+			size := int64(0)
+			if statErr == nil {
+				size = stat.Size()
+			}
+			// 通知 JSON（不传文件体，C# 端走 SSH scp 拉取）
+			msg := fmt.Sprintf(
+				`{"type":"file_pending","id":"%s","name":"%s","size":%d}`+"\n",
+				p.ID, p.Name, size)
+			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if _, err := conn.Write([]byte(msg)); err != nil {
+				log.Printf("TCP client %s notify write: %v", remote, err)
+				return
+			}
+			log.Printf("notified %s: %s id=%s size=%d", remote, p.Name, p.ID, size)
 		}
 	}
-	return true
-}
-
-func pushOne(conn net.Conn, reader *bufio.Reader, state *State, p pendingFile) bool {
-	file, err := os.Open(p.Path)
-	if err != nil {
-		log.Printf("open %s: %v", p.Path, err)
-		return true // 单个文件出错不影响后续
-	}
-	defer file.Close()
-
-	stat, err := file.Stat()
-	if err != nil {
-		return true
-	}
-	size := stat.Size()
-
-	header, _ := json.Marshal(map[string]interface{}{
-		"type": "file",
-		"id":   p.ID,
-		"name": p.Name,
-		"size": size,
-	})
-	// C# 客户端期望：4 字节大端长度 + JSON + '\n' + 二进制体
-	var lenBuf [4]byte
-	binary.BigEndian.PutUint32(lenBuf[:], uint32(len(header)))
-
-	conn.SetWriteDeadline(time.Now().Add(60 * time.Second))
-	if _, err := conn.Write(lenBuf[:]); err != nil {
-		log.Printf("write len: %v", err)
-		return false
-	}
-	if _, err := conn.Write(header); err != nil {
-		return false
-	}
-	if _, err := conn.Write([]byte{'\n'}); err != nil {
-		return false
-	}
-	if _, err := io.Copy(conn, file); err != nil {
-		return false
-	}
-
-	// 等 ack（带超时）
-	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	ackLine, err := reader.ReadBytes('\n')
-	if err != nil {
-		log.Printf("ack read: %v", err)
-		return false
-	}
-	var ack map[string]interface{}
-	if err := json.Unmarshal(bytesTrimSpace(ackLine), &ack); err != nil {
-		log.Printf("ack parse: %v", err)
-		return true
-	}
-	if t, _ := ack["type"].(string); t == "ack" && ack["id"] == p.ID {
-		state.delete(p.ID)
-		log.Printf("acked & deleted %s (%s)", p.Name, p.ID)
-		return true
-	}
-	log.Printf("ack mismatch: %v for %s", ack, p.ID)
-	return true
 }
 
 // ============================================================
@@ -401,7 +447,7 @@ func pushOne(conn net.Conn, reader *bufio.Reader, state *State, p pendingFile) b
 
 func main() {
 	httpPort := flag.Int("http-port", 8765, "HTTP server port")
-	tcpPort := flag.Int("tcp-port", 8766, "TCP server port")
+	tcpPort := flag.Int("tcp-port", 8766, "TCP server port (file_pending notify)")
 	tmpDir := flag.String("tmp-dir", "", "temp file directory (required)")
 	showVer := flag.Bool("version", false, "print version and exit")
 	flag.Parse()

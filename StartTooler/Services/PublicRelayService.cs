@@ -1,9 +1,9 @@
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -284,34 +284,43 @@ public class PublicRelayService : IDisposable
 
                 while (!ct.IsCancellationRequested)
                 {
-                    // 4 字节大端长度
-                    var lenBuf = new byte[4];
-                    if (!await ReadExactAsync(stream, lenBuf, ct)) break;
-                    int headerLen = BinaryPrimitives.ReadInt32BigEndian(lenBuf);
-                    if (headerLen <= 0 || headerLen > 1 << 20) break;
+                    // 协议：Go relay 直接发 JSON 消息 + '\n'，无 4 字节长度前缀
+                    // 按行读，解析 file_pending 通知
+                    string? line;
+                    try
+                    {
+                        line = await ReadLineAsync(stream, ct);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        Trace.WriteLine($"[PublicRelay] read line err: {ex.Message}");
+                        break;
+                    }
+                    if (line == null) break; // EOF
+                    line = line.TrimEnd('\r');
+                    if (string.IsNullOrEmpty(line)) continue;
 
-                    var headerBuf = new byte[headerLen];
-                    if (!await ReadExactAsync(stream, headerBuf, ct)) break;
-                    var headerLine = Encoding.UTF8.GetString(headerBuf).TrimEnd('\r', '\n');
+                    string fileId, name;
+                    long size;
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(line);
+                        if (doc.RootElement.GetProperty("type").GetString() != "file_pending") continue;
+                        fileId = doc.RootElement.GetProperty("id").GetString() ?? "";
+                        name = doc.RootElement.GetProperty("name").GetString() ?? "";
+                        size = doc.RootElement.GetProperty("size").GetInt64();
+                    }
+                    catch (Exception ex)
+                    {
+                        Trace.WriteLine($"[PublicRelay] parse json err: {ex.Message} line={line}");
+                        continue;
+                    }
 
-                    using var doc = JsonDocument.Parse(headerLine);
-                    var type = doc.RootElement.GetProperty("type").GetString();
-                    if (type != "file") continue;
+                    LastLog = $"通知 {name} ({size} bytes)，开始 SSH 拉取";
+                    Trace.WriteLine($"[PublicRelay] file_pending id={fileId} name={name} size={size}");
 
-                    var fileId = doc.RootElement.GetProperty("id").GetString() ?? "";
-                    var name = doc.RootElement.GetProperty("name").GetString() ?? "";
-                    var size = doc.RootElement.GetProperty("size").GetInt64();
-
-                    var destPath = SaveToProject(projectPath, name, size, stream, ct);
-                    if (destPath == null) break;
-
-                    // 发 ack
-                    var ack = JsonSerializer.Serialize(new { type = "ack", id = fileId });
-                    var ackBytes = Encoding.UTF8.GetBytes(ack + "\n");
-                    await stream.WriteAsync(ackBytes, ct);
-
-                    LastLog = $"接收 {Path.GetFileName(destPath)} ({size} bytes)";
-                    FileReceived?.Invoke(destPath);
+                    // 异步拉取：不让 TCP 读取循环卡住后续通知
+                    _ = FetchOneAsync(cfg, projectPath, fileId, name, size, ct);
                 }
             }
             catch (OperationCanceledException)
@@ -332,51 +341,105 @@ public class PublicRelayService : IDisposable
         }
     }
 
-    private static string? SaveToProject(string projectPath, string name, long size, NetworkStream stream, CancellationToken ct)
+    /// <summary>
+    /// 按行读 TCP stream，遇到 '\n' 返回该行（不含 '\n'），EOF 返回 null。
+    /// 1MB 上限防止恶意 peer 一直不换行撑爆内存。
+    /// </summary>
+    private static async Task<string?> ReadLineAsync(NetworkStream stream, CancellationToken ct)
     {
-        try
+        var buf = new List<byte>(256);
+        var one = new byte[1];
+        while (true)
         {
-            var today = DateTime.Now.ToString("yyyy-MM-dd");
-            var dateDir = Path.Combine(projectPath, today);
-            Directory.CreateDirectory(dateDir);
-            var safeName = Path.GetFileName(name);
-            if (string.IsNullOrEmpty(safeName)) safeName = $"upload_{DateTime.Now:HHmmss}.bin";
-            var destPath = Path.Combine(dateDir, safeName);
-            destPath = GetUniqueFileName(destPath);
-
-            long written = 0;
-            using (var fs = File.Create(destPath))
-            {
-                var buf = new byte[64 * 1024];
-                while (written < size)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    var toRead = (int)Math.Min(buf.Length, size - written);
-                    int read = stream.Read(buf, 0, toRead);
-                    if (read <= 0) return null;
-                    fs.Write(buf, 0, read);
-                    written += read;
-                }
-            }
-            return destPath;
-        }
-        catch
-        {
-            return null;
+            ct.ThrowIfCancellationRequested();
+            int read = await stream.ReadAsync(one, ct);
+            if (read == 0) return buf.Count == 0 ? null : Encoding.UTF8.GetString(buf.ToArray());
+            if (one[0] == (byte)'\n') return Encoding.UTF8.GetString(buf.ToArray());
+            buf.Add(one[0]);
+            if (buf.Count > 1 << 20) throw new InvalidDataException("line too long (>1MB)");
         }
     }
 
-    private static async Task<bool> ReadExactAsync(NetworkStream stream, byte[] buf, CancellationToken ct)
+    /// <summary>
+    /// 收到 file_pending 通知后：通过 SSH scp 拉文件到本地项目目录（按日期归档），
+    /// 然后 HTTP POST /ack/{id} 让 Go relay 删 VPS 端 tmp，最后右下角 notify。
+    /// </summary>
+    private async Task FetchOneAsync(PublicRelayConfig cfg, string projectPath, string id, string name, long size, CancellationToken? outerCt = null)
     {
-        int offset = 0;
-        while (offset < buf.Length)
+        var ct = outerCt ?? CancellationToken.None;
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            int read = await stream.ReadAsync(buf.AsMemory(offset, buf.Length - offset), ct);
-            if (read <= 0) return false;
-            offset += read;
+            var safeName = Path.GetFileName(name);
+            if (string.IsNullOrEmpty(safeName)) safeName = $"upload_{DateTime.Now:HHmmss}.bin";
+            var today = DateTime.Now.ToString("yyyy-MM-dd");
+            var dateDir = Path.Combine(projectPath, today);
+            Directory.CreateDirectory(dateDir);
+            var finalPath = GetUniqueFileName(Path.Combine(dateDir, safeName));
+
+            Trace.WriteLine($"[PublicRelay] FetchOneAsync start id={id} name={safeName} size={size} -> {finalPath}");
+
+            // 1) SSH scp 拉文件
+            using var ssh = new SshClient(BuildConnectionInfo(cfg));
+            await Task.Run(() => ssh.Connect(), ct);
+            using var scp = new ScpClient(BuildConnectionInfo(cfg));
+            await Task.Run(() => scp.Connect(), ct);
+            using (var fs = File.Create(finalPath))
+            {
+                var remoteBin = $"{ExpandRemotePath(cfg.SshRemotePath)}/tmp/{id}.bin";
+                await Task.Run(() => scp.Download(remoteBin, fs), ct);
+            }
+            scp.Disconnect();
+            ssh.Disconnect();
+
+            // 2) ssh 删 VPS 端 tmp（双保险：这里 rm 一次，ack 端点会再删一次）
+            try
+            {
+                ssh.Connect();
+                ssh.RunCommand($"rm -f {ExpandRemotePath(cfg.SshRemotePath)}/tmp/{id}.bin {ExpandRemotePath(cfg.SshRemotePath)}/tmp/{id}.meta");
+                ssh.Disconnect();
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[PublicRelay] ssh rm warning: {ex.Message}");
+            }
+
+            // 3) HTTP POST /ack/{id} —— 让 Go relay 从 pending 删 + 删 bin/meta
+            // 失败不阻塞本地写盘（VPS 端 tmp 会在下次清理时被删）
+            _ = Task.Run(() => AckFileAsync(cfg, id), ct);
+
+            // 4) 右下角 notify
+            var sizeKb = (size + 1023) / 1024;
+            NotificationService.Current.Show("公网接收", $"已收到 {safeName} ({sizeKb} KB)");
+
+            // 5) 触发 FileReceived 事件（之前没人订阅，现在通知 gallery 刷新）
+            LastLog = $"已接收 {safeName} ({size} bytes)";
+            FileReceived?.Invoke(finalPath);
+
+            Trace.WriteLine($"[PublicRelay] FetchOneAsync done -> {finalPath}");
         }
-        return true;
+        catch (Exception ex)
+        {
+            LastLog = $"拉取失败 {name}: {ex.Message}";
+            Trace.WriteLine($"[PublicRelay] FetchOneAsync FAILED id={id}: {ex}");
+            NotificationService.Current.Show("公网接收失败", $"{name}: {ex.Message}", NotificationType.Error);
+        }
+    }
+
+    private static async Task AckFileAsync(PublicRelayConfig cfg, string id)
+    {
+        try
+        {
+            var host = !string.IsNullOrEmpty(cfg.PublicHost) ? cfg.PublicHost : cfg.SshHost;
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            var url = $"http://{host}:{cfg.HttpPort}/ack/{id}";
+            var resp = await http.PostAsync(url, null);
+            Trace.WriteLine($"[PublicRelay] ack {id} -> {(int)resp.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[PublicRelay] ack {id} FAILED: {ex.Message}");
+            // 不抛：本地文件已写盘，VPS 端残留等下次清理
+        }
     }
 
     private static string GetUniqueFileName(string path)

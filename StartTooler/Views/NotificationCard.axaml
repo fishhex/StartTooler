@@ -1,0 +1,39 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:services="using:StartTooler.Services"
+             mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="80"
+             x:Class="StartTooler.Views.NotificationCard"
+             x:DataType="services:NotificationItem">
+
+    <Border Background="{DynamicResource Bg.SurfaceElevated}"
+            BorderBrush="{DynamicResource Bg.Divider}"
+            BorderThickness="1"
+            CornerRadius="{DynamicResource Radius.Medium}"
+            Padding="0"
+            MinWidth="280"
+            MaxWidth="360"
+            Margin="0,4,16,0">
+        <Grid ColumnDefinitions="4,*">
+            <!-- 左侧色条：按 Type 区分 -->
+            <Border Grid.Column="0"
+                    Background="{Binding Type, Converter={x:Static services:NotificationTypeToBrushConverter.Instance}}"
+                    CornerRadius="0"/>
+
+            <StackPanel Grid.Column="1"
+                        Margin="12,10,12,10"
+                        Spacing="2">
+                <TextBlock Text="{Binding Title}"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text.Primary}"/>
+                <TextBlock Text="{Binding Body}"
+                           FontSize="12"
+                           Foreground="{DynamicResource Text.Secondary}"
+                           TextWrapping="Wrap"
+                           LineHeight="18"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>
