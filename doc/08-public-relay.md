@@ -22,7 +22,7 @@
 │      ├─ ResolveArchAsync (SSH: uname -m 自动 / 配置指定)                              │
 │      ├─ StartClient (TCP 长连接 → 收 file_pending JSON line)                          │
 │      │     └─ RunClientLoopAsync: 指数退避重连 + 按行解析 JSON                        │
-│      │           └─ FetchOneAsync:  SSH scp 拉文件 → ack → notify                     │
+│      │           └─ (v0.1) FetchOneAsync / (v0.2) BatchWorker → DrainBatchAsync scp 拉文件 → ack → notify → sync_for_vps_task upsert │
 │      ├─ StopClientAsync                                                                  │
 │      └─ EnsureRemoteKilledOnExitAsync                                                  │
 │                                                                                       │
@@ -245,7 +245,9 @@ if [ -f {pidFile} ]; then PID=$(cat {pidFile}); kill $PID && echo killed; rm -f 
 
 ---
 
-## 5. TCP 客户端长连接（`RunClientLoopAsync` — `PublicRelayService.cs:270-342`）
+## 5. TCP 通知客户端 + Batch SCP 下载（`RunClientLoopAsync` + `RunBatchWorkerAsync` + `DrainBatchAsync` — `PublicRelayService.cs:270-360+`）
+
+> v0.2 起，文件下载从「单文件 scp（SSH.NET ScpClient）」改为「batch scp（本地 scp 命令 + SSH ControlMaster）」。本节描述新实现。
 
 ### 5.1 协议契约
 
@@ -254,15 +256,23 @@ C# 端 TCP 客户端 ←→ Go relay :8766
 
 C# ─── (no request) ───→ Go
 C# ←── {"type":"file_pending","id":"...","name":"...","size":N}\n ─── Go
-C# 内部: JSON parse → SSH scp pull
-C# ─── HTTP POST /ack/{id} ───→ Go :8765
+C# 内部: JSON parse → Channel<PendingVpsFile>.Writer.Write
+   ↓
+Batch Worker 凑齐 N 个 或 idleTimeout 触发
+   ↓
+Process.Start("scp", ... 一次传 N 个文件 ...)
+   ↓
+解析 scp exit code + stderr → 成功/失败分别 upsert sync_for_vps_task
+   ↓
+NotificationService.Show × N
+C# ─── HTTP POST /ack/{id} ───→ Go :8765   （仅成功的）
 ```
 
 - **单行 JSON + `'\n'`** —— 没有 4 字节长度前缀
 - C# 端 `ReadLineAsync` 按字节读到 `\n`（行尾 `\r` 去 strip）
 - **已修复陷阱**：早期 C# 端按 4 字节大端长度前缀读 → 不是 JSON 包装，Go relay 改用纯行就崩（commit message 「按行读 JSON」）
 
-### 5.2 重连策略
+### 5.2 TCP 客户端重连策略
 
 ```csharp
 int retryDelaySec = 1;
@@ -271,7 +281,7 @@ while (!ct.IsCancellationRequested) {
         using var client = new TcpClient();
         await client.ConnectAsync(host, cfg.TcpPort, ct);
         using var stream = client.GetStream();
-        retryDelaySec = 1;                                            // 重置退避
+        retryDelaySec = 1;
         LastLog = $"已连接 {host}:{cfg.TcpPort}";
 
         while (!ct.IsCancellationRequested) {
@@ -279,20 +289,31 @@ while (!ct.IsCancellationRequested) {
             try { line = await ReadLineAsync(stream, ct); }
             catch (Exception ex) when (ex is not OperationCanceledException) {
                 Trace.WriteLine($"[PublicRelay] read line err: {ex.Message}");
-                break;                                                // 跳出内层，外层重连
+                break;
             }
-            if (line == null) break;                                  // EOF
+            if (line == null) break;
             line = line.TrimEnd('\r');
             if (string.IsNullOrEmpty(line)) continue;
-            ...parse + FetchOneAsync fire-and-forget...
+            
+            // v0.2: 不再 fire-and-forget FetchOneAsync
+            // 而是 enqueue 到 _pendingChannel，由 BatchWorker 凑批
+            var (fileId, name, size) = ParseFilePending(line);
+            await _pendingChannel.Writer.WriteAsync(
+                new PendingVpsFile(fileId, name, size), ct);
         }
-    } catch (OperationCanceledException) { return; }
+    } catch (OperationCanceledException) {
+        // 注意：退出前要 flush channel（见 §5.5）
+        await FlushPendingChannelOnExitAsync(cfg, projectPath);
+        return;
+    }
     catch (Exception ex) {
         LastLog = $"连接断开: {ex.Message}";
+        // TCP 断线也要 flush channel
+        await FlushPendingChannelOnExitAsync(cfg, projectPath);
     }
     if (!ct.IsCancellationRequested) {
         await Task.Delay(TimeSpan.FromSeconds(Math.Min(retryDelaySec, 10)), ct);
-        retryDelaySec = Math.Min(retryDelaySec * 2, 10);              // 1 → 2 → 4 → 8 → 10
+        retryDelaySec = Math.Min(retryDelaySec * 2, 10);
     }
 }
 ```
@@ -301,8 +322,9 @@ while (!ct.IsCancellationRequested) {
 
 - **指数退避**：1s 起步，封顶 10s —— 正常 VPS 短闪断秒重连，长期断网（VPS 关停）也只 10s 一试
 - **每次成功重置 retryDelaySec=1**：上线后立即赶上突发流量
-- **`FetchOneAsync` fire-and-forget**：不让单文件 SCP 大文件卡 TCP 读循环
-- **`ReadLineAsync` 1MB 上限**（`PublicRelayService.cs:359`）：防恶意 peer 一直不换行撑爆内存
+- **不再有 `FetchOneAsync` 单文件 fire-and-forget** —— 全部进 `_pendingChannel`，由 BatchWorker 处理
+- **TCP 断线 / 退出时强制 flush**：避免 channel 残留（详见 §5.5）
+- **`ReadLineAsync` 1MB 上限**：防恶意 peer 一直不换行撑爆内存
 
 ### 5.3 JSON 解析
 
@@ -316,39 +338,332 @@ size   = doc.RootElement.GetProperty("size").GetInt64();
 
 > 当前 Go 端**只**发 `file_pending` 类型，未来加 ping/pong / state 同步时这里要加分支（目前 `continue` 即可）。
 
-### 5.4 `FetchOneAsync`（`PublicRelayService.cs:367-426`）
+### 5.4 Batch Accumulator + Worker（v0.2 新增）
 
-```
-FetchOneAsync(cfg, projectPath, id, name, size, outerCt)
-  ├─ safeName = Path.GetFileName(name) || "upload_{HHmmss}.bin"
-  ├─ today = DateTime.Now.ToString("yyyy-MM-dd")
-  ├─ dateDir = Path.Combine(projectPath, today)
-  ├─ finalPath = GetUniqueFileName(Path.Combine(dateDir, safeName))
-  ├─ SSH: SshClient.Connect + ScpClient.Connect  (两次连，两个 client)
-  ├─ File.Create(finalPath) + scp.Download(remote_tmp/{id}.bin, fs)
-  ├─ scp.Disconnect / ssh.Disconnect
-  ├─ SSH: rm -f tmp/{id}.bin tmp/{id}.meta                        ← 双保险
-  ├─ Task.Run: AckFileAsync(cfg, id)                               ← HTTP POST /ack/{id}
-  ├─ NotificationService.Current.Show("公网接收", "已收到 xxx.jpg (...)")
-  ├─ FileReceived?.Invoke(finalPath)                               ← 订阅者刷新 Gallery
-  └─ Trace.WriteLine("[PublicRelay] FetchOneAsync done -> {path}")
-```
-
-> **承认**（`PublicRelayService.cs:378`、`PublicRelayService.cs:412-414`）：SCP-remote 路径是 `{remotePath}/tmp/{id}.bin` — 必须与 Go relay `os.WriteFile(binPath, ...)` 同步。
-
-#### 5.4.1 失败处理
-
+**字段**：
 ```csharp
-catch (Exception ex) {
-    LastLog = $"拉取失败 {name}: {ex.Message}";
-    Trace.WriteLine($"[PublicRelay] FetchOneAsync FAILED id={id}: {ex}");
-    NotificationService.Current.Show("公网接收失败", $"{name}: {ex.Message}", NotificationType.Error);
+public static readonly int BatchSize = 5;                       // 可配 PublicRelayConfig.ScpBatchSize
+public static readonly TimeSpan BatchIdleTimeout = TimeSpan.FromSeconds(30);  // 可配 ScpBatchIdleTimeoutSec
+
+private readonly Channel<PendingVpsFile> _pendingChannel = 
+    Channel.CreateBounded<PendingVpsFile>(new BoundedChannelOptions(1000)
+    {
+        FullMode = BoundedChannelFullMode.Wait   // 满了让 enqueue 等
+    });
+private Task? _batchWorkerTask;
+```
+
+**Worker 触发策略**（任一满足即触发）：
+```
+触发条件 1：channel 累积 ≥ BatchSize（默认 5）→ 立即触发
+触发条件 2：距 channel 中首文件到达已过 BatchIdleTimeout（默认 30s）→ 触发当前累计
+触发条件 3：Stop 按钮 / app 退出（ProcessExit）→ 强制 flush
+触发条件 4：TCP 客户端断线 → RunClientLoopAsync 退出前强制 flush
+```
+
+**Worker 主循环**：
+```csharp
+private async Task RunBatchWorkerAsync(PublicRelayConfig cfg, string projectPath, CancellationToken ct)
+{
+    var batch = new List<PendingVpsFile>(BatchSize);
+    while (!ct.IsCancellationRequested)
+    {
+        batch.Clear();
+        DateTime? firstFileAt = null;
+        
+        while (batch.Count < BatchSize && !ct.IsCancellationRequested)
+        {
+            TimeSpan waitFor;
+            if (firstFileAt == null)
+                waitFor = BatchIdleTimeout;
+            else
+            {
+                var elapsed = DateTime.UtcNow - firstFileAt.Value;
+                waitFor = BatchIdleTimeout - elapsed;
+                if (waitFor <= TimeSpan.Zero) break;   // 已超时
+            }
+            
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(waitFor);
+            
+            try
+            {
+                if (!await _pendingChannel.Reader.WaitToReadAsync(cts.Token)) break;
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) 
+            { 
+                break;   // idle timeout
+            }
+            
+            while (_pendingChannel.Reader.TryRead(out var f))
+            {
+                firstFileAt ??= DateTime.UtcNow;
+                batch.Add(f);
+                if (batch.Count >= BatchSize) break;
+            }
+        }
+        
+        if (batch.Count == 0) continue;
+        
+        await DrainBatchAsync(cfg, projectPath, batch, ct);
+    }
 }
 ```
 
-**不重试**——v0.1 简化处理：用户感知失败，重新部署重启会触发 `ReplayPending` 补发（Go relay 端，详见下）。
+#### 5.4.1 关键设计
+
+- **每收一个文件就重置 idle timer**：保证 batch 起来（连续传 5 个不会因为 30s 超时被打断）
+- **首文件到达时刻 = 计时起点**：不是 worker 启动时刻；空闲 channel 不会无意义计时
+- **`Channel.CreateBounded(1000)` + `Wait` mode**：channel 满时 enqueue 等，避免无限堆积撑爆内存
+- **`Stop / 退出` 强制 flush** 在 §5.5
+
+### 5.5 强制 Flush 策略（Stop / 退出 / TCP 断线）
+
+**StopClientAsync 改动**：
+```csharp
+public async Task StopClientAsync()
+{
+    _clientCts?.Cancel();                          // 让 RunClientLoopAsync + BatchWorker 都退出
+    if (_clientTask != null) await _clientTask;    // 等 RunClientLoopAsync 退出（其退出前已 flush，见 §5.2）
+    if (_batchWorkerTask != null) await _batchWorkerTask;
+    
+    // 双保险：再 drain 一次 channel 残留
+    var remaining = new List<PendingVpsFile>();
+    while (_pendingChannel.Reader.TryRead(out var f)) remaining.Add(f);
+    if (remaining.Count > 0)
+    {
+        await DrainBatchAsync(_lastCfg!, _lastProjectPath!, remaining, CancellationToken.None);
+    }
+}
+```
+
+**RunClientLoopAsync 退出 / 异常时也 flush**（§5.2 代码里已嵌入 `FlushPendingChannelOnExitAsync`）。
+
+**ProcessExit 兜底**（同 `EnsureRemoteKilledOnExitAsync` 风格）：
+```csharp
+// MainWindowViewModel.cs
+AppDomain.CurrentDomain.ProcessExit += (s, e) => {
+    try {
+        UploadServerViewModel?.PublicRelayViewModel
+            ?.EnsureRemoteKilledOnExitAsync()   // 内部也会触发 channel flush
+            .Wait(TimeSpan.FromSeconds(5));
+    } catch { /* ignore */ }
+};
+```
+
+#### 5.5.1 进程崩溃兜底（v0.2 接受丢失 / v0.3 实现）
+
+- **v0.2 行为**：进程崩溃（kill -9 / 断电）时，channel 残留文件**会丢失**——sync_for_vps_task 表里没记录，VPS tmp/ 里的 .bin 也不会被主动重拉
+- **v0.3 计划**：启动时 SSH.NET 列 VPS `~/starttooler/tmp/*.bin`，对比 `sync_for_vps_task` 已 Received 的 id，差集 = Pending → 入队重拉
+
+### 5.6 `DrainBatchAsync`（v0.2 新增，替代 `FetchOneAsync`）
+
+```
+DrainBatchAsync(cfg, projectPath, batch, ct)
+  ├─ today = DateTime.Now.ToString("yyyy-MM-dd")
+  ├─ dateDir = Path.Combine(projectPath, today)
+  ├─ Directory.CreateDirectory(dateDir)
+  ├─ 构造 scp 命令参数（包含 SSH ControlMaster）：
+  │   scp -P {port} -o StrictHostKeyChecking=accept-new
+  │       -o ConnectTimeout=10
+  │       -o ControlMaster=auto
+  │       -o ControlPath={Temp}/starttooler-ssh-{host}-{port}
+  │       -o ControlPersist=10m
+  │       {user}@{host}:{remote}/tmp/{id1}.bin
+  │       {user}@{host}:{remote}/tmp/{id2}.bin
+  │       ...
+  │       {user}@{host}:{remote}/tmp/{idN}.bin
+  │       {dateDir}/
+  ├─ Process.Start("scp", ...).WaitForExit
+  ├─ 解析 exit code + stderr
+  │   - exit 0：全部成功
+  │   - exit != 0：解析 stderr "scp: .../tmp/<id>.bin: No such file or directory" → failedIds set
+  ├─ 遍历 batch，每文件 Upsert sync_for_vps_task：
+  │   - 成功：status=Received, local_path=本地最终路径, last_error=null
+  │   - 失败：status=Failed, local_path=null, last_error=stderr 片段
+  │   - 然后 NotificationService.Show（成功："公网接收" / 失败："公网接收失败"）
+  │   - 成功还触发 FileReceived?.Invoke(local_path) → Gallery 刷新
+  ├─ SSH.NET SshClient.RunCommand("rm -f {remote}/tmp/{成功id1}.bin {remote}/tmp/{成功id2}.bin ...")
+  │   （一次 SSH 连 + 一次命令，删多个文件）
+  └─ 对成功文件分别 Task.Run(AckFileAsync)（HTTP POST /ack/{id}）
+```
+
+**关键代码骨架**：
+```csharp
+private async Task DrainBatchAsync(
+    PublicRelayConfig cfg, string projectPath, 
+    IReadOnlyList<PendingVpsFile> batch, CancellationToken ct)
+{
+    var today = DateTime.Now.ToString("yyyy-MM-dd");
+    var dateDir = Path.Combine(projectPath, today);
+    Directory.CreateDirectory(dateDir);
+    
+    var psi = new ProcessStartInfo("scp")
+    {
+        RedirectStandardError = true,
+        RedirectStandardOutput = true,
+        UseShellExecute = false,
+        CreateNoWindow = true,
+    };
+    
+    var masterSock = Path.Combine(Path.GetTempPath(), 
+        $"starttooler-ssh-{Sanitize(cfg.SshHost)}-{cfg.SshPort}");
+    psi.ArgumentList.Add("-P"); psi.ArgumentList.Add(cfg.SshPort.ToString());
+    psi.ArgumentList.Add("-o"); psi.ArgumentList.Add("StrictHostKeyChecking=accept-new");
+    psi.ArgumentList.Add("-o"); psi.ArgumentList.Add("ConnectTimeout=10");
+    psi.ArgumentList.Add("-o"); psi.ArgumentList.Add("ControlMaster=auto");
+    psi.ArgumentList.Add("-o"); psi.ArgumentList.Add($"ControlPath={masterSock}");
+    psi.ArgumentList.Add("-o"); psi.ArgumentList.Add("ControlPersist=10m");
+    
+    foreach (var f in batch)
+    {
+        var remoteBin = $"{cfg.SshUser}@{cfg.SshHost}:{ExpandRemotePath(cfg.SshRemotePath)}/tmp/{f.Id}.bin";
+        psi.ArgumentList.Add(remoteBin);
+    }
+    psi.ArgumentList.Add(dateDir + "/");
+    
+    var sw = Stopwatch.StartNew();
+    using var proc = Process.Start(psi)!;
+    var stderrTask = proc.StandardError.ReadToEndAsync(ct);
+    var stdoutTask = proc.StandardOutput.ReadToEndAsync(ct);
+    await proc.WaitForExitAsync(ct);
+    var stderr = await stderrTask;
+    sw.Stop();
+    
+    Trace.WriteLine($"[PublicRelay] scp batch={batch.Count} exit={proc.ExitCode} elapsed={sw.ElapsedMilliseconds}ms");
+    if (!string.IsNullOrEmpty(stderr)) Trace.WriteLine($"[PublicRelay] scp stderr: {stderr}");
+    
+    var failedIds = ParseScpStderr(stderr, batch);
+    var successIds = batch.Select(f => f.Id).Where(id => !failedIds.Contains(id)).ToList();
+    
+    // 1) upsert sync_for_vps_task + notify
+    foreach (var f in batch)
+    {
+        var localPath = Path.Combine(dateDir, SanitizeName(f.Name));
+        var failed = failedIds.Contains(f.Id);
+        
+        await _syncTaskRepo.UpsertAsync(new SyncForVpsTask
+        {
+            FileId = f.Id,
+            FileName = f.Name,
+            SizeBytes = f.Size,
+            LocalPath = failed ? null : localPath,
+            Status = failed ? SyncForVpsTaskStatus.Failed : SyncForVpsTaskStatus.Received,
+            AttemptCount = 1,
+            LastError = failed ? ExtractScpErrorFor(stderr, f.Id) : null,
+            CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+        }, ct);
+        
+        if (failed)
+        {
+            NotificationService.Current.Show(
+                "公网接收失败", $"{f.Name}: {ExtractScpErrorFor(stderr, f.Id)}", 
+                NotificationType.Error);
+        }
+        else
+        {
+            NotificationService.Current.Show("公网接收", $"已收到 {f.Name}");
+            FileReceived?.Invoke(localPath);
+        }
+    }
+    
+    // 2) 批量 rm（仅成功的）
+    if (successIds.Count > 0)
+    {
+        try
+        {
+            using var ssh = new SshClient(BuildConnectionInfo(cfg));
+            ssh.Connect();
+            var rmPaths = string.Join(" ", successIds.Select(id => 
+                $"{ExpandRemotePath(cfg.SshRemotePath)}/tmp/{id}.bin"));
+            ssh.RunCommand($"rm -f {rmPaths}");
+            ssh.Disconnect();
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[PublicRelay] batch rm warning: {ex.Message}");
+        }
+    }
+    
+    // 3) 批量 ack（每文件一次 HTTP POST，不合并）
+    foreach (var id in successIds)
+    {
+        _ = Task.Run(() => AckFileAsync(cfg, id), ct);
+    }
+}
+
+private static HashSet<string> ParseScpStderr(
+    string stderr, IReadOnlyList<PendingVpsFile> batch)
+{
+    // scp stderr 格式:
+    //   "scp: /remote/path/tmp/<id>.bin: No such file or directory"
+    //   "scp: failed to upload /remote/path/tmp/<id>.bin"
+    // 跨 OpenBSD scp / 新版 scp 都基本一致
+    var failed = new HashSet<string>();
+    var batchIds = batch.Select(b => b.Id).ToHashSet();
+    foreach (var line in stderr.Split('\n'))
+    {
+        foreach (var id in batchIds)
+        {
+            if (line.Contains($"/tmp/{id}.bin"))
+            {
+                failed.Add(id);
+                break;
+            }
+        }
+    }
+    return failed;
+}
+
+private static string? ExtractScpErrorFor(string stderr, string id)
+{
+    foreach (var line in stderr.Split('\n'))
+    {
+        if (line.Contains($"/tmp/{id}.bin")) return line.Trim();
+    }
+    return "unknown scp error";
+}
+```
+
+#### 5.6.1 关键设计
+
+- **不用 SSH.NET 的 ScpClient**：ScpClient 是单文件 channel，每次新连接，浪费；本地 `scp` 命令行天然支持多文件 + multiplex
+- **SSH ControlMaster**：多次 batch 复用单 SSH 连接（`-o ControlMaster=auto -o ControlPath=... -o ControlPersist=10m`）；首次启动要 SSH 握手，后续 batch 直接复用 socket，零握手开销
+- **scp stderr 解析**：识别 `scp: .../tmp/<id>.bin: <reason>` 行拆出失败文件 ID，只对失败文件标 status=Failed
+- **rm 阶段也批量化**：一次 SSH.NET `RunCommand("rm -f a b c d e")` —— 一次连接，删多个文件
+- **ack 不批量化**：HTTP POST /ack 仍然每文件一次（合并复杂度高、收益小、保持简单）
+
+### 5.7 `FetchOneAsync`（v0.1 旧实现，已废弃）
+
+> **v0.2 删除**。旧实现见 git history（commit `c91db80` 之前）。
+
+旧实现每张图：
+- 1 次 `SshClient.Connect`
+- 1 次 `ScpClient.Connect`
+- 1 次 `scp.Download`
+- 1 次 `ssh.RunCommand("rm -f ...")`
+- 1 次 HTTP `/ack`
+
+100 张图 = 400 次 SSH 握手 + 100 次 HTTP POST，触发 sshd `MaxStartups`（默认 10:100）+ 单文件 10s Timeout 太短 → 集中失败。
+
+新实现（§5.6）100 张图 = 20 次 batch scp = 20 次 SSH 握手（首次 ControlMaster 握手 + 后续复用）；失败粒度细到单文件。
 
 ---
+
+### 5.8 PublicRelayConfig 新增字段（v0.2）
+
+```csharp
+public class PublicRelayConfig {
+    // ... 原有字段 ...
+    
+    public int ScpBatchSize { get; set; } = 5;                      // batch 大小
+    public int ScpBatchIdleTimeoutSec { get; set; } = 30;            // idle 超时秒
+    public string SshMasterSockDir { get; set; } = "";               // 空 = Path.GetTempPath()
+}
+```
+
+UI 暂不暴露（v0.2 沿用默认值；v0.3 加 UI 配置项）。
 
 ## 6. Go relay（`tools/upload-relay/main.go`）
 
@@ -648,18 +963,39 @@ public async Task EnsureRemoteKilledOnExitAsync() {
 [4] Go handleTCPClient:
        ch <- pendingFile → 写 JSON line + \n
     C# ReadLineAsync → JSON parse → file_id, name, size
-    C# FetchOneAsync (fire-and-forget):
-       ├─ SSH scp {remotePath}/tmp/<id>.bin → {projectPath}/{yyyy-MM-dd}/<safeName>
-       ├─ SSH rm tmp/<id>.bin .meta
-       ├─ HTTP POST /ack/<id>
-       ├─ NotificationService.Current.Show("公网接收", "已收到 ...")
-       └─ FileReceived?.Invoke(finalPath)         ← 订阅者刷新 Gallery
+    C# _pendingChannel.Writer.WriteAsync(...)         ← v0.2: 入队而非直接 fetch
+       ↓
+    RunBatchWorkerAsync（独立后台 task）：
+       ├─ 凑齐 BatchSize(5) 或 距首文件 30s idle → 触发 DrainBatchAsync
+       ├─ DrainBatchAsync:
+       │   ├─ Process.Start("scp", ... 一次传 N 个文件 ...)
+       │   │   -o ControlMaster=auto + ControlPath={Temp}/starttooler-ssh-...
+       │   │   user@host:tmp/<id1>.bin ... user@host:tmp/<idN>.bin → {today}/
+       │   ├─ 解析 exit code + stderr → failedIds
+       │   ├─ 每文件 upsert sync_for_vps_task (status=Received/Failed)
+       │   ├─ 每文件 NotificationService.Show（成功/失败）
+       │   ├─ SSH.NET RunCommand("rm -f tmp/{成功id1}.bin {成功id2}.bin ...")
+       │   └─ 每成功文件 Task.Run(AckFileAsync)（HTTP POST /ack/{id}）
+       └─ FileReceived?.Invoke(local_path)         ← 订阅者刷新 Gallery
 
 [5] 用户回到 StartTooler：
     Gallery 自动刷新（订阅了 FileReceived，待启用）
     右下角看到通知
     项目目录 yyyy-MM-dd/ 下有文件
+    sync_for_vps_task 表有持久化记录
 ```
+
+#### 8.1 旧流程 vs 新流程（v0.1 → v0.2 对比）
+
+| 维度 | v0.1（单文件 FetchOneAsync）| v0.2（batch DrainBatchAsync） |
+|---|---|---|
+| 100 张图触发 SSH 握手次数 | 300 次（每文件 3 次：SshClient + ScpClient + rm） | 20 次（每 batch 1 次）+ 后续 ControlMaster 复用 |
+| 100 张图触发 HTTP POST | 100 次（每文件 ack） | 100 次（不变） |
+| 触发 sshd MaxStartups 概率 | 高（300 并发 SSH connect）| 低（20 次 scp，且 ControlMaster 复用 socket） |
+| 链路慢导致失败 | 频繁（单文件 10s Timeout 太短）| 缓解（一次 scp 拉多个，单次失败影响范围 1/N） |
+| 失败粒度 | 单文件 | 单文件（解析 scp stderr 拆失败 ID）|
+| 持久化记录 | 无 | sync_for_vps_task 表（每文件一行）|
+| 进程崩溃兜底 | 完全丢失 | v0.2 接受丢失，v0.3 加启动时扫 VPS tmp/ 重拉 |
 
 ---
 
@@ -669,13 +1005,17 @@ public async Task EnsureRemoteKilledOnExitAsync() {
 |---|---|---|
 | 改协议（加新 JSON type）| Go `state.Broadcast` + C# `JSON parse` | 一端加一端不识别会丢消息 |
 | 改 C# 端口/PATH 默认 | `PublicRelayConfig.HttpPort / TcpPort` | 现有用户配置可能不变 → 加 migration |
-| 改 SSH 超时 | `PublicRelayService.BuildConnectionInfo.Timeout` | 长 ssh 命令下用户感知 |
+| 改 SSH 超时 | `PublicRelayService.BuildConnectionInfo.Timeout`（已 10s → 60s） | 长 ssh 命令下用户感知 |
 | 加 TLS/SSL | Go + C# 双端加证书 | 拒绝降级——明文 HTTP risk surface |
 | 改流式上传 | Go 当前 `io.ReadAll` | 改 streaming write file，内存峰值 |
 | 改 binary 嵌入 | `StartTooler.csproj` + `RelayBinaryExtractor.cs` | 检查 `GetManifestResourceNames` |
 | 加架构（riscv64） | `RelayBinaryExtractor.SupportedArchs` + `scripts/build-relay.{sh,ps1}` | `GOARCH=riscv64` 试 build |
 | Start 时自动 ResolveArch | 已存在，不改 | 若失败 → 整 Start 链失败 |
 | 退出兜底加 SSH 前置确认（让用户决定 kill 远端）| `AppDomain.ProcessExit` 不能弹框 | 不适合本场景 |
+| **改 BatchSize / BatchIdleTimeout** | `PublicRelayConfig.ScpBatchSize / ScpBatchIdleTimeoutSec` | 边界测试：1 张/999 张/Stop 中断 |
+| **改 scp 调用方式**（本地 scp → SftpClient 等） | `DrainBatchAsync` + 跨平台依赖 | Windows 老版本无 scp 兜底 |
+| **加 sync_for_vps_task 重试 reader** | 新 `SyncForVpsTaskRetryService` | 启动时扫 VPS tmp/ 跟表对比 |
+| **加 sync_for_vps_task UI 展示** | 新 View + ViewModel | 用户能看哪些文件 pending / failed |
 
 ---
 
@@ -685,9 +1025,14 @@ public async Task EnsureRemoteKilledOnExitAsync() {
 - **`SSH.SSH.NET` 阻塞调用需 `Task.Run`** —— `client.Connect()`、`scp.Upload()` 都包（已有）
 - **Go relay 32MB + io.ReadAll** —— 大视频拉爆内存（已记 v0.2 改 streaming）
 - **Go relay HTTP server `ListenAndServe` 不响应 SIGTERM** —— 客户端长传会被截断（已有 fallback：retry loop）
-- **`ReplayPending` 对 buffer 满的 client 丢消息** —— pending map 还在，**client 端 ack 失败重试机制目前没有**——待 v0.2
+- **`ReplayPending` 对 buffer 满的 client 丢消息** —— pending map 还在，**client 端 ack 失败重试机制目前没有**——v0.3 加
 - **退出兜底 5s timeout** —— SSH 远端 kill 命令会超时；接受（不阻塞进程退出）
 - **PublicHost 留空用 SshHost** —— UI 公网 QR 时场景，**SshHost 不一定是公网 host**；用户必须显式填
 - **`TryChmod755` 在 Windows 上运行时 `SupportedOSPlatformGuard` 警告** —— 已 `#pragma warning disable CA1416` 压住（`RelayBinaryExtractor.cs:59-61`）
-- **ScpClient 重连**：当前实现每次 FetchOneAsync 都 `new SshClient().Connect()` —— **2 次 SSH 连** (`Ssh + Scp`)，**已记可能合并为共享 conn**——v0.2 性能优化
+- **ScpClient 重连 → 改 batch scp + ControlMaster** —— v0.1 每文件 3 次 SSH 连触发 sshd MaxStartups；v0.2 改用本地 scp 命令 + SSH ControlMaster 复用，详见 §31 + §5
+- **`ConnectionInfo.Timeout = 10s` 太短** —— v0.2 改 60s；链路慢时 KEX / scp 都 timeout
+- **缺 SSH KeepAlive** —— v0.2 加 `KeepAlive = new SshKeepAlive(30s/60s)`；防 NAT 老化断连
+- **BatchWorker 触发条件要全** —— 凑齐 + idle + Stop + TCP 断线，缺一就丢文件
 - **`SetLastError` 不重置 State** —— `Deploy → Start` 不调用重置；如果 `Deploy` 已 Error，`Start` 也走 Error 不动 —— 实际上 `Start` 会覆盖
+- **进程崩溃 channel 残留** —— v0.2 接受丢失；v0.3 加启动扫 VPS tmp/ 兜底
+- **scp StrictHostKeyChecking=accept-new 自动接受** —— 安全权衡（首次自动 trust），可改 `ask` 弹框但 UX 差

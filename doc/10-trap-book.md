@@ -40,7 +40,7 @@
 | 28 | `ReplayPending` 满 buffer 丢消息 | 公网 | 08 |
 | 29 | 退出兜底 5s timeout | 公网 | 08 |
 | 30 | RelayBinaryExtractor `TryChmod755` Windows | 公网 | 08 |
-| 31 | FetchOneAsync 2 次 SSH 连 | 公网 | 08 |
+| 31 | 公网接收：scp batch + ControlMaster + 60s Timeout + KeepAlive | 公网 | 02, 08 |
 | 32 | `PathConverter` 用 `StreamGeometry` | UI | 09 |
 | 33 | NotificationCard `IsHitTestVisible` | UI | 09 |
 | 34 | `DynamicResource` vs `StaticResource` 主题 | UI | 09 |
@@ -231,11 +231,24 @@
 - **解决**：`[SupportedOSPlatform]` 标注 + `#pragma warning disable CA1416`
 - **教训**：API 标注跨平台，本机内容包裹 try/catch 兜底
 
-### 31. FetchOneAsync 2 次 SSH 连
-- **情境**：`new SshClient + new ScpClient`，各 Connect 一次
-- **坑**：每次传输 2 次 SSH 握手 + 2 次关闭 → 慢 + 资源多
-- **解决**：v0.1 接受；v0.2 可用单 SshClient + 通过 channel scp
-- **教训**：性能优化优先 single-channel ssh
+### 31. 公网接收：scp 改为 batch + 本地 scp 命令 + SSH ControlMaster
+- **情境**：v0.1 公网接收每张图走 `FetchOneAsync` = `new SshClient().Connect()` + `new ScpClient().Connect()` + 下载 + 再 `ssh.Connect()` + `RunCommand("rm -f ...")` —— **每张图 3 次 SSH 握手 + 1 次 HTTP POST**
+- **坑**：100 张图触发 **300 次并发 SSH connect**，撑爆 VPS sshd 默认 `MaxStartups 10:100`（阿里云 ECS 镜像常见配置）→ sshd 主动 RST 部分连接 → 客户端看到 "Connection reset by peer"；同时 `ConnectionInfo.Timeout = 10s` 太短 → 慢链路上 KEX / scp socket read 超时 → SSH.NET 发 disconnect code 10 给服务端（sshd 日志 `[preauth]`）；加上 scp socket read 10s 超时报 "Socket read operation has timed out after 10000 milliseconds" —— **三件事叠加**
+- **解决（v0.2）**：
+  - 删 `FetchOneAsync`，`PublicRelayService.cs` 引入 `Channel<PendingVpsFile>` + `RunBatchWorkerAsync` + `DrainBatchAsync`
+  - `RunClientLoopAsync` 收到 `file_pending` 不再 fire-and-forget 拉取，而是 `_pendingChannel.Writer.WriteAsync(...)` 入队
+  - `RunBatchWorkerAsync` 凑齐 `BatchSize`（默认 5）或距首文件 `BatchIdleTimeout`（默认 30s）→ 触发 `DrainBatchAsync`
+  - `DrainBatchAsync` 用 `Process.Start("scp", ...)` 一次传 N 个文件，带 SSH `ControlMaster=auto` + `ControlPath={Temp}/starttooler-ssh-{host}-{port}` + `ControlPersist=10m` —— 多次 batch 复用单 SSH 连接
+  - 触发 flush 兜底：凑齐 / idle 超时 / `Stop` 按钮 / `ProcessExit` 兜底 / TCP 客户端断线，**任一满足即 flush channel 残留**
+  - `BuildConnectionInfo` 改 `Timeout = 60s`（10s → 60s）+ 加 `KeepAlive = new SshKeepAlive(30s/60s)` 防 NAT 老化
+  - 失败粒度：scp exit != 0 时解析 stderr `scp: .../tmp/<id>.bin: <reason>` 行拆失败 ID，只对失败文件标 `status=Failed`
+  - 100 张图 = **20 次 batch scp**（首次 ControlMaster 握手 + 后续复用 socket），触发 sshd MaxStartups 概率大幅降低
+- **教训**：
+  - **每文件 1 次 SSH connect 是反模式** —— 多文件场景必然撑爆 MaxStartups
+  - **`ConnectionInfo.Timeout = 10s` 是 .NET SSH.NET 默认值，不是合理值** —— 慢链路上必踩；公网场景直接 60s+
+  - **batch 化的成本是延迟（30s 静默）+ UX 复杂度（Stop flush）** —— 设计 batch 时必须把 idle 超时和强制 flush 都做全，缺一就丢文件
+  - **进程崩溃会丢 channel 残留** —— `sync_for_vps_task` 表只在 scp 完成后才写，崩溃前 enqueue 但 scp 没跑的没记录；v0.3 加启动扫 VPS tmp/ 兜底
+  - **`StrictHostKeyChecking=accept-new` 是安全权衡** —— 首次自动 trust host key；可改 `ask` 弹框但 UX 差
 
 ### 32. `PathConverter` 用 `StreamGeometry`
 - **情境**：用 `PathGeometry` 写图标

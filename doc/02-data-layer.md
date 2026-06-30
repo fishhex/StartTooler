@@ -351,3 +351,90 @@ foreach (var file in files) {
 - **JSON 列**：SQLite 没有数组类型，用 TEXT + JSON 序列化
 - **多任务续传**：`MaxNumberOfRetries` 没设置，目前不重试，下个分片失败直接退出（已节流）
 - **DB 写失败**：上传成功但 DB 写失败——UI 已是 Uploaded，正确；下次重试会重新写（已测试）
+
+---
+
+## 10. `sync_for_vps_task` 表（公网接收任务持久化）
+
+> 对应代码：`Data/SyncForVpsTaskRepository.cs`、`Models/SyncForVpsTask.cs`。
+> 详见 `08-public-relay.md` §5.4-5.6（batch scp worker）。
+
+### 10.1 表结构
+
+```sql
+CREATE TABLE IF NOT EXISTS sync_for_vps_task (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id TEXT NOT NULL,              -- Go relay 32 字符 hex id（与 VPS tmp/<id>.bin 对应）
+    file_name TEXT NOT NULL,            -- 原始文件名
+    size_bytes INTEGER NOT NULL,
+    local_path TEXT,                    -- 拉到本地后的最终路径；失败时为 null
+    status INTEGER NOT NULL DEFAULT 0,  -- 0=Pending, 1=Received, 2=Failed
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at INTEGER NOT NULL,        -- unix ms
+    updated_at INTEGER NOT NULL,
+    UNIQUE(file_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sync_for_vps_task_status ON sync_for_vps_task(status);
+CREATE INDEX IF NOT EXISTS idx_sync_for_vps_task_created ON sync_for_vps_task(created_at);
+```
+
+**存在 db**：`media.db`（与 `media_files` / `upload_jobs` 同库，业务数据统一）。
+
+### 10.2 状态机
+
+```
+[DrainBatchAsync 准备 scp] ─── status=Pending (enqueue 时)
+   ├─ scp exit 0                       → status=Received, local_path=<本地路径>
+   ├─ scp exit != 0 (解析 stderr)      → status=Failed, last_error=<stderr 片段>
+   └─ v0.3 启动时扫 VPS tmp/ 差集      → 重新入队 status=Pending
+```
+
+### 10.3 接口（`Data/ISyncForVpsTaskRepository.cs`）
+
+```csharp
+public interface ISyncForVpsTaskRepository {
+    Task UpsertAsync(SyncForVpsTask task, CancellationToken ct = default);
+    Task<SyncForVpsTask?> GetByFileIdAsync(string fileId, CancellationToken ct = default);
+    Task<IReadOnlyList<SyncForVpsTask>> GetByStatusAsync(SyncForVpsTaskStatus status, CancellationToken ct = default);
+}
+```
+
+### 10.4 写入时机（v0.2）
+
+```
+DrainBatchAsync(batch):
+    Process.Start("scp", ...).WaitForExit
+    foreach (f in batch):
+        if success:
+            repo.UpsertAsync(file_id=f.Id, status=Received, local_path=..., last_error=null)
+            NotificationService.Show("公网接收", "已收到 ...")
+        else:
+            repo.UpsertAsync(file_id=f.Id, status=Failed, local_path=null, last_error=...)
+            NotificationService.Show("公网接收失败", "...")
+    SSH.NET RunCommand("rm -f tmp/{成功id1}.bin ...")  // 一次 SSH 删多个
+    foreach (成功 id): Task.Run(AckFileAsync(...))     // HTTP POST /ack/{id}
+```
+
+### 10.5 v0.3 计划：启动扫描兜底
+
+**目的**：进程崩溃（kill -9 / 断电）时，channel 残留文件丢失；启动时主动扫描 VPS `~/starttooler/tmp/*.bin`，对比表里 status=Received 的 `file_id`，差集 = Pending → 入队重拉。
+
+**新增**：`SyncForVpsTaskRetryService`（启动时跑一次）：
+```
+启动时：
+    var pendingOnVps = ssh.RunCommand("ls ~/starttooler/tmp/*.bin").Split('\n')
+        .Select(Path.GetFileNameWithoutExtension).ToList()
+    var receivedIds = repo.GetByStatusAsync(Received).Select(t => t.FileId).ToHashSet()
+    var missingIds = pendingOnVps.Where(id => !receivedIds.Contains(id)).ToList()
+    foreach (id in missingIds):
+        // 从 VPS 读 .meta 拿 name → 入队重拉
+        var meta = ssh.RunCommand($"cat ~/starttooler/tmp/{id}.meta")  // JSON {id,name}
+        enqueue(id, name, size=fsize)
+```
+
+### 10.6 已知陷阱
+
+- **v0.2 进程崩溃会丢 channel 残留** —— sync_for_vps_task 表只有 enqueue+scp 完成后才有记录，崩溃前 enqueue 但 scp 没跑的没记录；v0.3 加启动扫描兜底
+- **scp stderr 解析跨 OpenBSD scp / 新版 scp 不一致** —— 解析 `scp: .../tmp/<id>.bin: <reason>` 行拆失败 ID；写入 `last_error` 时截断到 1KB 防撑爆
+- **批量通知堆叠** —— 100 张图成功 = 100 张通知卡片堆右下角；v0.3 加「批量接收完成」汇总通知（"已收到 100 个文件，失败 3 个"）
