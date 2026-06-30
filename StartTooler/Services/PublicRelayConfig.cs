@@ -28,6 +28,18 @@ public class PublicRelayConfig
     /// 默认 auto：部署时 SSH `uname -m` 自动检测。
     /// </summary>
     public string RemoteArch { get; set; } = RelayArch.Auto;
+
+    /// <summary>
+    /// 公网接收 batch scp 大小（默认 5）。
+    /// 凑齐该数量文件触发一次 scp + ControlMaster；不满则等 idle 超时。
+    /// </summary>
+    public int ScpBatchSize { get; set; } = 5;
+
+    /// <summary>
+    /// 公网接收 batch scp 静默超时秒数（默认 30s）。
+    /// 距 channel 中首文件到达超过此秒数 → 触发当前累计（不满 BatchSize 也触发）。
+    /// </summary>
+    public int ScpBatchIdleTimeoutSec { get; set; } = 30;
 }
 
 /// <summary>CPU 架构选项（用于配置 RemoteArch 字段）。</summary>
