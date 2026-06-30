@@ -45,6 +45,7 @@
 | 33 | NotificationCard `IsHitTestVisible` | UI | 09 |
 | 34 | `DynamicResource` vs `StaticResource` 主题 | UI | 09 |
 | 35 | `System.Diagnostics.Trace` vs `Debug` | 跨模块 | — |
+| 36 | `starttooler.db` 早期实验死文件 | 数据 | 02 |
 
 ---
 
@@ -75,10 +76,10 @@
 - **教训**：CI 用 `git clean -fdx` 之前保证本地编译过
 
 ### 5. `Config.db` 表名大小写历史
-- **情境**：早期 `ConfigService.cs:36-42` 用 `CREATE TABLE IF NOT EXISTS config`
-- **坑**：SQLite 大小写不敏感，但 ORM/迁移脚本分大小写，导致 SELECT 时部分工具区分失败
-- **解决**：v0.1 已迁移到 `Config`（大写 C）
-- **教训**：表名固定、迁就数据库自己的规范
+- **情境**：早期 `ConfigService.cs:36-42` 用 `CREATE TABLE IF NOT EXISTS config`（小写），v0.1 改成 `Config`（大写 C）「迁就 ORM」
+- **坑**：与 `media.db` 的 `media_files` / `upload_jobs` 全小写命名不一致；SQLite 大小写不敏感，但 ORM/迁移脚本分大小写，跨工具时仍然踩坑。**额外坑**：SQLite 3.51.0 的 `ALTER TABLE ... RENAME TO` 检查目标名跟现有表是否冲突时用 NOCASE 比较，`Config → config` 单步会报 "already another table or index with this name"
+- **解决**：v0.2 改回全小写 `config`（`ConfigService.cs:40,68,89`），与项目内其他表对齐；启动时 `InitializeDatabase` 检测到旧 `Config` 表自动两步 RENAME（`ConfigService.cs:48-67`）—— 先 `Config → Config_temp` 再 `Config_temp → config`，绕开 NOCASE 冲突，PRIMARY KEY 的 sqlite_autoindex 自动跟着搬过去，老用户数据零损失
+- **教训**：表名一开始定全小写；项目内一致性优先于「迁就 ORM」；**SQLite RENAME 不能直接改大小写**，要么两步中转，要么 INSERT INTO 新表 + DROP 旧表（更慢）
 
 ### 6. 路径规范化（`Path.GetFullPath + TrimEnd`）
 - **情境**：项目路径存到 `media_files.project_path`
@@ -259,6 +260,12 @@
 - **坑**：`Debug.WriteLine` 在 Release 包被编译器 strip 掉
 - **解决**：diagnostic → Trace；调试专用（如上传过程 detail）→ Debug
 - **教训**：按可见性需求选
+
+### 36. `starttooler.db` 早期实验死文件
+- **情境**：v0 早期实验过 AI 功能 / 多云存储 / 文件指纹（MediaFiles、MediaFileRecords、AiSettings、CloudStorageSettings、RecentFolders），全部用 PascalCase + 引号 identifier 命名
+- **坑**：重构后没人删，文件一直留着；新用户看 ApplicationData 目录会以为 starttooler 是项目主库（实际是 config.db + media.db）；grep 全代码 0 引用，schema 也跟现在 MediaRepository 的 `media_files` 完全对不上（早版 Id/FilePath/ThumbnailPath vs 现版 id/project_path/relative_path/...），迁移成本 > 收益
+- **解决**：v0.2 在数据层文档（`02-data-layer.md` §1）明确**只用 `config.db` + `media.db` 两库**；`starttooler.db` 标为废弃，不删用户物理文件（数据所有权归用户，需要清空自行 `mavis-trash`）；.idea/dataSources.xml 里的 data source 配置不主动改（Rider 视图无影响）
+- **教训**：重构删除的死文件**必须在文档显式标记**，否则新人会以为是 active schema；schema 重写时表名要对齐（早版 PascalCase 跟现版 snake_case 完全两套，对不上 = 没法迁移）
 
 ---
 

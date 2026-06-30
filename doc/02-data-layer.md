@@ -10,8 +10,10 @@
 
 | 文件 | 路径 | 内容 | 读取入口 |
 |---|---|---|---|
-| `Config.db` | `~/Library/Application Support/StartTooler/config.db`（mac）等 | 设置 / 配置 KV JSON | `ConfigService` |
+| `config.db` | `~/Library/Application Support/StartTooler/config.db`（mac）等 | 设置 / 配置 KV JSON（单表 `config`） | `ConfigService` |
 | `media.db` | `~/Library/Application Support/StartTooler/media.db` | `media_files` + `upload_jobs` 两表 | `MediaRepository` + `UploadJobRepository` |
+
+> **遗留文件**：`starttooler.db`（v0 早期 AI / 多云存储实验产物，5 张 PascalCase 表，代码 0 引用）— 已废弃，新代码不读不写；详见 `10-trap-book.md` §36。
 
 **为什么拆两个**：
 - 设置高频小写 → KV JSON 表够用
@@ -27,14 +29,14 @@
 ### 2.1 表结构（`Services/ConfigService.cs:36-42`）
 
 ```sql
-CREATE TABLE IF NOT EXISTS Config (
+CREATE TABLE IF NOT EXISTS config (
     Key TEXT PRIMARY KEY,    -- ConfigKeys.* 中的常量
     Value TEXT NOT NULL,     -- JSON 序列化后的整个对象
     UpdatedAt TEXT NOT NULL  -- ISO 8601 UTC（"O" 格式）
 )
 ```
 
-注意：**表名 `Config`（大写 C）**——v0.x 早期用 `config` 小写有过混乱，详见 `10-trap-book.md`。
+表名固定小写 `config`，与 `media_files` / `upload_jobs` 对齐；老版本大写 `Config` 在 `InitializeDatabase` 启动时自动 `ALTER TABLE RENAME` 兼容（`ConfigService.cs:48-60`），详见 `10-trap-book.md` §5。
 
 ### 2.2 接口（`Services/IConfigService.cs:5-10`）
 
