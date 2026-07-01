@@ -46,6 +46,7 @@
 | 34 | `DynamicResource` vs `StaticResource` 主题 | UI | 09 |
 | 35 | `System.Diagnostics.Trace` vs `Debug` | 跨模块 | — |
 | 36 | `starttooler.db` 早期实验死文件 | 数据 | 02 |
+| 37 | `Process.Dispose()` 后读 `ExitCode` 抛 "No process is associated with this object" | 公网 | 08 |
 
 ---
 
@@ -243,11 +244,11 @@
   - `BuildConnectionInfo` 改 `Timeout = 60s`（10s → 60s）+ 加 `KeepAlive = new SshKeepAlive(30s/60s)` 防 NAT 老化
   - 失败粒度：scp exit != 0 时解析 stderr `scp: .../tmp/{filename}: <reason>` 行拆失败文件 ID（v0.4+ VPS 用原文件名落盘），只对失败文件标 `status=Failed`
   - 100 张图 = **20 次 batch scp**（首次 ControlMaster 握手 + 后续复用 socket），触发 sshd MaxStartups 概率大幅降低
-- **教训**：
-  - **每文件 1 次 SSH connect 是反模式** —— 多文件场景必然撑爆 MaxStartups
+- **教训**（v0.2 → v0.3/v0.4 演进视角，部分已随设计变更而消除或被替代）：
+  - **每文件 1 次 SSH connect 是反模式** —— 多文件场景必然撑爆 MaxStartups。**v0.1 → v0.2 已修复**（ControlMaster + batch scp）
   - **`ConnectionInfo.Timeout = 10s` 是 .NET SSH.NET 默认值，不是合理值** —— 慢链路上必踩；公网场景直接 60s+
-  - **batch 化的成本是延迟（30s 静默）+ UX 复杂度（Stop flush）** —— 设计 batch 时必须把 idle 超时和强制 flush 都做全，缺一就丢文件
-  - **进程崩溃会丢 channel 残留** —— `sync_for_vps_task` 表只在 scp 完成后才写，崩溃前 enqueue 但 scp 没跑的没记录；v0.3 加启动扫 VPS tmp/ 兜底
+  - **batch 化的成本是延迟（30s 静默）+ UX 复杂度（Stop flush）** —— ~~v0.2 push 模型必须做全 idle 超时 + 强制 flush~~。**v0.3 pull 模型已彻底消除**：Poller 直接查 `sync_for_vps_task` 拉 Pending 行，**没有 channel 也没有 idle timer**，Stop 只需 cancel Poller CTS；不再有 "凑齐/超时" 双触发条件
+  - **进程崩溃会丢 channel 残留** —— ~~v0.2 接受丢失~~。**v0.3 修复**：TCP 通知立即入库（`sync_for_vps_task`），Poller 启动立即跑一次拉遗留 Pending。**v0.4 进一步简化**：scp 落盘直接用原文件名（`tmp/{filename}`），去掉 `.bin/.meta` 配套；崩溃恢复方案改成 **re-upload**（详见 `02-data-layer.md` §10.5 三方案对比，暂选 C）
   - **`StrictHostKeyChecking=accept-new` 是安全权衡** —— 首次自动 trust host key；可改 `ask` 弹框但 UX 差
 
 ### 32. `PathConverter` 用 `StreamGeometry`
@@ -341,6 +342,34 @@
 | 缩略图并发数 = CPU*2 | ffmpeg 吃 CPU |
 | `UploadStatus` UI 瞬时态 | 跨次进 Gallery 重新反推 |
 | 启动恢复一次性弹窗 | DB 残留时引导用户续传 |
+
+### 37. `Process.Dispose()` 后读 `ExitCode` 抛 "No process is associated with this object"
+- **情境**：`PublicRelayService.DrainBatchAsync` 用 `Process.Start("scp", ...)` + `WaitForExitAsync` 拉文件；`finally` 块做 `proc.Dispose()` 兜底收尾；finally 之后想 Trace 打 `proc.ExitCode` 记录 exit code
+- **坑**：`Process.Dispose()` 内部把 `m_processId` 置 0 + 释放 OS handle。finally 之后访问 `proc.ExitCode` → `EnsureWatchingForExit()` 看到 `m_processId == 0` → 抛 `InvalidOperationException("No process is associated with this object.")`。`proc?.ExitCode` 的 `?.` 只防 null，对 disposed Process 完全没用。**现象特征**：异常发生在 finally 之外 → 内层 catch 看不到 → 冒泡到 `PollOnceAsync` 的 catch → 日志只看到外层 `[PublicRelay] poll err: ...`，极其容易误判是 poll 逻辑本身的问题
+- **解决**（`PublicRelayService.cs:540-602`）：
+  - `try` 块在 `WaitForExitAsync` 成功之后、`finally` 之前立刻 `exitCode = proc.ExitCode` 抓到本地变量（带 try/catch 兜底）
+  - `finally` 给 `proc?.Dispose()` 也包 try/catch，handle 已坏的极端情况不再炸
+  - 最后 Trace 引用本地 `exitCode`，不再读 disposed 进程
+- **教训**：
+  - **任何「finally 释放资源 → 资源属性在 finally 之后读」的代码都是定时炸弹**，资源属性必须在 finally 之前读到本地变量
+  - **.NET 6/7/8/9 通用**：所有 `System.Diagnostics.Process` 调 `Dispose()` 后访问 `ExitCode` / `HasExited` / `Kill` / `Refresh` 都会抛同样错
+  - **跨平台**（实测 macOS CoreCLR 也成立）
+  - **诊断提示**：看到 "No process is associated with this object" 第一反应查 `Process` 生命周期是不是有 finally 之后还读的代码
+- **预防模板**：
+  ```csharp
+  int exitCode = -1;
+  try {
+      proc = Process.Start(psi);
+      await proc.WaitForExitAsync(ct);
+      // 在 finally 之前抓住
+      try { exitCode = proc.ExitCode; } catch { /* handle 已坏 */ }
+  } catch (Exception ex) { /* ... */ return; }
+  finally {
+      try { if (proc != null && !proc.HasExited) proc.Kill(true); } catch { }
+      try { proc?.Dispose(); } catch { }
+  }
+  Trace.WriteLine($"exit={exitCode}");
+  ```
 
 ---
 
