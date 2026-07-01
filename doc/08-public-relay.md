@@ -964,5 +964,6 @@ public async Task EnsureRemoteKilledOnExitAsync() {
 - **缺 SSH KeepAlive** —— v0.2 加 `KeepAlive = new SshKeepAlive(30s/60s)`；防 NAT 老化断连
 - **BatchWorker 触发条件要全** —— v0.2 push 模型；v0.3 已删，Poller 直接查 db 不需要凑批/idle
 - **`SetLastError` 不重置 State** —— `Deploy → Start` 不调用重置；如果 `Deploy` 已 Error，`Start` 也走 Error 不动 —— 实际上 `Start` 会覆盖
-- **进程崩溃 channel 残留** —— v0.2 接受丢失；v0.3 ✅ Poller 启动立即跑一次，db Pending 行自动补拉
+- **进程崩溃 channel 残留** —— v0.2 接受丢失；v0.3 ✅ Poller 启动立即跑一次，db Pending 行自动补拉；**v0.4 进一步简化**：scp 落盘改用原文件名（`tmp/{filename}`）去 `.bin/.meta`，崩溃恢复方案改 re-upload（详见 `02-data-layer.md` §10.5）
 - **scp StrictHostKeyChecking=accept-new 自动接受** —— 安全权衡（首次自动 trust），可改 `ask` 弹框但 UX 差
+- **`Process.Dispose()` 后读 `ExitCode` 抛 "No process is associated with this object"** —— 见 trap-book §37；`finally` 释放 Process 之后任何 `ExitCode`/`HasExited`/`Kill` 都会抛；`?.` 不防 disposed。预防：finally 之前先 `exitCode = proc.ExitCode` 抓到本地变量。`PublicRelayService.cs:540-602`
