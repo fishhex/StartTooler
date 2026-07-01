@@ -8,26 +8,31 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using Renci.SshNet;
-using Renci.SshNet.Common;
 using StartTooler.Data;
 
 namespace StartTooler.Services;
 
 /// <summary>
-/// 公网代理服务：SSH 部署/启停 upload-relay（Go）远端进程 + 本地 TCP 长连接接收文件。
-/// 线程安全：SSH 命令调用方负责串行（一般由 UI 按钮触发）；TCP 客户端后台 loop。
+/// 公网代理服务：SSH 部署/启停 upload-relay（Go）远端进程 + 本地 TCP 长连接接收通知
+/// + 异步 Poller 从 db 拉取 Pending 文件并 scp。
+///
+/// 线程模型：
+///   - SSH 命令调用方负责串行（一般由 UI 按钮触发）
+///   - TCP 客户端后台 loop（重连 + 按行解析 file_pending）
+///   - Poller 后台 loop（每 SyncPollIntervalSec 秒拉一批 Pending 行 scp）
+///
+/// 进程崩溃兜底：sync_for_vps_task 表 Pending 行下次启动被 Poller 自动补拉。
 /// </summary>
 public class PublicRelayService : IDisposable
 {
     public enum RelayState
     {
-        Idle,           // 未启用
+        Idle,
         Deploying,
         Starting,
-        Running,        // 远端进程 + 本地 TCP 客户端都在跑
+        Running,
         Stopping,
         Stopped,
         Error,
@@ -38,30 +43,26 @@ public class PublicRelayService : IDisposable
     public string? LastLog { get; private set; }
 
     public event Action? StateChanged;
-    public event Action<string>? FileReceived;   // 参数：接收到的本地路径
+    public event Action<string>? FileReceived;   // 参数：scp 成功后的本地路径
+    public event Action<string>? FileNotified;   // 参数：TCP 收到通知时的文件名（Pending 状态）
+    public event Action<int>? PendingCountChanged;  // 参数：当前 Pending 行数
 
     private CancellationTokenSource? _clientCts;
     private Task? _clientTask;
+    private Task? _pollerTask;
 
-    // v0.2: Batch SCP 下载
-    private readonly Channel<PendingVpsFile> _pendingChannel =
-        Channel.CreateBounded<PendingVpsFile>(new BoundedChannelOptions(1000)
-        {
-            FullMode = BoundedChannelFullMode.Wait
-        });
-    private Task? _batchWorkerTask;
     private PublicRelayConfig? _lastCfg;
     private string? _lastProjectPath;
-    private ISyncForVpsTaskRepository? _syncTaskRepo;
+    private ISyncForVpsTaskRepository _syncTaskRepo = new SyncForVpsTaskRepository();
+
+    // askpass 脚本：scp 在 GUI 进程无 TTY，靠 SSH_ASKPASS 喂密码绕开。
+    // 密码走 $STARTTOOLER_SSHPASS 环境变量（不写死在脚本里）。
+    private static string? _askpassScriptPath;
 
     // ============================================================
     // SSH 工具
     // ============================================================
 
-    /// <summary>
-    /// SSH keepalive 间隔（v0.2）：30s 发一次空心跳，防 NAT/防火墙老化断连。
-    /// SSH.NET 2024.2.0 的 API 是 BaseClient.KeepAliveInterval（TimeSpan，默认 -1 = 关）。
-    /// </summary>
     private static readonly TimeSpan SshKeepAliveInterval = TimeSpan.FromSeconds(30);
 
     private static ConnectionInfo BuildConnectionInfo(PublicRelayConfig cfg)
@@ -77,14 +78,10 @@ public class PublicRelayService : IDisposable
         }
         return new ConnectionInfo(cfg.SshHost, cfg.SshPort, cfg.SshUser, method)
         {
-            // v0.2: 10s → 60s，链路慢时 KEX / scp 都不再 timeout
             Timeout = TimeSpan.FromSeconds(60),
         };
     }
 
-    /// <summary>
-    /// 包装 new SshClient(BuildConnectionInfo(cfg))，统一设 KeepAliveInterval。
-    /// </summary>
     private static SshClient CreateSshClient(PublicRelayConfig cfg)
     {
         var client = new SshClient(BuildConnectionInfo(cfg));
@@ -92,11 +89,7 @@ public class PublicRelayService : IDisposable
         return client;
     }
 
-    private static string ExpandRemotePath(string path)
-    {
-        // SSH 远程 shell 自己展开 ~，保留原样
-        return path;
-    }
+    private static string ExpandRemotePath(string path) => path;
 
     private static async Task<string> RunSshAsync(PublicRelayConfig cfg, string command, IProgress<string>? log, CancellationToken ct)
     {
@@ -124,7 +117,7 @@ public class PublicRelayService : IDisposable
     }
 
     // ============================================================
-    // 部署 + 启动 + 停止
+    // 部署 + 启动 + 停止（远端进程生命周期）
     // ============================================================
 
     public async Task DeployAsync(PublicRelayConfig cfg, string arch, IProgress<string>? log, CancellationToken ct)
@@ -135,7 +128,6 @@ public class PublicRelayService : IDisposable
             var remotePath = ExpandRemotePath(cfg.SshRemotePath);
             await RunSshAsync(cfg, $"mkdir -p {remotePath}", log, ct);
 
-            // 提取嵌入的 Linux 二进制到本地 temp（无第三方依赖）
             var localBin = RelayBinaryExtractor.Extract(arch);
             log?.Report($"local binary ({arch}): {localBin} ({new FileInfo(localBin).Length / 1024} KB)");
 
@@ -149,7 +141,6 @@ public class PublicRelayService : IDisposable
                 {
                     await Task.Run(() => scp.Upload(fs, $"{remotePath}/{remoteBinName}"), ct);
                 }
-                // 远端 chmod +x + 清理旧 python 实现（如果存在）
                 await RunSshAsync(cfg, $"chmod +x {remotePath}/{remoteBinName}", log, ct);
                 await RunSshAsync(cfg,
                     $"rm -f {remotePath}/upload_relay.py {remotePath}/upload.html",
@@ -182,11 +173,9 @@ public class PublicRelayService : IDisposable
             var logFile = $"{remotePath}/relay.log";
             var remoteBin = $"{remotePath}/upload-relay-linux-{arch}";
 
-            // 清理残留 + 临时目录
             await RunSshAsync(cfg, $"mkdir -p {tmpDir}", log, ct);
             await RunSshAsync(cfg, $"if [ -f {pidFile} ]; then PID=$(cat {pidFile}); kill $PID 2>/dev/null || true; rm -f {pidFile}; fi", log, ct);
 
-            // 启动：setsid + nohup + 写 PID 文件
             var cmd = $"setsid nohup {remoteBin} " +
                       $"--http-port {cfg.HttpPort} --tcp-port {cfg.TcpPort} " +
                       $"--tmp-dir {tmpDir} " +
@@ -241,10 +230,6 @@ public class PublicRelayService : IDisposable
         }
     }
 
-    /// <summary>
-    /// 解析出部署要用的 arch：如果配置是 amd64/arm64 直接用；auto 时 SSH `uname -m` 检测。
-    /// 解析失败抛异常（提示用户在 UI 里手动指定）。
-    /// </summary>
     public async Task<string> ResolveArchAsync(PublicRelayConfig cfg, IProgress<string>? log, CancellationToken ct)
     {
         var configured = (cfg.RemoteArch ?? RelayArch.Auto).Trim().ToLowerInvariant();
@@ -267,7 +252,7 @@ public class PublicRelayService : IDisposable
     }
 
     // ============================================================
-    // TCP 客户端长连接
+    // TCP 通知客户端（v0.3: 只负责收通知 + 入库，不直接拉文件）
     // ============================================================
 
     public void StartClient(PublicRelayConfig cfg, string projectPath)
@@ -281,40 +266,39 @@ public class PublicRelayService : IDisposable
 
         _lastCfg = cfg;
         _lastProjectPath = projectPath;
-        _syncTaskRepo ??= new SyncForVpsTaskRepository();
 
         _clientCts = new CancellationTokenSource();
         var token = _clientCts.Token;
         _clientTask = Task.Run(() => RunClientLoopAsync(cfg, projectPath, token), token);
-        _batchWorkerTask = Task.Run(() => RunBatchWorkerAsync(cfg, projectPath, token), token);
+        _pollerTask = Task.Run(() => RunPollerLoopAsync(cfg, projectPath, token), token);
         SetState(RelayState.Running);
-        Trace.WriteLine($"[PublicRelay] StartClient: TCP + BatchWorker launched, batch_size={cfg.ScpBatchSize} idle_timeout={cfg.ScpBatchIdleTimeoutSec}s");
+        Trace.WriteLine($"[PublicRelay] StartClient: TCP + Poller launched (poll={cfg.SyncPollIntervalSec}s batch={cfg.SyncBatchSize})");
     }
 
     public async Task StopClientAsync()
     {
         _clientCts?.Cancel();
 
-        // 1) 等 client loop + batch worker 都退出
         if (_clientTask != null)
         {
             try { await _clientTask; } catch { /* ignore */ }
         }
-        if (_batchWorkerTask != null)
+        if (_pollerTask != null)
         {
-            try { await _batchWorkerTask; } catch { /* ignore */ }
+            try { await _pollerTask; } catch { /* ignore */ }
         }
-
-        // 2) 双保险：再 drain 一次 channel 残留（worker 退出时也 drain 过，但 worker 可能因异常退出）
-        await FlushPendingChannelOnExitAsync();
 
         _clientCts?.Dispose();
         _clientCts = null;
         _clientTask = null;
-        _batchWorkerTask = null;
+        _pollerTask = null;
         Trace.WriteLine("[PublicRelay] StopClient: done");
     }
 
+    /// <summary>
+    /// TCP 长连接 + 指数退避重连。按行读 JSON，type=file_pending → 通知 + 入库。
+    /// **不直接拉文件**：拉文件由 Poller 异步处理。
+    /// </summary>
     private async Task RunClientLoopAsync(PublicRelayConfig cfg, string projectPath, CancellationToken ct)
     {
         int retryDelaySec = 1;
@@ -332,8 +316,6 @@ public class PublicRelayService : IDisposable
 
                 while (!ct.IsCancellationRequested)
                 {
-                    // 协议：Go relay 直接发 JSON 消息 + '\n'，无 4 字节长度前缀
-                    // 按行读，解析 file_pending 通知
                     string? line;
                     try
                     {
@@ -364,31 +346,17 @@ public class PublicRelayService : IDisposable
                         continue;
                     }
 
-                    Trace.WriteLine($"[PublicRelay] file_pending id={fileId} name={name} size={size} → enqueue");
-
-                    // v0.2: 不再 fire-and-forget FetchOneAsync；入队由 BatchWorker 处理
-                    try
-                    {
-                        await _pendingChannel.Writer.WriteAsync(
-                            new PendingVpsFile(fileId, name, size), ct);
-                    }
-                    catch (Exception ex)
-                    {
-                        Trace.WriteLine($"[PublicRelay] enqueue err: {ex.Message}");
-                    }
+                    await OnFilePendingReceivedAsync(fileId, name, size, ct);
                 }
             }
             catch (OperationCanceledException)
             {
-                // TCP 客户端退出（Stop 时 ct 取消）；不 flush（worker 仍在跑）
                 return;
             }
             catch (Exception ex)
             {
                 LastLog = $"连接断开: {ex.Message}";
                 Trace.WriteLine($"[PublicRelay] client error: {ex.Message}");
-                // TCP 断线：channel 里的待下载文件继续由 BatchWorker 处理（不阻塞 scp）
-                // 注意：不强制 flush，让 BatchWorker 在 idle 超时或 Stop 时统一处理
             }
 
             if (!ct.IsCancellationRequested)
@@ -419,98 +387,121 @@ public class PublicRelayService : IDisposable
     }
 
     /// <summary>
-    /// 收到 file_pending 通知后入队的待下载文件。BatchWorker 凑批后调一次 scp 全部拉本地。
+    /// TCP 收到 file_pending 时：UI notify + db InsertIfNew + 更新 PendingCount。
+    /// UNIQUE(fileId) 幂等：已存在的行不覆盖。
     /// </summary>
-    public record PendingVpsFile(string FileId, string Name, long Size);
-
-    /// <summary>
-    /// BatchWorker 主循环：凑齐 BatchSize 或距首文件 idleTimeout 触发 DrainBatchAsync。
-    /// 触发条件见 doc/08-public-relay.md §5.4。
-    /// </summary>
-    private async Task RunBatchWorkerAsync(PublicRelayConfig cfg, string projectPath, CancellationToken ct)
+    private async Task OnFilePendingReceivedAsync(string fileId, string name, long size, CancellationToken ct)
     {
-        var batchSize = cfg.ScpBatchSize > 0 ? cfg.ScpBatchSize : 5;
-        var idleTimeout = TimeSpan.FromSeconds(cfg.ScpBatchIdleTimeoutSec > 0 ? cfg.ScpBatchIdleTimeoutSec : 30);
-        Trace.WriteLine($"[PublicRelay] BatchWorker start batch_size={batchSize} idle_timeout={idleTimeout.TotalSeconds}s");
-
-        var batch = new List<PendingVpsFile>(batchSize);
-        while (!ct.IsCancellationRequested)
+        try
         {
-            batch.Clear();
-            DateTime? firstFileAt = null;
+            // 拼 RemotePath 供 db 记录（VPS 现在用原始文件名落盘；这里只是 fallback，实际 scp 时优先用 broadcast 给的 Path）
+            var remotePath = BuildRemoteTmpPathFallback(fileId, name);
+            var inserted = await _syncTaskRepo.InsertIfNewAsync(fileId, name, size, remotePath, ct);
 
-            while (batch.Count < batchSize && !ct.IsCancellationRequested)
+            if (inserted)
             {
-                TimeSpan waitFor;
-                if (firstFileAt is null)
-                {
-                    waitFor = idleTimeout;
-                }
-                else
-                {
-                    var elapsed = DateTime.UtcNow - firstFileAt.Value;
-                    waitFor = idleTimeout - elapsed;
-                    if (waitFor <= TimeSpan.Zero) break;   // 已超时
-                }
-
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                cts.CancelAfter(waitFor);
-
-                try
-                {
-                    if (!await _pendingChannel.Reader.WaitToReadAsync(cts.Token)) break;
-                }
-                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-                {
-                    break;   // idle timeout
-                }
-
-                while (_pendingChannel.Reader.TryRead(out var f))
-                {
-                    firstFileAt ??= DateTime.UtcNow;
-                    batch.Add(f);
-                    if (batch.Count >= batchSize) break;
-                }
+                LastLog = $"📥 待下载：{name} ({size} bytes)";
+                Trace.WriteLine($"[PublicRelay] notified id={fileId} name={name} size={size}");
+                FileNotified?.Invoke(name);
+            }
+            else
+            {
+                Trace.WriteLine($"[PublicRelay] notify dedup id={fileId} (already exists)");
             }
 
-            if (batch.Count == 0) continue;
-
-            Trace.WriteLine($"[PublicRelay] BatchWorker drain batch_count={batch.Count}");
-            await DrainBatchAsync(cfg, projectPath, batch, ct);
+            await RefreshPendingCountAsync(ct);
         }
-
-        // 退出前 flush 残留
-        await FlushPendingChannelOnExitAsync();
-        Trace.WriteLine("[PublicRelay] BatchWorker exit");
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[PublicRelay] onFilePending err id={fileId}: {ex.Message}");
+        }
     }
+
+    /// <summary>从 SyncForVpsTask FileId 拼 VPS 上的 fallback tmp 路径（一般走不到，broadcast 时已经把 RemotePath 写进 DB 了）。
+    /// VPS 现在直接用原始文件名落盘（v0.4+），不再用 {id}.bin；这里只是给老 DB 行兜底。</summary>
+    private string BuildRemoteTmpPathFallback(string fileId, string? fileName)
+    {
+        var cfg = _lastCfg;
+        var name = !string.IsNullOrEmpty(fileName) ? fileName : fileId;
+        var tmpDir = cfg == null ? "~/starttooler/tmp" : $"{ExpandRemotePath(cfg.SshRemotePath)}/tmp";
+        return $"{tmpDir}/{name}";
+    }
+
+    // ============================================================
+    // Poller（v0.3 新增）：每 SyncPollIntervalSec 秒拉一批 Pending → scp
+    // ============================================================
 
     /// <summary>
-    /// 退出兜底：从 channel 抽出残留文件，best-effort drain 一次。
+    /// 后台 loop：PeriodicTimer 每 N 秒触发一次，拉 ≤ SyncBatchSize 个 Pending 行调 DrainBatchAsync。
+    /// 启动立刻跑一次（避免等待首个 tick）。
+    /// ct 取消时退出；进程崩溃后 Pending 行下次启动自动补拉（db 是 single source of truth）。
     /// </summary>
-    private async Task FlushPendingChannelOnExitAsync()
+    private async Task RunPollerLoopAsync(PublicRelayConfig cfg, string projectPath, CancellationToken ct)
     {
-        var remaining = new List<PendingVpsFile>();
-        while (_pendingChannel.Reader.TryRead(out var f)) remaining.Add(f);
-        if (remaining.Count == 0) return;
+        var interval = TimeSpan.FromSeconds(cfg.SyncPollIntervalSec > 0 ? cfg.SyncPollIntervalSec : 5);
+        var batchSize = cfg.SyncBatchSize > 0 ? cfg.SyncBatchSize : 5;
+        Trace.WriteLine($"[PublicRelay] Poller start interval={interval.TotalSeconds}s batch={batchSize}");
 
-        var cfg = _lastCfg;
-        var pp = _lastProjectPath;
-        if (cfg == null || string.IsNullOrEmpty(pp))
+        // 启动立即跑一次（避免 5s 等待，且能立即处理上次进程崩溃遗留的 Pending）
+        await PollOnceAsync(cfg, projectPath, batchSize, ct);
+
+        using var timer = new PeriodicTimer(interval);
+        try
         {
-            Trace.WriteLine($"[PublicRelay] flush on exit: cfg/projectPath null, dropping {remaining.Count} files");
-            return;
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                await PollOnceAsync(cfg, projectPath, batchSize, ct);
+            }
         }
-        Trace.WriteLine($"[PublicRelay] flush on exit: {remaining.Count} files");
-        await DrainBatchAsync(cfg, pp, remaining, CancellationToken.None);
+        catch (OperationCanceledException)
+        {
+            // 正常退出
+        }
+
+        Trace.WriteLine("[PublicRelay] Poller exit");
     }
+
+    private async Task PollOnceAsync(PublicRelayConfig cfg, string projectPath, int batchSize, CancellationToken ct)
+    {
+        try
+        {
+            var pending = await _syncTaskRepo.GetPendingBatchAsync(batchSize, ct);
+            if (pending.Count == 0)
+            {
+                await RefreshPendingCountAsync(ct);
+                return;
+            }
+            Trace.WriteLine($"[PublicRelay] poll tick: {pending.Count} pending");
+            await DrainBatchAsync(cfg, projectPath, pending, ct);
+            await RefreshPendingCountAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[PublicRelay] poll err: {ex.Message}");
+        }
+    }
+
+    private async Task RefreshPendingCountAsync(CancellationToken ct)
+    {
+        try
+        {
+            var n = await _syncTaskRepo.CountPendingAsync(ct);
+            PendingCountChanged?.Invoke(n);
+        }
+        catch { /* UI 计数失败不影响主流程 */ }
+    }
+
+    // ============================================================
+    // DrainBatchAsync（v0.3 重构）：从 db 行拉文件，DB 是 single source of truth
+    // ============================================================
 
     /// <summary>
     /// 一次 Process.Start scp 拉一批文件到本地；解析 exit code + stderr 拆失败文件；
-    /// upsert sync_for_vps_task + 通知；批量 rm VPS tmp/；逐文件 HTTP /ack。
+    /// 成功后 UPDATE Received / 失败 UPDATE Failed（v0.3 不重试）；批量 rm VPS tmp/ + ack。
     /// </summary>
     private async Task DrainBatchAsync(
         PublicRelayConfig cfg, string projectPath,
-        IReadOnlyList<PendingVpsFile> batch, CancellationToken ct)
+        IReadOnlyList<SyncForVpsTask> batch, CancellationToken ct)
     {
         var today = DateTime.Now.ToString("yyyy-MM-dd");
         var dateDir = Path.Combine(projectPath, today);
@@ -535,9 +526,12 @@ public class PublicRelayService : IDisposable
         psi.ArgumentList.Add("-o"); psi.ArgumentList.Add($"ControlPath={masterSock}");
         psi.ArgumentList.Add("-o"); psi.ArgumentList.Add("ControlPersist=10m");
 
-        foreach (var f in batch)
+        foreach (var t in batch)
         {
-            var remoteBin = $"{cfg.SshUser}@{cfg.SshHost}:{ExpandRemotePath(cfg.SshRemotePath)}/tmp/{f.FileId}.bin";
+            // 优先用 db 的 RemotePath（broadcast 时存的就是 tmp/{sanitized_original_name}）；fallback 用 FileName
+            var remoteBin = !string.IsNullOrEmpty(t.RemotePath)
+                ? $"{cfg.SshUser}@{cfg.SshHost}:{t.RemotePath}"
+                : $"{cfg.SshUser}@{cfg.SshHost}:{ExpandRemotePath(cfg.SshRemotePath)}/tmp/{t.FileName}";
             psi.ArgumentList.Add(remoteBin);
         }
         psi.ArgumentList.Add(dateDir + Path.DirectorySeparatorChar);
@@ -546,72 +540,107 @@ public class PublicRelayService : IDisposable
         Process? proc = null;
         var sw = Stopwatch.StartNew();
         string stderr = "";
+        int exitCode = -1; // 在 finally Dispose() 之前先抓住；Dispose 会把 m_processId 置 0，再读 ExitCode 会抛 "No process is associated with this object"
         try
         {
+            // GUI 进程无 TTY：密码登录走 SSH_ASKPASS；Key 认证无需 askpass
+            if (string.IsNullOrEmpty(cfg.SshKeyPath) && !string.IsNullOrEmpty(cfg.SshPassword))
+            {
+                psi.Environment["SSH_ASKPASS"] = GetAskpassScriptPath();
+                psi.Environment["SSH_ASKPASS_REQUIRE"] = "force";
+                psi.Environment["DISPLAY"] = ":0";
+                psi.Environment["STARTTOOLER_SSHPASS"] = cfg.SshPassword;
+            }
+
             proc = Process.Start(psi);
             if (proc == null) throw new InvalidOperationException("Process.Start returned null");
             var stderrTask = proc.StandardError.ReadToEndAsync(ct);
             var stdoutTask = proc.StandardOutput.ReadToEndAsync(ct);
-            await proc.WaitForExitAsync(ct);
+
+            // 5min hard timeout 防 scp hang 卡死 Poller
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromMinutes(5));
+            await proc.WaitForExitAsync(timeoutCts.Token);
+
             stderr = await stderrTask;
-            _ = await stdoutTask;   // 忽略
+            _ = await stdoutTask;
             sw.Stop();
+
+            // 必须在 finally/Dispose 之前读；读到 -1 说明 handle 已异常
+            try { exitCode = proc.ExitCode; }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[PublicRelay] scp ExitCode read err: {ex.Message}");
+                exitCode = -1;
+            }
         }
         catch (Exception ex)
         {
             sw.Stop();
             Trace.WriteLine($"[PublicRelay] scp process spawn/exec err: {ex.Message}");
-            // 全部算失败
-            foreach (var f in batch)
+            // 全部 mark Failed
+            var errMsg = "scp process err: " + ex.Message;
+            foreach (var t in batch)
             {
-                await UpsertSyncTaskAsync(f, null, SyncForVpsTaskStatus.Failed,
-                    attemptCount: 1, lastError: "scp process err: " + ex.Message);
+                try { await _syncTaskRepo.MarkFailedAsync(t.Id, errMsg, ct); } catch { }
                 NotificationService.Current.Show(
-                    "公网接收失败", $"{f.Name}: scp process err: {ex.Message}", NotificationType.Error);
+                    "公网接收失败", $"{t.FileName}: {errMsg}", NotificationType.Error);
             }
             return;
         }
         finally
         {
-            proc?.Dispose();
+            // 关键：Dispose 之前显式 Kill（如果还活着），避免 scp 子进程成孤儿
+            try
+            {
+                if (proc != null && !proc.HasExited)
+                {
+                    proc.Kill(true);
+                    Trace.WriteLine($"[PublicRelay] scp process killed (not exited, timeout)");
+                }
+            }
+            catch { /* ignore */ }
+            // Dispose 自身也兜底（罕见情况下 handle 已失效）
+            try { proc?.Dispose(); } catch { /* ignore */ }
         }
 
-        Trace.WriteLine($"[PublicRelay] scp batch={batch.Count} exit={proc?.ExitCode} elapsed={sw.ElapsedMilliseconds}ms");
+        Trace.WriteLine($"[PublicRelay] scp batch={batch.Count} exit={exitCode} elapsed={sw.ElapsedMilliseconds}ms");
         if (!string.IsNullOrEmpty(stderr))
             Trace.WriteLine($"[PublicRelay] scp stderr: {stderr}");
 
         // 3) 解析失败 ID
         var failedIds = ParseScpStderr(stderr, batch);
-        var successIds = batch.Where(f => !failedIds.Contains(f.FileId))
-            .Select(f => f.FileId).ToList();
+        var successIds = batch.Where(t => !failedIds.Contains(t.FileId)).ToList();
+        var failedList = batch.Where(t => failedIds.Contains(t.FileId)).ToList();
 
-        // 4) 每文件 upsert + notify
-        foreach (var f in batch)
+        // 4) DB 写 + UI notify
+        foreach (var t in successIds)
         {
-            var localPath = Path.Combine(dateDir, SanitizeFileName(f.Name));
-            var failed = failedIds.Contains(f.FileId);
-
-            await UpsertSyncTaskAsync(f, failed ? null : localPath,
-                failed ? SyncForVpsTaskStatus.Failed : SyncForVpsTaskStatus.Received,
-                attemptCount: 1,
-                lastError: failed ? ExtractScpErrorFor(stderr, f.FileId) : null);
-
-            if (failed)
-            {
-                NotificationService.Current.Show(
-                    "公网接收失败",
-                    $"{f.Name}: {ExtractScpErrorFor(stderr, f.FileId)}",
-                    NotificationType.Error);
-            }
-            else
-            {
-                NotificationService.Current.Show("公网接收", $"已收到 {f.Name}");
-                FileReceived?.Invoke(localPath);
-                LastLog = $"已接收 {f.Name} ({f.Size} bytes)";
-            }
+            var localPath = Path.Combine(dateDir, SanitizeFileName(t.FileName));
+            try { await _syncTaskRepo.MarkReceivedAsync(t.Id, localPath, ct); } catch { }
+            LastLog = $"✅ 已下载：{t.FileName}";
+            NotificationService.Current.Show("公网接收", $"已下载 {t.FileName}");
+            FileReceived?.Invoke(localPath);
         }
 
-        // 5) 批量 rm VPS tmp/（仅成功的）；一次 SSH.NET 连接 + RunCommand
+        // 失败文件：v0.3 直接 mark Failed 不重试，UI 一次性提示
+        foreach (var t in failedList)
+        {
+            var err = ExtractScpErrorFor(stderr, t) ?? "scp failed";
+            try { await _syncTaskRepo.MarkFailedAsync(t.Id, err, ct); } catch { }
+        }
+        if (failedList.Count > 0)
+        {
+            var names = string.Join("、", failedList.Select(t => t.FileName));
+            NotificationService.Current.Show(
+                "公网接收失败",
+                $"{failedList.Count} 个文件下载失败：{names}",
+                NotificationType.Error);
+            LastLog = $"❌ {failedList.Count} 个文件失败：{names}";
+            LastError = $"{failedList.Count} 个文件下载失败（已 mark Failed，不重试）";
+        }
+
+        // 5) 批量 rm VPS tmp/（仅成功的）+ ack（fire-and-forget）
         if (successIds.Count > 0)
         {
             try
@@ -619,8 +648,10 @@ public class PublicRelayService : IDisposable
                 using var ssh = CreateSshClient(cfg);
                 ssh.Connect();
                 var rmPaths = string.Join(" ",
-                    successIds.Select(id =>
-                        $"{ExpandRemotePath(cfg.SshRemotePath)}/tmp/{id}.bin"));
+                    successIds.Select(t =>
+                        !string.IsNullOrEmpty(t.RemotePath)
+                            ? t.RemotePath
+                            : $"{ExpandRemotePath(cfg.SshRemotePath)}/tmp/{t.FileName}"));
                 ssh.RunCommand($"rm -f {rmPaths}");
                 ssh.Disconnect();
                 Trace.WriteLine($"[PublicRelay] batch rm: {successIds.Count} files");
@@ -629,41 +660,11 @@ public class PublicRelayService : IDisposable
             {
                 Trace.WriteLine($"[PublicRelay] batch rm warning: {ex.Message}");
             }
-        }
 
-        // 6) 每成功文件 HTTP POST /ack/{id}（不批量化，简化）
-        foreach (var id in successIds)
-        {
-            _ = Task.Run(() => AckFileAsync(cfg, id), ct);
-        }
-    }
-
-    private async Task UpsertSyncTaskAsync(
-        PendingVpsFile f, string? localPath, SyncForVpsTaskStatus status,
-        int attemptCount, string? lastError)
-    {
-        if (_syncTaskRepo == null) return;
-        try
-        {
-            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var existing = await _syncTaskRepo.GetByFileIdAsync(f.FileId);
-            var task = new SyncForVpsTask
+            foreach (var t in successIds)
             {
-                FileId = f.FileId,
-                FileName = f.Name,
-                SizeBytes = f.Size,
-                LocalPath = localPath,
-                Status = status,
-                AttemptCount = (existing?.AttemptCount ?? 0) + attemptCount,
-                LastError = lastError,
-                CreatedAt = existing?.CreatedAt ?? now,
-                UpdatedAt = now,
-            };
-            await _syncTaskRepo.UpsertAsync(task);
-        }
-        catch (Exception ex)
-        {
-            Trace.WriteLine($"[PublicRelay] upsert sync_for_vps_task FAILED id={f.FileId}: {ex.Message}");
+                _ = Task.Run(() => AckFileAsync(cfg, t.FileId), ct);
+            }
         }
     }
 
@@ -671,19 +672,22 @@ public class PublicRelayService : IDisposable
     /// 从 scp stderr 找失败的文件 ID。OpenBSD scp / 新版 scp 都输出
     /// "scp: .../tmp/&lt;id&gt;.bin: &lt;reason&gt;" 这种行。
     /// </summary>
-    private static HashSet<string> ParseScpStderr(string stderr, IReadOnlyList<PendingVpsFile> batch)
+    private static HashSet<string> ParseScpStderr(string stderr, IReadOnlyList<SyncForVpsTask> batch)
     {
         var failed = new HashSet<string>();
-        var batchIds = batch.Select(b => b.FileId).ToHashSet();
-        if (string.IsNullOrEmpty(stderr)) return failed;
+        // VPS 现在按原始文件名落盘，scp stderr 行形如 "scp: .../tmp/IMG_001.jpg: <reason>"
+        // 按文件名匹配，匹配到 → 标 FileId 为 Failed
+        var batchNames = batch.Select(b => b.FileName).Where(n => !string.IsNullOrEmpty(n)).ToList();
+        if (string.IsNullOrEmpty(stderr) || batchNames.Count == 0) return failed;
 
         foreach (var line in stderr.Split('\n'))
         {
-            foreach (var id in batchIds)
+            foreach (var name in batchNames)
             {
-                if (line.Contains($"/tmp/{id}.bin"))
+                if (line.Contains($"/tmp/{name}"))
                 {
-                    failed.Add(id);
+                    var hit = batch.FirstOrDefault(b => b.FileName == name);
+                    if (hit != null) failed.Add(hit.FileId);
                     break;
                 }
             }
@@ -691,12 +695,13 @@ public class PublicRelayService : IDisposable
         return failed;
     }
 
-    private static string? ExtractScpErrorFor(string stderr, string id)
+    private static string? ExtractScpErrorFor(string stderr, SyncForVpsTask task)
     {
         if (string.IsNullOrEmpty(stderr)) return "unknown scp error";
+        var name = !string.IsNullOrEmpty(task.FileName) ? task.FileName : $"{task.FileId}.bin";
         foreach (var line in stderr.Split('\n'))
         {
-            if (line.Contains($"/tmp/{id}.bin")) return line.Trim();
+            if (line.Contains($"/tmp/{name}")) return line.Trim();
         }
         return "unknown scp error";
     }
@@ -732,34 +737,19 @@ public class PublicRelayService : IDisposable
         catch (Exception ex)
         {
             Trace.WriteLine($"[PublicRelay] ack {id} FAILED: {ex.Message}");
-            // 不抛：本地文件已写盘，VPS 端残留等下次清理
         }
     }
 
-    private static string GetUniqueFileName(string path)
-    {
-        if (!File.Exists(path)) return path;
-        var dir = Path.GetDirectoryName(path) ?? ".";
-        var name = Path.GetFileNameWithoutExtension(path);
-        var ext = Path.GetExtension(path);
-        int counter = 1;
-        string newPath;
-        do
-        {
-            newPath = Path.Combine(dir, $"{name}_{counter}{ext}");
-            counter++;
-        } while (File.Exists(newPath));
-        return newPath;
-    }
-
     // ============================================================
-    // 状态管理 + Dispose
+    // 状态管理 + Dispose + askpass
     // ============================================================
 
     private void SetState(RelayState s, string? err = null)
     {
+        var prev = State;
         State = s;
         LastError = err;
+        Trace.WriteLine($"[PublicRelay] SetState: {prev} -> {s}" + (err != null ? $" err={err}" : ""));
         StateChanged?.Invoke();
     }
 
@@ -771,7 +761,35 @@ public class PublicRelayService : IDisposable
 
     public void Dispose()
     {
+        try
+        {
+            if (_askpassScriptPath != null && File.Exists(_askpassScriptPath))
+                File.Delete(_askpassScriptPath);
+        }
+        catch { /* ignore */ }
+
         _clientCts?.Cancel();
         _clientCts?.Dispose();
+    }
+
+    /// <summary>
+    /// 一次性 askpass 脚本写到 temp（chmod 700），里面 echo "$STARTTOOLER_SSHPASS"。
+    /// 密码走 env 不进脚本，进程退出 env 自动没；Dispose 时删文件兜底。
+    /// </summary>
+    private static string GetAskpassScriptPath()
+    {
+        if (_askpassScriptPath != null && File.Exists(_askpassScriptPath))
+            return _askpassScriptPath;
+
+        var path = Path.Combine(Path.GetTempPath(),
+            $"starttooler-ssh-askpass-{Environment.ProcessId}.sh");
+        File.WriteAllText(path, "#!/bin/sh\necho \"$STARTTOOLER_SSHPASS\"\n");
+        if (OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
+        {
+            File.SetUnixFileMode(path,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        _askpassScriptPath = path;
+        return path;
     }
 }
