@@ -364,7 +364,7 @@ foreach (var file in files) {
 ```sql
 CREATE TABLE IF NOT EXISTS sync_for_vps_task (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_id TEXT NOT NULL,              -- Go relay 32 字符 hex id（与 VPS tmp/<id>.bin 对应）
+    file_id TEXT NOT NULL,              -- Go relay 32 字符 hex id（v0.4+ VPS tmp/ 直接用 file_name 落盘，id 仅用于 pending map + ack）
     file_name TEXT NOT NULL,            -- 原始文件名
     size_bytes INTEGER NOT NULL,
     local_path TEXT,                    -- 拉到本地后的最终路径；失败时为 null
@@ -412,29 +412,32 @@ DrainBatchAsync(batch):
         else:
             repo.UpsertAsync(file_id=f.Id, status=Failed, local_path=null, last_error=...)
             NotificationService.Show("公网接收失败", "...")
-    SSH.NET RunCommand("rm -f tmp/{成功id1}.bin ...")  // 一次 SSH 删多个
+    SSH.NET RunCommand("rm -f tmp/{成功name1} tmp/{成功name2} ...")  // v0.4+ 用原始文件名
     foreach (成功 id): Task.Run(AckFileAsync(...))     // HTTP POST /ack/{id}
 ```
 
-### 10.5 v0.3 计划：启动扫描兜底
+### 10.5 v0.3 计划：启动扫描兜底（暂未实现）
 
-**目的**：进程崩溃（kill -9 / 断电）时，channel 残留文件丢失；启动时主动扫描 VPS `~/starttooler/tmp/*.bin`，对比表里 status=Received 的 `file_id`，差集 = Pending → 入队重拉。
+**目的**：进程崩溃（kill -9 / 断电）时，channel 残留文件丢失；启动时主动扫描 VPS `~/starttooler/tmp/*`，对比表里 status=Received 的 `file_id`，差集 = Pending → 入队重拉。
 
-**新增**：`SyncForVpsTaskRetryService`（启动时跑一次）：
+**v0.4+ 变更**：磁盘不再有 `<id>.bin` / `<id>.meta`，文件名就是原文件名。崩溃恢复需要换思路：
+- 方案 A：保留 `<id>.meta` 仅用于崩溃恢复（即使 `.bin` 已改成原文件名），C# 扫 `tmp/*.meta` 拿回 `(id, name)` 映射 → 简单但磁盘上多一份"幽灵 .meta"
+- 方案 B：扫描 `tmp/*` 后用文件名查 VPS 进程外存（如 sqlite/leveldb）反查 id → 复杂
+- 方案 C：放弃崩溃恢复，relay 重启期间上传的文件由用户重新上传 → 最简单
+
+> 选定：暂用方案 C（用户上传频率低，re-upload 成本可接受）。后续如果重启频率上去再补方案 A。
+
 ```
-启动时：
-    var pendingOnVps = ssh.RunCommand("ls ~/starttooler/tmp/*.bin").Split('\n')
-        .Select(Path.GetFileNameWithoutExtension).ToList()
-    var receivedIds = repo.GetByStatusAsync(Received).Select(t => t.FileId).ToHashSet()
-    var missingIds = pendingOnVps.Where(id => !receivedIds.Contains(id)).ToList()
-    foreach (id in missingIds):
-        // 从 VPS 读 .meta 拿 name → 入队重拉
-        var meta = ssh.RunCommand($"cat ~/starttooler/tmp/{id}.meta")  // JSON {id,name}
-        enqueue(id, name, size=fsize)
+# v0.4 计划（已废弃的写法，留作对照）：
+# var pendingOnVps = ssh.RunCommand("ls ~/starttooler/tmp/*.bin").Split('\n')
+#     .Select(Path.GetFileNameWithoutExtension).ToList()
+# ...
+#     // 从 VPS 读 .meta 拿 name → 入队重拉
+#     var meta = ssh.RunCommand($"cat ~/starttooler/tmp/{id}.meta")
 ```
 
 ### 10.6 已知陷阱
 
 - **v0.2 进程崩溃会丢 channel 残留** —— sync_for_vps_task 表只有 enqueue+scp 完成后才有记录，崩溃前 enqueue 但 scp 没跑的没记录；v0.3 加启动扫描兜底
-- **scp stderr 解析跨 OpenBSD scp / 新版 scp 不一致** —— 解析 `scp: .../tmp/<id>.bin: <reason>` 行拆失败 ID；写入 `last_error` 时截断到 1KB 防撑爆
+- **scp stderr 解析跨 OpenBSD scp / 新版 scp 不一致** —— 解析 `scp: .../tmp/{filename}: <reason>` 行拆失败 ID（v0.4+ 按原文件名匹配）；写入 `last_error` 时截断到 1KB 防撑爆
 - **批量通知堆叠** —— 100 张图成功 = 100 张通知卡片堆右下角；v0.3 加「批量接收完成」汇总通知（"已收到 100 个文件，失败 3 个"）

@@ -241,7 +241,7 @@
   - `DrainBatchAsync` 用 `Process.Start("scp", ...)` 一次传 N 个文件，带 SSH `ControlMaster=auto` + `ControlPath={Temp}/starttooler-ssh-{host}-{port}` + `ControlPersist=10m` —— 多次 batch 复用单 SSH 连接
   - 触发 flush 兜底：凑齐 / idle 超时 / `Stop` 按钮 / `ProcessExit` 兜底 / TCP 客户端断线，**任一满足即 flush channel 残留**
   - `BuildConnectionInfo` 改 `Timeout = 60s`（10s → 60s）+ 加 `KeepAlive = new SshKeepAlive(30s/60s)` 防 NAT 老化
-  - 失败粒度：scp exit != 0 时解析 stderr `scp: .../tmp/<id>.bin: <reason>` 行拆失败 ID，只对失败文件标 `status=Failed`
+  - 失败粒度：scp exit != 0 时解析 stderr `scp: .../tmp/{filename}: <reason>` 行拆失败文件 ID（v0.4+ VPS 用原文件名落盘），只对失败文件标 `status=Failed`
   - 100 张图 = **20 次 batch scp**（首次 ControlMaster 握手 + 后续复用 socket），触发 sshd MaxStartups 概率大幅降低
 - **教训**：
   - **每文件 1 次 SSH connect 是反模式** —— 多文件场景必然撑爆 MaxStartups

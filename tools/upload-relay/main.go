@@ -5,7 +5,7 @@
 //   - TCP_PORT: 接受本地 StartTooler 长连接，单向推送 file_pending 通知
 //
 // 文件流转：
-//   1. HTTP 接收 → tmp/<id>.bin + tmp/<id>.meta → 写入 state.pending
+//   1. HTTP 接收 → tmp/{sanitized_original_name} → 写入 state.pending（原始扩展名直接落盘）
 //   2. State.Broadcast(p) 通知所有已连 TCP 客户端（C# 端收 file_pending）
 //   3. C# 端用 SSH scp 拉文件到本地项目目录（按日期归档）
 //   4. C# 端拉完调 HTTP POST /ack/{id} → Go relay 从 pending 删 + rm tmp 文件
@@ -84,23 +84,36 @@ func newID() string {
 
 func (s *State) saveUploaded(filename string, data []byte) (string, error) {
 	id := newID()
-	binPath := filepath.Join(s.tmpDir, id+".bin")
-	metaPath := filepath.Join(s.tmpDir, id+".meta")
+
+	// 用原始文件名落盘（不再用 <id>.bin / <id>.meta）。防路径穿越 + 碰撞。
+	safeName := sanitizeFilename(filename)
+	if safeName == "" {
+		safeName = fmt.Sprintf("upload_%s.bin", time.Now().Format("150405"))
+	}
+	binPath := filepath.Join(s.tmpDir, safeName)
+	if _, err := os.Stat(binPath); err == nil {
+		// 同名碰撞：在 stem + "_N" + ext 处找空位
+		ext := filepath.Ext(safeName)
+		stem := safeName[:len(safeName)-len(ext)]
+		for i := 2; ; i++ {
+			candidate := filepath.Join(s.tmpDir, fmt.Sprintf("%s_%d%s", stem, i, ext))
+			if _, err := os.Stat(candidate); os.IsNotExist(err) {
+				binPath = candidate
+				log.Printf("name collision: %s -> %s", safeName, filepath.Base(candidate))
+				break
+			}
+		}
+	}
 
 	if err := os.WriteFile(binPath, data, 0644); err != nil {
 		return "", fmt.Errorf("write bin: %w", err)
-	}
-	meta, _ := json.Marshal(map[string]string{"id": id, "name": filename})
-	if err := os.WriteFile(metaPath, meta, 0644); err != nil {
-		os.Remove(binPath)
-		return "", fmt.Errorf("write meta: %w", err)
 	}
 
 	s.mu.Lock()
 	s.pending[id] = pendingFile{ID: id, Name: filename, Path: binPath}
 	s.mu.Unlock()
 
-	log.Printf("saved %s -> %s (%d bytes)", filename, id, len(data))
+	log.Printf("saved %s -> %s (%d bytes)", filename, binPath, len(data))
 
 	// 通知所有已连 TCP 客户端
 	s.Broadcast(pendingFile{ID: id, Name: filename, Path: binPath})
@@ -126,6 +139,28 @@ func (s *State) getPending(id string) (pendingFile, bool) {
 	return p, ok
 }
 
+// sanitizeFilename: 取 Base + 过滤控制字符 + 限长，避免 ../ 路径穿越或奇葩文件名搞坏 VPS tmp/。
+// 原文件名通过 broadcast 同步给 C#，落盘用清洗后的版本。
+func sanitizeFilename(name string) string {
+	base := filepath.Base(name)
+	if base == "." || base == "/" || base == "" {
+		return ""
+	}
+	// 过滤控制字符 + 路径分隔符残留（Base 之后再扫一遍，Base 在 Windows 上可能保留 \）
+	var b strings.Builder
+	for _, r := range base {
+		if r < 0x20 || r == 0x7f || r == '/' || r == '\\' || r == ':' || r == 0 {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	out := b.String()
+	if len(out) > 200 { // 文件系统单文件名上限大多 255，留点余量
+		out = out[:200]
+	}
+	return strings.TrimSpace(out)
+}
+
 // Ack: C# 端拉完文件后调用，从 pending 删 + 删 tmp 文件
 func (s *State) Ack(id string) error {
 	s.mu.Lock()
@@ -137,13 +172,8 @@ func (s *State) Ack(id string) error {
 	if !ok {
 		return fmt.Errorf("unknown id: %s", id)
 	}
-	binErr := os.Remove(p.Path)
-	metaErr := os.Remove(p.Path[:len(p.Path)-4] + ".meta")
-	if binErr != nil && !os.IsNotExist(binErr) {
-		return binErr
-	}
-	if metaErr != nil && !os.IsNotExist(metaErr) {
-		return metaErr
+	if err := os.Remove(p.Path); err != nil && !os.IsNotExist(err) {
+		return err
 	}
 	log.Printf("acked & deleted %s (%s)", p.Name, id)
 	return nil

@@ -224,8 +224,8 @@ StartTooler/                        # .sln
 
 - **HTML → Go**：浏览器 POST `/upload`（multipart）。
 - **Go → C# (TCP JSON line)**：每行一条 JSON `{"type":"file_pending","id":"...","name":"...","size":N}\n`。**无 4 字节长度前缀**，C# 端 `ReadLineAsync` 按行读（`PublicRelayService.cs:286-301`）。
-- **C# → Go (HTTP)**：`POST /ack/{id}`，Go 删 pending + rm tmp（`main.go:250-269`）。
-- **C# → Go (SSH scp)**：`{remote}/tmp/{id}.bin` 拉本地（`PublicRelayService.cs:386-390`）。
+- **C# → Go (HTTP)**：`POST /ack/{id}`，Go 删 pending + rm tmp 文件（`main.go:Ack`）。
+- **C# → Go (SSH scp)**：`{remote}/tmp/{sanitized_original_name}` 拉本地（v0.4+ 用原文件名直接落盘，`PublicRelayService.cs:529-535`）。
 
 ---
 
