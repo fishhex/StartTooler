@@ -13,3 +13,9 @@ dist/
 
 # Debug 日志（启动时由 Program.cs 自动生成到 cwd）
 starttooler-debug.log
+
+# tools/upload-relay 源码目录里的 go build 验证产物（不要和
+# StartTooler/Resources/relay-binaries/ 里"真正发布"的二进制搞混）
+tools/upload-relay/upload-relay-linux-*
+tools/upload-relay/upload-relay-darwin-*
+tools/upload-relay/upload-relay-windows-*
