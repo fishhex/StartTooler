@@ -30,16 +30,16 @@ public class PublicRelayConfig
     public string RemoteArch { get; set; } = RelayArch.Auto;
 
     /// <summary>
-    /// 公网接收 batch scp 大小（默认 5）。
-    /// 凑齐该数量文件触发一次 scp + ControlMaster；不满则等 idle 超时。
+    /// v0.3 Poller 周期（秒）。每 N 秒查一次 sync_for_vps_task 表 Pending 行并 scp。
+    /// 默认 5s：流量稀疏够用，密集时一次最多拉 BatchSize 个。
     /// </summary>
-    public int ScpBatchSize { get; set; } = 5;
+    public int SyncPollIntervalSec { get; set; } = 5;
 
     /// <summary>
-    /// 公网接收 batch scp 静默超时秒数（默认 30s）。
-    /// 距 channel 中首文件到达超过此秒数 → 触发当前累计（不满 BatchSize 也触发）。
+    /// v0.3 Poller 每次 scp 最多拉的文件数。一次 scp 命令传多个文件，受 SSH ControlMaster 复用加速。
+    /// 默认 5。
     /// </summary>
-    public int ScpBatchIdleTimeoutSec { get; set; } = 30;
+    public int SyncBatchSize { get; set; } = 5;
 }
 
 /// <summary>CPU 架构选项（用于配置 RemoteArch 字段）。</summary>

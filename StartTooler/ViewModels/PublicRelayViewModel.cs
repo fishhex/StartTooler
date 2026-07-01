@@ -51,6 +51,9 @@ public partial class PublicRelayViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string? lastLog;
     [ObservableProperty] private bool isProjectPathSet;
 
+    /// <summary>sync_for_vps_task 中 Pending 行数（UI 显示用）。</summary>
+    [ObservableProperty] private int pendingCount;
+
     // 认证方式切换（用于 XAML IsVisible 绑定）
     [ObservableProperty] private bool showPasswordFields = true;
     [ObservableProperty] private bool showKeyFields;
@@ -106,6 +109,7 @@ public partial class PublicRelayViewModel : ObservableObject, IDisposable
 
         _gallery.PropertyChanged += OnGalleryPropertyChanged;
         _relayService.StateChanged += OnRelayStateChanged;
+        _relayService.PendingCountChanged += OnRelayPendingCountChanged;
         RefreshProjectPathSet();
     }
 
@@ -342,6 +346,12 @@ public partial class PublicRelayViewModel : ObservableObject, IDisposable
         StopCommand.NotifyCanExecuteChanged();
     }
 
+    private void OnRelayPendingCountChanged(int count)
+    {
+        // PendingCountChanged 是从 background task 触发的，跨线程 → marshal 到 UI 线程
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => PendingCount = count);
+    }
+
     private void UpdateRelayStateText()
     {
         RelayStateText = _relayService.State switch
@@ -391,6 +401,7 @@ public partial class PublicRelayViewModel : ObservableObject, IDisposable
     {
         _gallery.PropertyChanged -= OnGalleryPropertyChanged;
         _relayService.StateChanged -= OnRelayStateChanged;
+        _relayService.PendingCountChanged -= OnRelayPendingCountChanged;
         _relayService.Dispose();
     }
 }

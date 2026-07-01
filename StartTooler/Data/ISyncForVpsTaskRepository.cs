@@ -7,13 +7,23 @@ namespace StartTooler.Data;
 public interface ISyncForVpsTaskRepository
 {
     /// <summary>
-    /// 按 FileId upsert（存在则覆盖 Status/LocalPath/LastError/AttemptCount/UpdatedAt，
-    /// 不存在则插入；FileId 是 UNIQUE 约束）。
+    /// TCP 收到通知时调用：UNIQUE(fileId) 幂等插入 Pending 行。
+    /// 已存在则 noop，返回 false。
     /// </summary>
-    Task UpsertAsync(SyncForVpsTask task, CancellationToken ct = default);
+    Task<bool> InsertIfNewAsync(
+        string fileId, string fileName, long sizeBytes, string? remotePath,
+        CancellationToken ct = default);
 
-    Task<SyncForVpsTask?> GetByFileIdAsync(string fileId, CancellationToken ct = default);
+    /// <summary>Poller 拉一批 Pending 行（先到先下载）。</summary>
+    Task<IReadOnlyList<SyncForVpsTask>> GetPendingBatchAsync(
+        int limit, CancellationToken ct = default);
 
-    Task<IReadOnlyList<SyncForVpsTask>> GetByStatusAsync(
-        SyncForVpsTaskStatus status, CancellationToken ct = default);
+    /// <summary>scp 成功 → Received + LocalPath + AttemptCount++。</summary>
+    Task MarkReceivedAsync(long id, string localPath, CancellationToken ct = default);
+
+    /// <summary>scp 失败 → Failed + LastError + AttemptCount++。</summary>
+    Task MarkFailedAsync(long id, string error, CancellationToken ct = default);
+
+    /// <summary>UI 显示用：Pending 行数。</summary>
+    Task<int> CountPendingAsync(CancellationToken ct = default);
 }

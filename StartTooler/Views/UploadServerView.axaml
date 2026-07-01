@@ -223,11 +223,20 @@
                                     Command="{Binding PublicRelayViewModel.StopCommand}"/>
                         </StackPanel>
 
-                        <!-- 状态 / 错误 / 日志 -->
+                        <!-- 状态 / 待下载 / 错误 / 日志 -->
                         <Grid ColumnDefinitions="100,*" Margin="0,8,0,0">
                             <TextBlock Grid.Column="0" Text="状态" FontSize="13" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1" Text="{Binding PublicRelayViewModel.RelayStateText}"
                                        FontSize="13" Foreground="{DynamicResource Text.Secondary}" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="100,*">
+                            <TextBlock Grid.Column="0" Text="待下载" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1"
+                                       FontSize="13" Foreground="{DynamicResource Text.Secondary}" VerticalAlignment="Center">
+                                <Run Text="{Binding PublicRelayViewModel.PendingCount}"/>
+                                <Run Text=" 个"/>
+                            </TextBlock>
                         </Grid>
 
                         <Grid ColumnDefinitions="100,*">
