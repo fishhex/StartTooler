@@ -31,8 +31,8 @@ public class SyncForVpsTaskRepository : ISyncForVpsTaskRepository
     }
 
     /// <summary>
-    /// 建表 + 迁移。v0.3 加 remote_path 列（v0.2 老库迁移兼容，nullable）。
-    /// 用 PRAGMA table_info 检查列存在性，避免重复 ALTER。
+    /// 建表 + 迁移。v0.3 加 remote_path 列；v0.4 把 created_at/updated_at 由 INTEGER 改 TEXT。
+    /// 用 PRAGMA table_info + type 检测决定走哪条迁移路径。
     /// </summary>
     private void EnsureSchema()
     {
@@ -51,8 +51,8 @@ public class SyncForVpsTaskRepository : ISyncForVpsTaskRepository
                 status INTEGER NOT NULL DEFAULT 0,
                 attempt_count INTEGER NOT NULL DEFAULT 0,
                 last_error TEXT,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
                 UNIQUE(file_id)
             );
             CREATE INDEX IF NOT EXISTS idx_sync_for_vps_task_status ON sync_for_vps_task(status);
@@ -66,24 +66,91 @@ public class SyncForVpsTaskRepository : ISyncForVpsTaskRepository
         }
 
         // 2) v0.3 migration: 加 remote_path 列（如不存在）
-        if (!ColumnExists(connection, "sync_for_vps_task", "remote_path"))
+        if (!SqliteMigrations.ColumnExists(connection, "sync_for_vps_task", "remote_path"))
         {
             using var alter = new SqliteCommand(
                 "ALTER TABLE sync_for_vps_task ADD COLUMN remote_path TEXT", connection);
             alter.ExecuteNonQuery();
         }
+
+        // 3) v0.4 migration: created_at/updated_at INTEGER → TEXT（与 upload_jobs 同样的整表重建策略）
+        if (IsCreatedAtInteger(connection))
+        {
+            MigrateFromIntegerToText(connection);
+        }
     }
 
-    private static bool ColumnExists(SqliteConnection connection, string table, string column)
+    private static bool IsCreatedAtInteger(SqliteConnection connection)
     {
-        using var cmd = new SqliteCommand($"PRAGMA table_info({table})", connection);
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
+        var type = SqliteMigrations.GetColumnType(connection, "sync_for_vps_task", "created_at");
+        return type != null && type.Equals("INTEGER", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void MigrateFromIntegerToText(SqliteConnection connection)
+    {
+        System.Diagnostics.Trace.WriteLine("[sync_for_vps_task] Migrating created_at/updated_at INTEGER → TEXT (ISO 8601)");
+
+        using (var step1 = new SqliteCommand("ALTER TABLE sync_for_vps_task RENAME TO sync_for_vps_task_legacy", connection))
         {
-            if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
-                return true;
+            step1.ExecuteNonQuery();
         }
-        return false;
+
+        var createNew = @"
+            CREATE TABLE sync_for_vps_task (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_id TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                remote_path TEXT,
+                local_path TEXT,
+                status INTEGER NOT NULL DEFAULT 0,
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                UNIQUE(file_id)
+            )";
+        using (var cmd = new SqliteCommand(createNew, connection))
+        {
+            cmd.ExecuteNonQuery();
+        }
+
+        var copySql = @"
+            INSERT INTO sync_for_vps_task
+                (id, file_id, file_name, size_bytes, remote_path, local_path,
+                 status, attempt_count, last_error, created_at, updated_at)
+            SELECT
+                id, file_id, file_name, size_bytes, remote_path, local_path,
+                status, attempt_count, last_error,
+                strftime('%Y-%m-%dT%H:%M:%fZ', created_at / 1000, 'unixepoch'),
+                strftime('%Y-%m-%dT%H:%M:%fZ', updated_at / 1000, 'unixepoch')
+            FROM sync_for_vps_task_legacy";
+        using (var cmd = new SqliteCommand(copySql, connection))
+        {
+            cmd.ExecuteNonQuery();
+        }
+
+        // 重建索引
+        using (var idx1 = new SqliteCommand(
+            "CREATE INDEX IF NOT EXISTS idx_sync_for_vps_task_status ON sync_for_vps_task(status)", connection))
+        {
+            idx1.ExecuteNonQuery();
+        }
+        using (var idx2 = new SqliteCommand(
+            "CREATE INDEX IF NOT EXISTS idx_sync_for_vps_task_created ON sync_for_vps_task(created_at)", connection))
+        {
+            idx2.ExecuteNonQuery();
+        }
+        using (var idx3 = new SqliteCommand(
+            "CREATE INDEX IF NOT EXISTS idx_sync_for_vps_task_status_created ON sync_for_vps_task(status, created_at)", connection))
+        {
+            idx3.ExecuteNonQuery();
+        }
+
+        using (var drop = new SqliteCommand("DROP TABLE sync_for_vps_task_legacy", connection))
+        {
+            drop.ExecuteNonQuery();
+        }
     }
 
     // ============================================================
@@ -102,7 +169,7 @@ public class SyncForVpsTaskRepository : ISyncForVpsTaskRepository
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(ct);
 
-        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var nowIso = SqliteDateTime.ToDb(DateTime.UtcNow);
         var sql = @"
             INSERT OR IGNORE INTO sync_for_vps_task
                 (file_id, file_name, size_bytes, remote_path, status, attempt_count, created_at, updated_at)
@@ -115,8 +182,8 @@ public class SyncForVpsTaskRepository : ISyncForVpsTaskRepository
         cmd.Parameters.AddWithValue("@sizeBytes", sizeBytes);
         cmd.Parameters.AddWithValue("@remotePath", (object?)remotePath ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@status", (int)SyncForVpsTaskStatus.Pending);
-        cmd.Parameters.AddWithValue("@createdAt", now);
-        cmd.Parameters.AddWithValue("@updatedAt", now);
+        cmd.Parameters.AddWithValue("@createdAt", nowIso);
+        cmd.Parameters.AddWithValue("@updatedAt", nowIso);
 
         var rows = await cmd.ExecuteNonQueryAsync(ct);
         return rows > 0;
@@ -171,7 +238,7 @@ public class SyncForVpsTaskRepository : ISyncForVpsTaskRepository
         await using var cmd = new SqliteCommand(sql, connection);
         cmd.Parameters.AddWithValue("@status", (int)SyncForVpsTaskStatus.Received);
         cmd.Parameters.AddWithValue("@localPath", localPath);
-        cmd.Parameters.AddWithValue("@updatedAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
         cmd.Parameters.AddWithValue("@id", id);
 
         await cmd.ExecuteNonQueryAsync(ct);
@@ -194,7 +261,7 @@ public class SyncForVpsTaskRepository : ISyncForVpsTaskRepository
         await using var cmd = new SqliteCommand(sql, connection);
         cmd.Parameters.AddWithValue("@status", (int)SyncForVpsTaskStatus.Failed);
         cmd.Parameters.AddWithValue("@lastError", error);
-        cmd.Parameters.AddWithValue("@updatedAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
         cmd.Parameters.AddWithValue("@id", id);
 
         await cmd.ExecuteNonQueryAsync(ct);
@@ -227,8 +294,8 @@ public class SyncForVpsTaskRepository : ISyncForVpsTaskRepository
             Status = (SyncForVpsTaskStatus)reader.GetInt32(6),
             AttemptCount = reader.GetInt32(7),
             LastError = reader.IsDBNull(8) ? null : reader.GetString(8),
-            CreatedAt = reader.GetInt64(9),
-            UpdatedAt = reader.GetInt64(10),
+            CreatedAt = SqliteDateTime.FromDb(reader.GetString(9)),
+            UpdatedAt = SqliteDateTime.FromDb(reader.GetString(10)),
         };
     }
 }

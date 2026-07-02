@@ -32,15 +32,20 @@ public class ConfigService : IConfigService
         using var connection = new SqliteConnection(_connectionString);
         connection.Open();
 
-        // 兼容旧版大写表名 Config → config（见 10-trap-book.md §5）
+        // 兼容路径：PascalCase 表名 Config → config（10-trap-book.md §5）
         MigrateLegacyTableNameIfNeeded(connection);
+
+        // 兼容路径：PascalCase 列名 Key/Value/UpdatedAt → snake_case + 加 created_at
+        // 详见 02-data-layer.md §11
+        MigrateSchemaToSnakeCaseIfNeeded(connection);
 
         var command = connection.CreateCommand();
         command.CommandText = @"
             CREATE TABLE IF NOT EXISTS config (
-                Key TEXT PRIMARY KEY,
-                Value TEXT NOT NULL,
-                UpdatedAt TEXT NOT NULL
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             )";
         command.ExecuteNonQuery();
     }
@@ -70,13 +75,30 @@ public class ConfigService : IConfigService
         System.Diagnostics.Trace.WriteLine("[Config] Migrated legacy table 'Config' → 'config' (via Config_temp)");
     }
 
+    /// <summary>
+    /// 把老版本 PascalCase 列名迁到 snake_case，并补 created_at 列。
+    /// 所有操作幂等：迁移成功后多次启动不再触发。
+    /// </summary>
+    private static void MigrateSchemaToSnakeCaseIfNeeded(SqliteConnection connection)
+    {
+        Data.SqliteMigrations.RenameColumnIfExists(connection, "config", "Key", "key");
+        Data.SqliteMigrations.RenameColumnIfExists(connection, "config", "Value", "value");
+        Data.SqliteMigrations.RenameColumnIfExists(connection, "config", "UpdatedAt", "updated_at");
+
+        // 老库 created_at 缺失，ADD 时用 epoch 起点兜底回填（实际值对老 key 无意义，业务上 created_at
+        // 只反映「写入数据库这个 key 的时间」而不是「应用配置变更时间」——这是 v0 设计的妥协）。
+        Data.SqliteMigrations.AddColumnIfMissing(
+            connection, "config", "created_at",
+            "TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.0000000Z'");
+    }
+
     public async Task<T?> GetAsync<T>(string key) where T : class
     {
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
 
         var command = connection.CreateCommand();
-        command.CommandText = "SELECT Value FROM config WHERE Key = @key";
+        command.CommandText = "SELECT value FROM config WHERE key = @key";
         command.Parameters.AddWithValue("@key", key);
 
         var result = await command.ExecuteScalarAsync();
@@ -91,17 +113,23 @@ public class ConfigService : IConfigService
     public async Task SetAsync<T>(string key, T value) where T : class
     {
         var json = JsonSerializer.Serialize(value);
+        var nowIso = DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
 
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
 
+        // INSERT ... ON CONFLICT(key) DO UPDATE —— 老行保留 created_at，只刷 value/updated_at
         var command = connection.CreateCommand();
         command.CommandText = @"
-            INSERT OR REPLACE INTO config (Key, Value, UpdatedAt)
-            VALUES (@key, @value, @updatedAt)";
+            INSERT INTO config (key, value, created_at, updated_at)
+            VALUES (@key, @value, @createdAt, @updatedAt)
+            ON CONFLICT(key) DO UPDATE SET
+                value = @value,
+                updated_at = @updatedAt";
         command.Parameters.AddWithValue("@key", key);
         command.Parameters.AddWithValue("@value", json);
-        command.Parameters.AddWithValue("@updatedAt", DateTime.UtcNow.ToString("O"));
+        command.Parameters.AddWithValue("@createdAt", nowIso);
+        command.Parameters.AddWithValue("@updatedAt", nowIso);
 
         await command.ExecuteNonQueryAsync();
     }

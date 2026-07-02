@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace StartTooler.Data;
@@ -23,8 +24,8 @@ public class UploadJob
     public long FileSize { get; set; }
     public int PartSize { get; set; }
     public List<UploadedPart> PartsUploaded { get; set; } = new();
-    public long CreatedAt { get; set; }
-    public long UpdatedAt { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
 }
 
 /// <summary>

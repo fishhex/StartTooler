@@ -735,7 +735,7 @@ public partial class GalleryViewModel : ObservableObject
         MediaFile file, IOssStorage storage, string localPath, string objectKey, long fileSize, CancellationToken ct)
     {
         var handle = await storage.InitiateMultipartAsync(objectKey, ct);
-        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var now = DateTime.UtcNow;
         var job = new UploadJob
         {
             ProjectPath = file.ProjectPath,
@@ -820,7 +820,7 @@ public partial class GalleryViewModel : ObservableObject
 
         // 同步 DB：把 OSS 端多出来的分片也写回 DB，避免下次续传重传
         job.PartsUploaded = ossParts.Select(p => new UploadedPart { PartNumber = p.PartNumber, ETag = p.ETag }).ToList();
-        job.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        job.UpdatedAt = DateTime.UtcNow;
         await _uploadJobRepo.UpsertAsync(job, ct);
 
         // 传缺失分片
@@ -870,7 +870,7 @@ public partial class GalleryViewModel : ObservableObject
 
             // 每片成功 → 立刻写 DB（崩溃后最多少传一片）
             job.PartsUploaded.Add(new UploadedPart { PartNumber = partNumber, ETag = etag.ETag });
-            job.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            job.UpdatedAt = DateTime.UtcNow;
             await _uploadJobRepo.UpsertAsync(job, ct);
         }
 

@@ -30,9 +30,10 @@
 
 ```sql
 CREATE TABLE IF NOT EXISTS config (
-    Key TEXT PRIMARY KEY,    -- ConfigKeys.* 中的常量
-    Value TEXT NOT NULL,     -- JSON 序列化后的整个对象
-    UpdatedAt TEXT NOT NULL  -- ISO 8601 UTC（"O" 格式）
+    key TEXT PRIMARY KEY,        -- ConfigKeys.* 中的常量
+    value TEXT NOT NULL,         -- JSON 序列化后的整个对象
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 )
 ```
 
@@ -111,14 +112,16 @@ CREATE TABLE IF NOT EXISTS media_files (
     file_name TEXT NOT NULL,
     media_type INTEGER NOT NULL DEFAULT 0, -- 0=Image, 1=Video
     file_size INTEGER NOT NULL DEFAULT 0,
-    last_modified INTEGER NOT NULL DEFAULT 0,  -- unix ms
-    shot_at INTEGER,                          -- unix ms（先用 last_modified 兜底）
+    last_modified INTEGER NOT NULL DEFAULT 0,  -- unix ms（业务时间字段，见 §11）
+    shot_at INTEGER,                          -- unix ms（业务时间字段；先用 last_modified 兜底）
     is_uploaded INTEGER NOT NULL DEFAULT 0,    -- 0/1
     local_exists INTEGER NOT NULL DEFAULT 1,   -- 0/1
     thumbnail_path TEXT,
     remote_url TEXT,
-    uploaded_at INTEGER,                      -- unix ms
-    scanned_at INTEGER NOT NULL DEFAULT 0,
+    uploaded_at INTEGER,                      -- unix ms（业务时间字段）
+    scanned_at INTEGER NOT NULL DEFAULT 0,     -- unix ms（业务时间字段）
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     UNIQUE(project_path, relative_path)        -- 重扫描幂等 key
 );
 CREATE INDEX IF NOT EXISTS idx_media_files_date ON media_files(shot_at);
@@ -215,8 +218,8 @@ CREATE TABLE IF NOT EXISTS upload_jobs (
     file_size INTEGER NOT NULL,
     part_size INTEGER NOT NULL,
     parts_uploaded TEXT NOT NULL DEFAULT '[]',  -- JSON List<UploadedPart>
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     UNIQUE(project_path, relative_path)         -- 一个文件同时只能一个 job
 );
 CREATE INDEX IF NOT EXISTS idx_upload_jobs_project ON upload_jobs(project_path);
@@ -367,12 +370,13 @@ CREATE TABLE IF NOT EXISTS sync_for_vps_task (
     file_id TEXT NOT NULL,              -- Go relay 32 字符 hex id（v0.4+ VPS tmp/ 直接用 file_name 落盘，id 仅用于 pending map + ack）
     file_name TEXT NOT NULL,            -- 原始文件名
     size_bytes INTEGER NOT NULL,
+    remote_path TEXT,                   -- v0.3+ 拉取前的 VPS 路径；nullable
     local_path TEXT,                    -- 拉到本地后的最终路径；失败时为 null
     status INTEGER NOT NULL DEFAULT 0,  -- 0=Pending, 1=Received, 2=Failed
     attempt_count INTEGER NOT NULL DEFAULT 0,
     last_error TEXT,
-    created_at INTEGER NOT NULL,        -- unix ms
-    updated_at INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     UNIQUE(file_id)
 );
 CREATE INDEX IF NOT EXISTS idx_sync_for_vps_task_status ON sync_for_vps_task(status);
@@ -441,3 +445,69 @@ DrainBatchAsync(batch):
 - **v0.2 进程崩溃会丢 channel 残留** —— sync_for_vps_task 表只有 enqueue+scp 完成后才有记录，崩溃前 enqueue 但 scp 没跑的没记录；v0.3 加启动扫描兜底
 - **scp stderr 解析跨 OpenBSD scp / 新版 scp 不一致** —— 解析 `scp: .../tmp/{filename}: <reason>` 行拆失败 ID（v0.4+ 按原文件名匹配）；写入 `last_error` 时截断到 1KB 防撑爆
 - **批量通知堆叠** —— 100 张图成功 = 100 张通知卡片堆右下角；v0.3 加「批量接收完成」汇总通知（"已收到 100 个文件，失败 3 个"）
+
+---
+
+## 11. 表结构规范（v0.5+ 强制）
+
+所有新表 / 现有表迁移必须遵守：
+
+### 11.1 字段命名：snake_case
+
+- 全部小写 + 下划线分词（`project_path` / `remote_url` / `created_at`）
+- 不允许 PascalCase（`ProjectPath` / `RemoteUrl`）或 camelCase
+- 关键词全大写：`CREATE / INDEX / UNIQUE` 仍用 SQL 约定
+
+### 11.2 审计字段：每张业务表必须有 `created_at` / `updated_at`
+
+- 类型：**TEXT**，ISO 8601 "O" 格式 UTC（例 `2026-07-02T03:09:47.0000000Z`）
+- 写入约定：C# 端 `SqliteDateTime.ToDb(DateTime.UtcNow)` 或 SQL DEFAULT `(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`
+- 读取约定：C# 端 `SqliteDateTime.FromDb(string)`，带 `DateTimeStyles.RoundtripKind`
+- **业务时间字段**（`shot_at` / `last_modified` / `uploaded_at` / `scanned_at`）保持 `INTEGER` (unix ms) 不动 —— ffmpeg/FS mtime 天然 unix ms，且 GalleryViewModel 用了 `date(shot_at/1000,'unixepoch','localtime')` 表达式，没必要改
+
+### 11.3 `created_at` 行为：首次创建时间，**永不更新**
+
+- 新行：SQL DEFAULT 或应用层显式写入当前 UTC
+- ON CONFLICT DO UPDATE：SET 列表里**不写** `created_at`，保留原值
+  - 例：`ON CONFLICT(...) DO UPDATE SET ... created_at = created_at, updated_at = @updatedAt`
+
+### 11.4 `updated_at` 行为：每次写入都刷新
+
+- INSERT：新行由 SQL DEFAULT 兜底
+- UPDATE：应用层显式传当前 UTC（`SqliteDateTime.ToDb(DateTime.UtcNow)`）
+- 不允许在 SQL 里省略 `updated_at` 然后靠 trigger 维护（避免跨表逻辑分叉）
+
+### 11.5 现有 4 张表合规性
+
+| 表 | 字段命名 | created_at/updated_at | 类型 | 状态 |
+|---|---|---|---|---|
+| `config` | `key` / `value` / `created_at` / `updated_at` | ✅ | TEXT | v0.5 迁移完成 |
+| `media_files` | 全 snake_case | ✅ | TEXT | v0.5 迁移完成 |
+| `upload_jobs` | 全 snake_case | ✅ | TEXT | v0.5 迁移完成（v0.4 之前是 INTEGER） |
+| `sync_for_vps_task` | 全 snake_case | ✅ | TEXT | v0.5 迁移完成（v0.4 之前是 INTEGER） |
+
+### 11.6 迁移策略
+
+- **缺列**：`ALTER TABLE ADD COLUMN ... DEFAULT ...` 兜底回填（`SqliteMigrations.AddColumnIfMissing`）
+- **列名 PascalCase → snake_case**：`ALTER TABLE RENAME COLUMN`（SQLite 3.25+ 自带）
+- **类型不对**（INTEGER → TEXT）：SQLite ALTER 不支持改类型 → 整表重建
+  1. `RENAME TO ..._legacy`
+  2. 重新建表
+  3. `INSERT INTO ... SELECT ..., strftime('%Y-%m-%dT%H:%M:%fZ', created_at/1000, 'unixepoch') FROM ..._legacy`
+  4. 重建索引
+  5. `DROP ..._legacy`
+
+### 11.7 工具方法
+
+`Data/SqliteHelpers.cs`：
+- `SqliteDateTime.ToDb(DateTime)` / `FromDb(string)` —— ISO 8601 round-trip
+- `SqliteMigrations.ColumnExists` / `GetColumnType` —— PRAGMA 检测
+- `SqliteMigrations.RenameColumnIfExists` / `AddColumnIfMissing` —— 幂等迁移
+
+### 11.8 已知陷阱
+
+- **SQLite 没有原生 datetime 类型** —— "datetime" 在 SQLite 里是 type affinity（NUMERIC），不是强类型。我们用 TEXT + ISO 8601 是最稳的方案。
+- **ISO 8601 字符串比较 ≡ 时间序** —— `created_at > '2026-07-01'` 等价于「时间晚于 2026-07-01」，ORDER BY / INDEX 都正确。
+- **跨时区** —— 统一存 UTC，UI 层再做时区转换。SQLite 内置 `strftime` 也以 UTC 为基准。
+- **ON CONFLICT DO UPDATE 的 created_at 陷阱** —— SQLite 在 DO UPDATE 分支会先按 INSERT 计算所有 DEFAULT（含 `strftime('now')`），然后只覆盖 SET 列表里的列。如果 SET 里**不写** `created_at`，保留的是「刚才算出来的当前时间」而不是「原行的 created_at」。**必须显式写 `created_at = created_at`** 强制保留。
+

@@ -49,14 +49,27 @@ public class MediaRepository : IMediaRepository
                 remote_url TEXT,
                 uploaded_at INTEGER,
                 scanned_at INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
                 UNIQUE(project_path, relative_path)
             );
             CREATE INDEX IF NOT EXISTS idx_media_files_date ON media_files(shot_at);
             CREATE INDEX IF NOT EXISTS idx_media_files_project ON media_files(project_path);
         ";
 
-        using var cmd = new SqliteCommand(createTableSql, connection);
-        cmd.ExecuteNonQuery();
+        using (var cmd = new SqliteCommand(createTableSql, connection))
+        {
+            cmd.ExecuteNonQuery();
+        }
+
+        // 兼容路径：老库（v0.4 之前）缺 created_at/updated_at 列。ALTER ADD 时用 epoch 起点
+        // 兜底回填老行；新行写入时会用 SQL DEFAULT 取真实时间。
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "created_at",
+            "TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.0000000Z'");
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "updated_at",
+            "TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.0000000Z'");
     }
 
     public async Task<IReadOnlyList<DateCount>> GetDateGroupsAsync(string projectPath, CancellationToken ct = default)
@@ -120,7 +133,8 @@ public class MediaRepository : IMediaRepository
             SELECT
                 id, project_path, relative_path, file_name, media_type,
                 file_size, last_modified, shot_at, is_uploaded, local_exists,
-                thumbnail_path, remote_url, uploaded_at, scanned_at
+                thumbnail_path, remote_url, uploaded_at, scanned_at,
+                created_at, updated_at
             FROM media_files
             WHERE project_path = @projectPath
               AND shot_at >= @startTime
@@ -151,7 +165,9 @@ public class MediaRepository : IMediaRepository
                 ThumbnailPath = reader.IsDBNull(10) ? null : reader.GetString(10),
                 RemoteUrl = reader.IsDBNull(11) ? null : reader.GetString(11),
                 UploadedAt = reader.IsDBNull(12) ? null : reader.GetInt64(12),
-                ScannedAt = reader.GetInt64(13)
+                ScannedAt = reader.GetInt64(13),
+                CreatedAt = SqliteDateTime.FromDb(reader.GetString(14)),
+                UpdatedAt = SqliteDateTime.FromDb(reader.GetString(15)),
             });
         }
 
@@ -219,15 +235,24 @@ public class MediaRepository : IMediaRepository
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(ct);
 
+        // INSERT ... ON CONFLICT DO UPDATE：
+        //   created_at 不在 SET 列表 → 保留原值（首次插入用 SQL DEFAULT，续扫描保留初次入库时间）
+        //   updated_at 每次扫描时刷新
         var insertSql = @"
-            INSERT INTO media_files (project_path, relative_path, file_name, media_type, file_size, last_modified, shot_at, thumbnail_path, scanned_at)
-            VALUES (@projectPath, @relativePath, @fileName, @mediaType, @fileSize, @lastModified, @shotAt, @thumbnailPath, @scannedAt)
+            INSERT INTO media_files (project_path, relative_path, file_name, media_type,
+                file_size, last_modified, shot_at, thumbnail_path, scanned_at,
+                created_at, updated_at)
+            VALUES (@projectPath, @relativePath, @fileName, @mediaType,
+                @fileSize, @lastModified, @shotAt, @thumbnailPath, @scannedAt,
+                @createdAt, @updatedAt)
             ON CONFLICT(project_path, relative_path) DO UPDATE SET
                 file_size = @fileSize,
                 last_modified = @lastModified,
                 shot_at = COALESCE(shot_at, @shotAt),
                 thumbnail_path = @thumbnailPath,
-                scanned_at = @scannedAt";
+                scanned_at = @scannedAt,
+                created_at = created_at,
+                updated_at = @updatedAt";
 
         await using var cmd = new SqliteCommand(insertSql, connection);
         var projectPathNormalized = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
@@ -247,6 +272,10 @@ public class MediaRepository : IMediaRepository
                 var lastModified = new DateTimeOffset(fileInfo.LastWriteTimeUtc).ToUnixTimeMilliseconds();
                 var scannedAt = DateTimeOffset.Now.ToUnixTimeMilliseconds();
 
+                // created_at/updated_at 都用当前 UTC：新行用 @createdAt 走 INSERT（与 DEFAULT 等价），
+                // 老行走 ON CONFLICT 时 @createdAt 被忽略（SQL 写死 created_at = created_at 保留原值）。
+                var nowIso = SqliteDateTime.ToDb(DateTime.UtcNow);
+
                 cmd.Parameters.Clear();
                 cmd.Parameters.AddWithValue("@projectPath", projectPathNormalized);
                 cmd.Parameters.AddWithValue("@relativePath", relativePath);
@@ -257,6 +286,8 @@ public class MediaRepository : IMediaRepository
                 cmd.Parameters.AddWithValue("@shotAt", lastModified); // 用文件修改时间作为 shot_at
                 cmd.Parameters.AddWithValue("@thumbnailPath", DBNull.Value); // 缩略图稍后生成
                 cmd.Parameters.AddWithValue("@scannedAt", scannedAt);
+                cmd.Parameters.AddWithValue("@createdAt", nowIso);
+                cmd.Parameters.AddWithValue("@updatedAt", nowIso);
 
                 var rowsAffected = await cmd.ExecuteNonQueryAsync(ct);
                 if (rowsAffected > 0)
@@ -303,7 +334,11 @@ public class MediaRepository : IMediaRepository
             WHERE project_path = @projectPath
               AND (thumbnail_path IS NULL OR thumbnail_path = '')";
 
-        var updateSql = "UPDATE media_files SET thumbnail_path = @thumbnailPath WHERE id = @id";
+        var updateSql = @"
+            UPDATE media_files
+            SET thumbnail_path = @thumbnailPath,
+                updated_at = @updatedAt
+            WHERE id = @id";
 
         var files = new List<(long Id, string RelativePath)>();
 
@@ -333,6 +368,7 @@ public class MediaRepository : IMediaRepository
             {
                 await using var cmd = new SqliteCommand(updateSql, connection);
                 cmd.Parameters.AddWithValue("@thumbnailPath", thumbnailPath);
+                cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
                 cmd.Parameters.AddWithValue("@id", id);
                 await cmd.ExecuteNonQueryAsync(ct);
             }
@@ -356,7 +392,8 @@ public class MediaRepository : IMediaRepository
             UPDATE media_files
             SET is_uploaded = @isUploaded,
                 uploaded_at = @uploadedAt,
-                remote_url = @remoteUrl
+                remote_url = @remoteUrl,
+                updated_at = @updatedAt
             WHERE id = @id";
 
         await using var cmd = new SqliteCommand(sql, connection);
@@ -364,6 +401,7 @@ public class MediaRepository : IMediaRepository
         cmd.Parameters.AddWithValue("@isUploaded", isUploaded ? 1 : 0);
         cmd.Parameters.AddWithValue("@uploadedAt", (object?)uploadedAt ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@remoteUrl", (object?)remoteUrl ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
 
         await cmd.ExecuteNonQueryAsync(ct);
     }

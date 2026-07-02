@@ -1,3 +1,5 @@
+using System;
+
 namespace StartTooler.Data;
 
 /// <summary>
@@ -32,8 +34,11 @@ public class SyncForVpsTask
     public SyncForVpsTaskStatus Status { get; set; } = SyncForVpsTaskStatus.Pending;
     public int AttemptCount { get; set; }
     public string? LastError { get; set; }
-    public long CreatedAt { get; set; }   // unix ms
-    public long UpdatedAt { get; set; }   // unix ms
+    /// <summary>记录首次创建时间（UTC，ISO 8601 持久化）。</summary>
+    public DateTime CreatedAt { get; set; }
+
+    /// <summary>记录最近一次更新时间（UTC）。</summary>
+    public DateTime UpdatedAt { get; set; }
 }
 
 public enum SyncForVpsTaskStatus

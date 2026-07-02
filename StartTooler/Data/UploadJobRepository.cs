@@ -32,7 +32,9 @@ public class UploadJobRepository : IUploadJobRepository
     {
         using var connection = new SqliteConnection(_connectionString);
         connection.Open();
-        var sql = @"
+
+        // 1) 全新库 / 已迁移过的库 → 直接建表
+        var createSql = @"
             CREATE TABLE IF NOT EXISTS upload_jobs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 project_path TEXT NOT NULL,
@@ -42,14 +44,90 @@ public class UploadJobRepository : IUploadJobRepository
                 file_size INTEGER NOT NULL,
                 part_size INTEGER NOT NULL,
                 parts_uploaded TEXT NOT NULL DEFAULT '[]',
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
                 UNIQUE(project_path, relative_path)
             );
             CREATE INDEX IF NOT EXISTS idx_upload_jobs_project ON upload_jobs(project_path);
         ";
-        using var cmd = new SqliteCommand(sql, connection);
-        cmd.ExecuteNonQuery();
+        using (var cmd = new SqliteCommand(createSql, connection))
+        {
+            cmd.ExecuteNonQuery();
+        }
+
+        // 2) v0.4 迁移：老库 created_at/updated_at 是 INTEGER (unix ms)，需要整表迁移到 TEXT
+        // SQLite ALTER TABLE 不支持改类型，只能 rename old → create new → copy + strftime → drop old
+        if (IsCreatedAtInteger(connection))
+        {
+            MigrateFromIntegerToText(connection);
+        }
+    }
+
+    /// <summary>检测老库 created_at 是否还是 INTEGER（v0.4 之前 schema）。</summary>
+    private static bool IsCreatedAtInteger(SqliteConnection connection)
+    {
+        var type = SqliteMigrations.GetColumnType(connection, "upload_jobs", "created_at");
+        // 老库可能完全没这列 → null；或存在但类型是 INTEGER
+        return type != null && type.Equals("INTEGER", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void MigrateFromIntegerToText(SqliteConnection connection)
+    {
+        System.Diagnostics.Trace.WriteLine("[upload_jobs] Migrating created_at/updated_at INTEGER → TEXT (ISO 8601)");
+
+        // 老表 → 中转表
+        using (var step1 = new SqliteCommand("ALTER TABLE upload_jobs RENAME TO upload_jobs_legacy", connection))
+        {
+            step1.ExecuteNonQuery();
+        }
+
+        // 重建新表
+        var createNew = @"
+            CREATE TABLE upload_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_path TEXT NOT NULL,
+                relative_path TEXT NOT NULL,
+                object_key TEXT NOT NULL,
+                upload_id TEXT NOT NULL,
+                file_size INTEGER NOT NULL,
+                part_size INTEGER NOT NULL,
+                parts_uploaded TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                UNIQUE(project_path, relative_path)
+            )";
+        using (var cmd = new SqliteCommand(createNew, connection))
+        {
+            cmd.ExecuteNonQuery();
+        }
+
+        // 数据迁移：INTEGER unix ms → TEXT ISO 8601
+        // strftime 在 unix ms > 0 时输出 UTC ISO 字符串；= 0 时回落到 1970-01-01。
+        var copySql = @"
+            INSERT INTO upload_jobs
+                (id, project_path, relative_path, object_key, upload_id,
+                 file_size, part_size, parts_uploaded, created_at, updated_at)
+            SELECT
+                id, project_path, relative_path, object_key, upload_id,
+                file_size, part_size, parts_uploaded,
+                strftime('%Y-%m-%dT%H:%M:%fZ', created_at / 1000, 'unixepoch'),
+                strftime('%Y-%m-%dT%H:%M:%fZ', updated_at / 1000, 'unixepoch')
+            FROM upload_jobs_legacy";
+        using (var cmd = new SqliteCommand(copySql, connection))
+        {
+            cmd.ExecuteNonQuery();
+        }
+
+        // 重建索引
+        using var idx = new SqliteCommand(
+            "CREATE INDEX IF NOT EXISTS idx_upload_jobs_project ON upload_jobs(project_path)", connection);
+        idx.ExecuteNonQuery();
+
+        // 丢弃中转表
+        using (var drop = new SqliteCommand("DROP TABLE upload_jobs_legacy", connection))
+        {
+            drop.ExecuteNonQuery();
+        }
     }
 
     public async Task<IReadOnlyList<UploadJob>> GetInProgressAsync(string projectPath, CancellationToken ct = default)
@@ -113,6 +191,9 @@ public class UploadJobRepository : IUploadJobRepository
 
         var partsJson = JsonSerializer.Serialize(job.PartsUploaded);
 
+        // INSERT ... ON CONFLICT DO UPDATE：
+        //   created_at 不在 SET 列表 → 续传时保留首次创建时间；
+        //   updated_at 每次 Upsert 刷新（应用层传入 now）。
         var sql = @"
             INSERT INTO upload_jobs
                 (project_path, relative_path, object_key, upload_id,
@@ -126,6 +207,7 @@ public class UploadJobRepository : IUploadJobRepository
                 file_size = @fileSize,
                 part_size = @partSize,
                 parts_uploaded = @partsUploaded,
+                created_at = created_at,
                 updated_at = @updatedAt";
 
         await using var cmd = new SqliteCommand(sql, connection);
@@ -136,8 +218,8 @@ public class UploadJobRepository : IUploadJobRepository
         cmd.Parameters.AddWithValue("@fileSize", job.FileSize);
         cmd.Parameters.AddWithValue("@partSize", job.PartSize);
         cmd.Parameters.AddWithValue("@partsUploaded", partsJson);
-        cmd.Parameters.AddWithValue("@createdAt", job.CreatedAt);
-        cmd.Parameters.AddWithValue("@updatedAt", job.UpdatedAt);
+        cmd.Parameters.AddWithValue("@createdAt", SqliteDateTime.ToDb(job.CreatedAt));
+        cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(job.UpdatedAt));
 
         await cmd.ExecuteNonQueryAsync(ct);
     }
@@ -182,8 +264,8 @@ public class UploadJobRepository : IUploadJobRepository
             FileSize = reader.GetInt64(5),
             PartSize = reader.GetInt32(6),
             PartsUploaded = parts,
-            CreatedAt = reader.GetInt64(8),
-            UpdatedAt = reader.GetInt64(9),
+            CreatedAt = SqliteDateTime.FromDb(reader.GetString(8)),
+            UpdatedAt = SqliteDateTime.FromDb(reader.GetString(9)),
         };
     }
 }

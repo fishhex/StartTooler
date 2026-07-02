@@ -58,6 +58,17 @@ public partial class MediaFile : ObservableObject
     public long ScannedAt { get; set; }
 
     /// <summary>
+    /// 记录首次创建时间。INSERT 时写入 UTC，ON CONFLICT DO UPDATE 时由 SQL "created_at = created_at" 保留原值。
+    /// 详见 02-data-layer.md §11。
+    /// </summary>
+    public DateTime CreatedAt { get; set; }
+
+    /// <summary>
+    /// 记录最近一次更新时间。每次 UPDATE（扫描 / 上传完成 / 缩略图生成）由 SQL DEFAULT 或应用层显式刷新。
+    /// </summary>
+    public DateTime UpdatedAt { get; set; }
+
+    /// <summary>
     /// UI 多选模式下的选中状态。由 GalleryViewModel.SelectedFiles 同步控制。
     /// </summary>
     [ObservableProperty]
