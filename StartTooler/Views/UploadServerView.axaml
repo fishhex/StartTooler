@@ -121,7 +121,9 @@
             <Expander Header="公网代理设置"
                       HorizontalAlignment="Stretch"
                       HorizontalContentAlignment="Stretch">
-                <Border Padding="20,12,20,20">
+                <Border Padding="20,12,20,20"
+                        Background="{DynamicResource Bg.SurfaceElevated}"
+                        CornerRadius="6">
                     <StackPanel Spacing="10">
 
                         <TextBlock Text="通过 SSH 在 VPS 上部署代理，手机扫码通过公网中转到本机 StartTooler。"
@@ -136,7 +138,7 @@
 
                         <!-- 认证方式 -->
                         <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="认证方式" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="认证方式" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
                             <ComboBox Grid.Column="1"
                                       SelectedIndex="{Binding PublicRelayViewModel.AuthMethodIndex}"
                                       Width="200"
@@ -148,32 +150,32 @@
 
                         <!-- SSH Host -->
                         <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="SSH Host" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="SSH Host" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="1" Text="{Binding PublicRelayViewModel.SshHost}" Watermark="例如 vps.example.com"/>
                         </Grid>
 
                         <!-- SSH Port -->
                         <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="SSH Port" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="SSH Port" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
                             <NumericUpDown Grid.Column="1" Value="{Binding PublicRelayViewModel.SshPort}"
                                            Minimum="1" Maximum="65535" Width="120" HorizontalAlignment="Left"/>
                         </Grid>
 
                         <!-- User -->
                         <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="User" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="User" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="1" Text="{Binding PublicRelayViewModel.SshUser}" Watermark="SSH 用户名"/>
                         </Grid>
 
                         <!-- Password -->
                         <Grid ColumnDefinitions="100,*" IsVisible="{Binding PublicRelayViewModel.ShowPasswordFields}">
-                            <TextBlock Grid.Column="0" Text="Password" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="Password" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="1" Text="{Binding PublicRelayViewModel.SshPassword}" PasswordChar="•"/>
                         </Grid>
 
                         <!-- SSH Key -->
                         <Grid ColumnDefinitions="100,*" IsVisible="{Binding PublicRelayViewModel.ShowKeyFields}">
-                            <TextBlock Grid.Column="0" Text="Key Path" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="Key Path" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
                             <DockPanel Grid.Column="1">
                                 <Button DockPanel.Dock="Right"
                                         Content="浏览..."
@@ -185,27 +187,27 @@
 
                         <!-- Remote Path -->
                         <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="Remote Path" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="Remote Path" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="1" Text="{Binding PublicRelayViewModel.SshRemotePath}" Watermark="~/starttooler"/>
                         </Grid>
 
                         <!-- HTTP Port -->
                         <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="HTTP Port" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="HTTP Port" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
                             <NumericUpDown Grid.Column="1" Value="{Binding PublicRelayViewModel.HttpPort}"
                                            Minimum="1" Maximum="65535" Width="120" HorizontalAlignment="Left"/>
                         </Grid>
 
                         <!-- TCP Port -->
                         <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="TCP Port" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="TCP Port" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
                             <NumericUpDown Grid.Column="1" Value="{Binding PublicRelayViewModel.TcpPort}"
                                            Minimum="1" Maximum="65535" Width="120" HorizontalAlignment="Left"/>
                         </Grid>
 
                         <!-- Public Host -->
                         <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="公网 Host" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="公网 Host" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="1" Text="{Binding PublicRelayViewModel.PublicHost}" Watermark="留空用 SSH Host"/>
                         </Grid>
 
@@ -226,13 +228,13 @@
 
                         <!-- 状态 / 待下载 / 错误 / 日志 -->
                         <Grid ColumnDefinitions="100,*" Margin="0,8,0,0">
-                            <TextBlock Grid.Column="0" Text="状态" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="状态" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1" Text="{Binding PublicRelayViewModel.RelayStateText}"
                                        FontSize="13" Foreground="{DynamicResource Text.Secondary}" VerticalAlignment="Center"/>
                         </Grid>
 
                         <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="待下载" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="待下载" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1"
                                        FontSize="13" Foreground="{DynamicResource Text.Secondary}" VerticalAlignment="Center">
                                 <Run Text="{Binding PublicRelayViewModel.PendingCount}"/>
@@ -241,7 +243,7 @@
                         </Grid>
 
                         <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="错误" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="错误" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1" Text="{Binding PublicRelayViewModel.LastError}"
                                        FontSize="12" Foreground="{DynamicResource State.Error}"
                                        TextWrapping="Wrap" VerticalAlignment="Center"
@@ -249,7 +251,7 @@
                         </Grid>
 
                         <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="日志" FontSize="13" VerticalAlignment="Top" Margin="0,6,0,0"/>
+                            <TextBlock Grid.Column="0" Text="日志" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Top" Margin="0,6,0,0"/>
                             <TextBlock Grid.Column="1" Text="{Binding PublicRelayViewModel.LastLog}"
                                        FontSize="12" Foreground="{DynamicResource Text.Secondary}"
                                        TextWrapping="Wrap" Margin="0,6,0,0"/>

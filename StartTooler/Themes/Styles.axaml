@@ -164,6 +164,58 @@
         <Setter Property="BorderBrush" Value="{DynamicResource Accent.Stellar}"/>
     </Style>
 
+    <!-- TextBox 样式（深色主题） -->
+    <Style Selector="TextBox">
+        <Setter Property="Background" Value="{DynamicResource Bg.Surface}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Text.Primary}"/>
+        <Setter Property="CaretBrush" Value="{DynamicResource Accent.Stellar}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Bg.Divider}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="{DynamicResource Radius.Medium}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Padding" Value="12,8"/>
+    </Style>
+    <Style Selector="TextBox:pointerover">
+        <Setter Property="BorderBrush" Value="{DynamicResource Accent.Stellar}"/>
+    </Style>
+    <Style Selector="TextBox:focus">
+        <Setter Property="BorderBrush" Value="{DynamicResource Accent.Stellar}"/>
+    </Style>
+    <Style Selector="TextBox:disabled">
+        <Setter Property="Opacity" Value="0.5"/>
+    </Style>
+    <Style Selector="TextBox /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="{DynamicResource Bg.Surface}"/>
+    </Style>
+
+    <!-- NumericUpDown 样式（深色主题） -->
+    <Style Selector="NumericUpDown">
+        <Setter Property="Background" Value="{DynamicResource Bg.Surface}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Text.Primary}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Bg.Divider}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="{DynamicResource Radius.Medium}"/>
+        <Setter Property="FontSize" Value="13"/>
+    </Style>
+    <Style Selector="NumericUpDown:pointerover">
+        <Setter Property="BorderBrush" Value="{DynamicResource Accent.Stellar}"/>
+    </Style>
+
+    <!-- Expander 样式（深色主题：header + 容器都用主题色） -->
+    <Style Selector="Expander">
+        <Setter Property="Background" Value="{DynamicResource Bg.Surface}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Text.Primary}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Bg.Divider}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="{DynamicResource Radius.Medium}"/>
+    </Style>
+    <Style Selector="Expander ToggleButton#PART_toggle /template/ Border">
+        <Setter Property="Background" Value="{DynamicResource Bg.Surface}"/>
+    </Style>
+    <Style Selector="Expander ToggleButton#PART_toggle:pointerover /template/ Border">
+        <Setter Property="Background" Value="{DynamicResource Bg.Hover}"/>
+    </Style>
+
     <!-- ScrollViewer 样式 -->
     <Style Selector="ScrollViewer">
         <Setter Property="Background" Value="Transparent"/>
