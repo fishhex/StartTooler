@@ -22,6 +22,10 @@
                         Classes.active="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.Oss}}"
                         Command="{Binding SelectTabCommand}"
                         CommandParameter="{x:Static vm:SettingsTab.Oss}"/>
+                <Button Content="AI" Classes="tab-item"
+                        Classes.active="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.Anthropic}}"
+                        Command="{Binding SelectTabCommand}"
+                        CommandParameter="{x:Static vm:SettingsTab.Anthropic}"/>
             </StackPanel>
         </Border>
 
@@ -248,6 +252,75 @@
                                  Watermark="astrophotos/（可选）"
                                  VerticalAlignment="Center"
                                  Width="360" HorizontalAlignment="Left"/>
+                    </Grid>
+                </Border>
+            </StackPanel>
+
+            <!-- Anthropic AI Tab -->
+            <StackPanel IsVisible="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.Anthropic}}">
+                <!-- 说明横幅 -->
+                <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Anthropic Claude 大模型配置"
+                                   FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}"/>
+                        <TextBlock TextWrapping="Wrap"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource Text.Secondary}"
+                                   Text="在 https://console.anthropic.com/ 申请 API Key。Key 仅保存在本地 config.db，不上传任何服务。BaseUrl 默认官方，私有化部署时改这里。"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- API Key -->
+                <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*" Height="64">
+                        <TextBlock Grid.Column="0" Text="API Key"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding AnthropicApiKey, Mode=TwoWay}"
+                                 FontSize="13"
+                                 PasswordChar="•"
+                                 Watermark="sk-ant-..."
+                                 VerticalAlignment="Center"
+                                 Width="420" HorizontalAlignment="Left"/>
+                    </Grid>
+                </Border>
+
+                <!-- Base URL -->
+                <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*" Height="64">
+                        <TextBlock Grid.Column="0" Text="Base URL"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding AnthropicBaseUrl, Mode=TwoWay}"
+                                 FontSize="13"
+                                 Watermark="https://api.anthropic.com"
+                                 VerticalAlignment="Center"
+                                 Width="420" HorizontalAlignment="Left"/>
+                    </Grid>
+                </Border>
+
+                <!-- Model -->
+                <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*" Height="64">
+                        <TextBlock Grid.Column="0" Text="模型"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="1"
+                                  Width="420"
+                                  HorizontalAlignment="Left"
+                                  VerticalAlignment="Center"
+                                  IsEditable="True"
+                                  Text="{Binding AnthropicModel, Mode=TwoWay}">
+                            <ComboBoxItem Content="claude-3-5-sonnet-latest"/>
+                            <ComboBoxItem Content="claude-3-5-haiku-latest"/>
+                            <ComboBoxItem Content="claude-3-opus-latest"/>
+                            <ComboBoxItem Content="claude-3-5-sonnet-20241022"/>
+                            <ComboBoxItem Content="claude-3-5-haiku-20241022"/>
+                            <ComboBoxItem Content="claude-3-opus-20240229"/>
+                        </ComboBox>
                     </Grid>
                 </Border>
             </StackPanel>

@@ -11,7 +11,8 @@ namespace StartTooler.ViewModels;
 public enum SettingsTab
 {
     General,
-    Oss
+    Oss,
+    Anthropic
 }
 
 public partial class SettingsViewModel : ObservableObject
@@ -28,6 +29,9 @@ public partial class SettingsViewModel : ObservableObject
 
     // OSS Tab 快照
     private OssConfig? _lastSavedOss;
+
+    // Anthropic Tab 快照
+    private AnthropicConfig? _lastSavedAnthropic;
 
     private ProjectConfig? _projectConfig;
     private bool _isInitialized;
@@ -50,6 +54,11 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string ossAccessKey = "";
     [ObservableProperty] private string ossSecretKey = "";
     [ObservableProperty] private string ossPathPrefix = "";
+
+    // Anthropic Tab 字段
+    [ObservableProperty] private string anthropicApiKey = "";
+    [ObservableProperty] private string anthropicBaseUrl = "https://api.anthropic.com";
+    [ObservableProperty] private string anthropicModel = "claude-3-5-sonnet-latest";
 
     // 状态
     [ObservableProperty] private bool isDirty;
@@ -100,6 +109,11 @@ public partial class SettingsViewModel : ObservableObject
         _lastSavedOss = ossConfig;
         LoadOssFromConfig(ossConfig);
 
+        // 加载 Anthropic 配置
+        var anthropicConfig = await _configService.GetOrCreateAsync<AnthropicConfig>(ConfigKeys.Anthropic);
+        _lastSavedAnthropic = anthropicConfig;
+        LoadAnthropicFromConfig(anthropicConfig);
+
         // 最后才标记初始化完成
         _isInitialized = true;
         IsDirty = false;
@@ -125,6 +139,23 @@ public partial class SettingsViewModel : ObservableObject
             AccessKeyId = OssAccessKey ?? "",
             AccessKeySecret = OssSecretKey ?? "",
             PathPrefix = OssPathPrefix ?? ""
+        };
+    }
+
+    private void LoadAnthropicFromConfig(AnthropicConfig cfg)
+    {
+        AnthropicApiKey = cfg.ApiKey ?? "";
+        AnthropicBaseUrl = string.IsNullOrWhiteSpace(cfg.BaseUrl) ? "https://api.anthropic.com" : cfg.BaseUrl;
+        AnthropicModel = string.IsNullOrWhiteSpace(cfg.Model) ? "claude-3-5-sonnet-latest" : cfg.Model;
+    }
+
+    private AnthropicConfig BuildAnthropicConfigFromVm()
+    {
+        return new AnthropicConfig
+        {
+            ApiKey = AnthropicApiKey?.Trim() ?? "",
+            BaseUrl = string.IsNullOrWhiteSpace(AnthropicBaseUrl) ? "https://api.anthropic.com" : AnthropicBaseUrl.Trim(),
+            Model = string.IsNullOrWhiteSpace(AnthropicModel) ? "claude-3-5-sonnet-latest" : AnthropicModel.Trim(),
         };
     }
 
@@ -192,6 +223,24 @@ public partial class SettingsViewModel : ObservableObject
         RecomputeDirty();
     }
 
+    partial void OnAnthropicApiKeyChanged(string value)
+    {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+    }
+
+    partial void OnAnthropicBaseUrlChanged(string value)
+    {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+    }
+
+    partial void OnAnthropicModelChanged(string value)
+    {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+    }
+
     private void RecomputeDirty()
     {
         if (!_isInitialized) return;
@@ -204,7 +253,10 @@ public partial class SettingsViewModel : ObservableObject
         var currentOss = BuildOssConfigFromVm();
         var ossDirty = !OssConfigEquals(currentOss, _lastSavedOss);
 
-        var newValue = generalDirty || ossDirty;
+        var currentAnthropic = BuildAnthropicConfigFromVm();
+        var anthropicDirty = !AnthropicConfigEquals(currentAnthropic, _lastSavedAnthropic);
+
+        var newValue = generalDirty || ossDirty || anthropicDirty;
         if (IsDirty != newValue)
         {
             IsDirty = newValue;
@@ -220,6 +272,14 @@ public partial class SettingsViewModel : ObservableObject
             && a.AccessKeyId == b.AccessKeyId
             && a.AccessKeySecret == b.AccessKeySecret
             && a.PathPrefix == b.PathPrefix;
+    }
+
+    private static bool AnthropicConfigEquals(AnthropicConfig a, AnthropicConfig? b)
+    {
+        if (b == null) return false;
+        return a.ApiKey == b.ApiKey
+            && a.BaseUrl == b.BaseUrl
+            && a.Model == b.Model;
     }
 
     public void DiscardChanges()
@@ -243,6 +303,12 @@ public partial class SettingsViewModel : ObservableObject
         if (_lastSavedOss != null)
         {
             LoadOssFromConfig(_lastSavedOss);
+        }
+
+        // 恢复 Anthropic
+        if (_lastSavedAnthropic != null)
+        {
+            LoadAnthropicFromConfig(_lastSavedAnthropic);
         }
 
         IsDirty = false;
@@ -411,12 +477,17 @@ public partial class SettingsViewModel : ObservableObject
             var ossConfig = BuildOssConfigFromVm();
             await _configService.SetAsync(ConfigKeys.Oss, ossConfig);
 
+            // 保存 Anthropic 配置
+            var anthropicConfig = BuildAnthropicConfigFromVm();
+            await _configService.SetAsync(ConfigKeys.Anthropic, anthropicConfig);
+
             // 刷新快照
             _lastSavedDirectory = SelectedProjectDirectory;
             _lastSavedTheme = SelectedTheme;
             _lastSavedFfmpegPath = trimmedFfmpegPath;
             _lastSavedFfprobePath = trimmedFfprobePath;
             _lastSavedOss = ossConfig;
+            _lastSavedAnthropic = anthropicConfig;
 
             IsDirty = false;
             StatusMessage = "已保存";

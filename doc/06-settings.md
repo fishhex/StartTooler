@@ -39,6 +39,9 @@ UI:
 | OSS | `OssAccessKey` | `string` | `OssConfig.AccessKeyId` |
 | OSS | `OssSecretKey` | `string` | `OssConfig.AccessKeySecret` |
 | OSS | `OssPathPrefix` | `string` | `OssConfig.PathPrefix` |
+| AI (Anthropic) | `AnthropicApiKey` | `string` (UI PasswordChar 隐藏) | `AnthropicConfig.ApiKey` |
+| AI (Anthropic) | `AnthropicBaseUrl` | `string` (默认 `https://api.anthropic.com`) | `AnthropicConfig.BaseUrl` |
+| AI (Anthropic) | `AnthropicModel` | `string` (默认 `claude-3-5-sonnet-latest`，ComboBox 可编辑) | `AnthropicConfig.Model` |
 
 > `OssProvider` 在 UI 占位 `ComboBox` 渲染 "Aliyun" 那一项，**不参与 dirty 不参与持久化** —— `BuildOssConfigFromVm` 硬编码 `Provider = "Aliyun"`（`SettingsViewModel.cs:121`）。
 
@@ -46,7 +49,7 @@ UI:
 
 | 字段 | 类型 | 含义 |
 |---|---|---|
-| `SelectedTab` | `SettingsTab { General, Oss }` | 当前 Tab |
+| `SelectedTab` | `SettingsTab { General, Oss, Anthropic }` | 当前 Tab |
 | `IsDirty` | `bool` | 与 `_lastSaved*` 快照不一致 |
 | `IsSaving` | `bool` | Save 进行中（按钮 disabled） |
 | `StatusMessage` | `string?` | "已保存" / "FFmpeg 文件不存在" 等反馈 |
@@ -62,9 +65,12 @@ private string? _lastSavedFfprobePath;
 
 // OSS
 private OssConfig? _lastSavedOss;
+
+// Anthropic
+private AnthropicConfig? _lastSavedAnthropic;
 ```
 
-`OnSelectedProjectDirectoryChanged` 等 10 个 `[NotifyPropertyChangedFor]` 触发 `RecomputeDirty()`，逐字段对比 `_lastSaved*`。
+`OnSelectedProjectDirectoryChanged` 等 13 个 `[NotifyPropertyChangedFor]` 触发 `RecomputeDirty()`，逐字段对比 `_lastSaved*`。
 
 ---
 
@@ -83,6 +89,8 @@ MainWindowVM.InitializeAsync() → await settings.InitializeAsync()
   ├─ RecentDirectories.Clear() + foreach add
   ├─ ossConfig = _configService.GetOrCreateAsync<OssConfig>(ConfigKeys.Oss)
   │     └─ _lastSavedOss = ossConfig; LoadOssFromConfig(ossConfig)
+  ├─ anthropicConfig = _configService.GetOrCreateAsync<AnthropicConfig>(ConfigKeys.Anthropic)
+  │     └─ _lastSavedAnthropic = anthropicConfig; LoadAnthropicFromConfig(anthropicConfig)
   └─ _isInitialized = true; IsDirty = false; StatusMessage = null
 ```
 
@@ -106,7 +114,9 @@ var generalDirty = SelectedProjectDirectory != _lastSavedDirectory
                 || FfprobePath != _lastSavedFfprobePath;
 var currentOss = BuildOssConfigFromVm();
 var ossDirty = !OssConfigEquals(currentOss, _lastSavedOss);
-var newValue = generalDirty || ossDirty;
+var currentAnthropic = BuildAnthropicConfigFromVm();
+var anthropicDirty = !AnthropicConfigEquals(currentAnthropic, _lastSavedAnthropic);
+var newValue = generalDirty || ossDirty || anthropicDirty;
 if (IsDirty != newValue) IsDirty = newValue;
 ```
 
@@ -118,7 +128,7 @@ if (IsDirty != newValue) IsDirty = newValue;
 - 是 → `DialogHelper.ShowConfirmAsync(window, title, message, "丢弃", "取消")`
 - 用户点「丢弃」→ `SettingsViewModel.DiscardChanges()` → 字段全部复位
 
-`DiscardChanges`（`SettingsViewModel.cs:225-250`）：从 `_lastSaved*` 还原所有字段（General + OSS）。
+`DiscardChanges`（`SettingsViewModel.cs:225-250`）：从 `_lastSaved*` 还原所有字段（General + OSS + Anthropic）。
 
 ### 3.4 Browse 命令
 

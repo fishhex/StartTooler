@@ -76,6 +76,7 @@ public static class ConfigKeys {
 | `app` | `AppConfig`（主题 + FFmpeg / FFprobe 路径） | `Services/AppConfig.cs` |
 | `oss` | `OssConfig`（凭据 + region + bucket + pathPrefix） | `Services/OssConfig.cs` |
 | `publicRelay` | `PublicRelayConfig`（SSH 配置 + 端口 + 远程路径 + 架构） | `Services/PublicRelayConfig.cs` |
+| `anthropic` | `AnthropicConfig`（ApiKey + BaseUrl + Model，Anthropic Claude 大模型配置） | `Services/AnthropicConfig.cs` |
 
 ### 2.5 读写模式
 
