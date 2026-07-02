@@ -47,6 +47,8 @@
 | 35 | `System.Diagnostics.Trace` vs `Debug` | 跨模块 | — |
 | 36 | `starttooler.db` 早期实验死文件 | 数据 | 02 |
 | 37 | `Process.Dispose()` 后读 `ExitCode` 抛 "No process is associated with this object" | 公网 | 08 |
+| 38 | `ConfigService.InitializeDatabase` 迁移顺序错：新装抛 `no such table: config` | 数据 | 02 |
+| 39 | `GalleryView` 中心空态 StackPanel 叠加（`HasNoProject` / `IsEmpty` 不互斥） | UI | 05, 09 |
 
 ---
 
@@ -370,6 +372,36 @@
   }
   Trace.WriteLine($"exit={exitCode}");
   ```
+
+### 38. `ConfigService.InitializeDatabase` 迁移顺序错：新装抛 `no such table: config`
+- **情境**：`ConfigService` 启动时跑 schema 迁移，兼容老 PascalCase `Config` 表 + `Key/Value/UpdatedAt` 列，要照顾三种库状态：全空（新装）、PascalCase 老库、snake_case 老库
+- **坑**：原 `InitializeDatabase` 顺序是 **`MigrateLegacyTableNameIfNeeded` → `MigrateSchemaToSnakeCaseIfNeeded` → `CREATE TABLE IF NOT EXISTS config`**。两个 `Migrate*` 方法内部都假设 `config` 表已存在（直接调 `ALTER TABLE config ADD COLUMN ...` / `RENAME COLUMN`），**新装场景**走到第二步时表还没建 → `SqliteException (0x80004005): SQLite Error 1: 'no such table: config'` → `MainWindowViewModel..ctor` 半路抛 → 整个 App 启动即崩，窗口一片空白。堆栈最深一层是 `SqliteHelpers.cs:97`（`AddColumnIfMissing` 里的 `ALTER TABLE`），表面像「迁移代码写得不对」，实际是**调用顺序错了**
+- **解决**（`ConfigService.cs:30-52` + `SqliteHelpers.cs:43-53`）：
+  - 把 `CREATE TABLE IF NOT EXISTS config (...)` 提到第 1 步，三步变成「先建表 → 老表名迁移 → 列名迁移」
+  - 三种库状态都通过：
+    - 新装：第 1 步建表；第 2 步无 `Config` 早退；第 3 步所有列已存在全部 return
+    - PascalCase 老库：`CREATE IF NOT EXISTS` 看到 `Config` 已存在不动；第 2 步走两步 RENAME `Config → Config_temp → config`；第 3 步改列名 + 补 `created_at`
+    - snake_case 老库：第 1 步 no-op；第 2/3 步无老列全部 return
+  - 顺手给 `MigrateSchemaToSnakeCaseIfNeeded` 入口加 `TableExists(connection, "config")` 守卫，**未来如果别的代码路径绕过 `InitializeDatabase` 直接调迁移**（比如新建 service 复用这个 helper），不会再次炸同样的错
+  - `SqliteMigrations.TableExists` 新 helper 走 `SELECT 1 FROM sqlite_master WHERE type='table' AND name=@name LIMIT 1`，大小写不敏感（参数化避 NOCASE 坑）
+- **教训**：
+  - **schema 迁移假设的"前置状态"必须显式建立** —— 不是「我觉得上一步会建好」，而是「我这一步开始前自己保证」。`CREATE TABLE IF NOT EXISTS` 永远是幂等的，应该在所有迁移之前先跑一遍；迁移代码自己也要做存在性守卫（防御性编程）
+  - **启动时崩溃的调试优先级**：先看最深一层的 SQL/IO 调用，往往不是逻辑写错，而是调用顺序错。`SqliteException` 第一反应查「这个表/列**为什么不存在**」，而不是「这段 SQL 哪里写错」
+  - **新装 vs 升级的兼容性测试要分开跑** —— 老库迁移代码经常漏掉空库场景，因为开发机上从来不是空库。建议：每次加迁移都至少跑两次「干净 ApplicationData 启动」+「旧版数据升级启动」
+
+### 39. `GalleryView` 中心空态 StackPanel 叠加（`HasNoProject` / `IsEmpty` 不互斥）
+- **情境**：`GalleryView.axaml` 的右侧 Grid 里有 4 个互斥容器叠在 (0,0)：无项目空态（StackPanel）、无媒体空态（StackPanel）、加载中（ScrollViewer）、正常列表（ScrollViewer），每个都靠 `HorizontalAlignment=Center / VerticalAlignment=Center` 居中
+- **坑**：`HasNoProject = string.IsNullOrEmpty(_projectPath)`（路径空）和 `IsEmpty = !IsLoadingDateGroups && DateGroups.Count == 0`（已加载完但无日期组）**默认都 true**（首次启动 `_projectPath = null`、DateGroups 空、IsLoadingDateGroups=false）。Avalonia Grid 子元素默认都放 (0,0) 单元格，**两个 Visible=true 的 StackPanel 都会绘制并居中** → 4 行 TextBlock + 2 个星形图标全挤在屏幕中心，逐字叠加 → 视觉上看起来像「中文乱码」或「字体豆腐」，截图排查很容易误判为字体 fallback 问题（实际是中文正常渲染，只是叠在一起产生重影）
+- **解决**（`GalleryViewModel.cs:70`）：在 `IsEmpty` 条件里加 `!HasNoProject &&` 守卫，让两个空态在 VM 层互斥：
+  ```csharp
+  public bool IsEmpty => !HasNoProject && !IsLoadingDateGroups && DateGroups.Count == 0;
+  ```
+  优先级：没项目 → 只显示「请先选择项目目录」；有项目但没媒体 → 显示「未发现媒体文件」；互不重叠
+- **教训**：
+  - **Avalonia Grid 子元素默认都在 (0,0)，靠 `HorizontalAlignment/VerticalAlignment` 定位时没有「互斥」语义** —— 不像 WPF `Grid` 配合 `Visibility=Collapsed` 会"让出"位置。多个 Visible 切换的子元素如果只想显示一个，**互斥逻辑必须在 VM/Selector 层显式声明**，不能靠 XAML 自动
+  - **诊断建议**：截图里看到"文字重影/乱码/豆腐"先别急着改字体，先看是不是多个容器在 (0,0) 叠加。可以临时把所有空态改成不同颜色的 Border 看叠加情况
+  - **长期方案**（未实施，v0.3+ 考虑）：把空态/内容改用 `ContentControl` + `DataTemplateSelector`，VM 暴露一个 `EmptyState` enum（None / NoProject / NoMedia / Loading），Selector 选唯一一个 template 渲染，从根本上消除叠加可能。或者用 `Grid.RowDefinitions` 把每个状态分到独立单元格（不推荐：动态改 RowDefinitions 麻烦）
+  - **Grid (0,0) 叠加检测**：下次加新空态前先在 dev 状态把每个 StackPanel 的 Background 设成不同荧光色，启动看一眼是不是有重叠 —— 比看截图准
 
 ---
 
