@@ -56,7 +56,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string ossPathPrefix = "";
 
     // AI Tab 字段
-    [ObservableProperty] private AIProvider aiProvider = AIProvider.Anthropic;
+    [ObservableProperty] private AIProviderMeta aiProviderMeta = AIProviderCatalog.Get(AIProvider.Anthropic);
     [ObservableProperty] private string aiApiKey = "";
     [ObservableProperty] private string aiBaseUrl = "";
     [ObservableProperty] private string aiModel = "";
@@ -64,6 +64,9 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>当前厂商的推荐模型列表，驱动 Model 下拉的 ItemsSource。</summary>
     [ObservableProperty] private System.Collections.Generic.IReadOnlyList<string> aiRecommendedModels
         = AIProviderCatalog.Get(AIProvider.Anthropic).RecommendedModels;
+
+    /// <summary>对外暴露的当前厂商枚举（兼容 AIConfig 序列化、其它调用方）。</summary>
+    public AIProvider AiProvider => AiProviderMeta?.Provider ?? AIProvider.Anthropic;
 
     /// <summary>所有厂商元数据列表，驱动厂商 ComboBox 的 ItemsSource。</summary>
     public System.Collections.Generic.IReadOnlyList<AIProviderMeta> AiProviders => AIProviderCatalog.All;
@@ -161,7 +164,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         var meta = AIProviderCatalog.Get(provider);
 
-        AiProvider = provider;
+        AiProviderMeta = meta;
         AiApiKey = cfg.ApiKey ?? "";
 
         // BaseUrl：空 → 用厂商默认；非空 → 用保存值（用户可能填了私有化部署 / 代理）
@@ -176,10 +179,10 @@ public partial class SettingsViewModel : ObservableObject
 
     private AIConfig BuildAIConfigFromVm()
     {
-        var meta = AIProviderCatalog.Get(AiProvider);
+        var meta = AiProviderMeta ?? AIProviderCatalog.Get(AIProvider.Anthropic);
         return new AIConfig
         {
-            Provider = AiProvider.ToString(),
+            Provider = meta.Provider.ToString(),
             ApiKey = (AiApiKey ?? "").Trim(),
             BaseUrl = string.IsNullOrWhiteSpace(AiBaseUrl) ? meta.DefaultBaseUrl : AiBaseUrl.Trim(),
             Model = string.IsNullOrWhiteSpace(AiModel) ? meta.DefaultModel : AiModel.Trim(),
@@ -250,17 +253,17 @@ public partial class SettingsViewModel : ObservableObject
         RecomputeDirty();
     }
 
-    partial void OnAiProviderChanged(AIProvider value)
+    partial void OnAiProviderMetaChanged(AIProviderMeta value)
     {
         if (!_isInitialized) return;
 
-        var meta = AIProviderCatalog.Get(value);
+        var meta = value;
         // 切换厂商：刷新推荐列表 + 同步默认 BaseUrl
         AiRecommendedModels = meta.RecommendedModels;
 
         // BaseUrl：自定义厂商不强制填；其它厂商一律同步默认（不同厂商 URL 不同，
         // 留旧值没有意义）。用户可随后手动改。
-        if (value != AIProvider.Custom)
+        if (meta.Provider != AIProvider.Custom)
         {
             AiBaseUrl = meta.DefaultBaseUrl;
         }
