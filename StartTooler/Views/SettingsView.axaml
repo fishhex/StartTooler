@@ -338,6 +338,32 @@
                                   Text="{Binding AiModel, Mode=TwoWay}"/>
                     </Grid>
                 </Border>
+
+                <!-- 测试连接 -->
+                <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*" Height="64">
+                        <TextBlock Grid.Column="0" Text="连接测试"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <Button Content="{Binding AiTestState, Converter={x:Static converters:AITestConverters.StateToButtonText}}"
+                                    Command="{Binding TestConnectionCommand}"
+                                    Padding="16,8"
+                                    FontSize="12"
+                                    Classes="primary"/>
+                            <TextBlock Text="{Binding AiTestState, Converter={x:Static converters:AITestConverters.StateToIcon}}"
+                                       FontSize="14" FontWeight="Bold"
+                                       Foreground="{Binding AiTestState, Converter={x:Static converters:AITestConverters.StateToBrush}}"
+                                       VerticalAlignment="Center"
+                                       IsVisible="{Binding AiTestState, Converter={x:Static converters:AITestConverters.IsResultVisible}}"/>
+                            <TextBlock Text="{Binding AiTestMessage}"
+                                       FontSize="12"
+                                       Foreground="{Binding AiTestState, Converter={x:Static converters:AITestConverters.StateToBrush}}"
+                                       VerticalAlignment="Center"
+                                       IsVisible="{Binding AiTestState, Converter={x:Static converters:AITestConverters.IsResultVisible}}"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
             </StackPanel>
          </Panel>
         </Border>

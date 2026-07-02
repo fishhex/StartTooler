@@ -1,0 +1,93 @@
+# AI 厂商/模型默认清单
+#
+# 加载优先级：
+#   1) 用户覆盖文件：~/Library/Application Support/StartTooler/ai-providers.toml
+#      （macOS / Linux 走 XDG；Windows 走 %APPDATA%\StartTooler\）
+#   2) 本文件（embedded fallback，永远跟代码一起发布）
+#
+# 字段名跟 C# DTO（Services/AIProviderConfig.cs）PascalCase 对齐 —— Tomlyn
+# 默认 PropertyNamingPolicy=null + 大小写敏感，所以 key 写错会被静默忽略。
+#
+# 字段说明：
+#   Key               — 枚举字符串，必须跟 AIProvider enum 一致（不匹配的条目会被忽略 + warning）
+#   DisplayName       — UI 显示名
+#   DefaultBaseUrl    — 厂商默认 API 端点；Custom 留空
+#   Protocol          — "Anthropic"（Anthropic 原生） / "OpenAI"（OpenAI 兼容，/v1/chat/completions）
+#   RecommendedModels — UI 下拉推荐列表
+#   DefaultModel      — 切换厂商时默认填入的模型（通常 = RecommendedModels[0]）
+#   ModelWatermark    — Model 输入框 placeholder；空字符串 = 不显示
+#
+# 改完生效需要重启 app（MVP 不做热更）。
+Version = 1
+
+[[Providers]]
+Key = "Anthropic"
+DisplayName = "Anthropic (Claude)"
+DefaultBaseUrl = "https://api.anthropic.com"
+Protocol = "Anthropic"
+RecommendedModels = ["claude-sonnet-4-5", "claude-opus-4-1", "claude-3-5-haiku-latest"]
+DefaultModel = "claude-sonnet-4-5"
+ModelWatermark = ""
+
+[[Providers]]
+Key = "OpenAI"
+DisplayName = "OpenAI (GPT)"
+DefaultBaseUrl = "https://api.openai.com/v1"
+Protocol = "OpenAI"
+RecommendedModels = ["gpt-4o", "gpt-4o-mini", "o1", "o1-mini"]
+DefaultModel = "gpt-4o"
+ModelWatermark = ""
+
+[[Providers]]
+Key = "Gemini"
+DisplayName = "Google Gemini"
+DefaultBaseUrl = "https://generativelanguage.googleapis.com/v1beta"
+Protocol = "OpenAI"
+RecommendedModels = ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"]
+DefaultModel = "gemini-2.0-flash"
+ModelWatermark = ""
+
+[[Providers]]
+Key = "DeepSeek"
+DisplayName = "DeepSeek"
+DefaultBaseUrl = "https://api.deepseek.com"
+Protocol = "OpenAI"
+RecommendedModels = ["deepseek-chat", "deepseek-reasoner"]
+DefaultModel = "deepseek-chat"
+ModelWatermark = ""
+
+[[Providers]]
+Key = "Zhipu"
+DisplayName = "智谱 GLM"
+DefaultBaseUrl = "https://open.bigmodel.cn/api/paas/v4"
+Protocol = "OpenAI"
+RecommendedModels = ["glm-4-plus", "glm-4-flash", "glm-4-air"]
+DefaultModel = "glm-4-plus"
+ModelWatermark = ""
+
+[[Providers]]
+Key = "Moonshot"
+DisplayName = "月之暗面 Kimi"
+DefaultBaseUrl = "https://api.moonshot.cn/v1"
+Protocol = "OpenAI"
+RecommendedModels = ["kimi-k2-0711-preview", "moonshot-v1-128k", "moonshot-v1-32k"]
+DefaultModel = "moonshot-v1-128k"
+ModelWatermark = ""
+
+[[Providers]]
+Key = "DashScope"
+DisplayName = "阿里云百炼 (Qwen)"
+DefaultBaseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+Protocol = "OpenAI"
+RecommendedModels = ["qwen-max", "qwen-plus", "qwen-turbo"]
+DefaultModel = "qwen-max"
+ModelWatermark = ""
+
+[[Providers]]
+Key = "Custom"
+DisplayName = "自定义"
+DefaultBaseUrl = ""
+Protocol = "OpenAI"
+RecommendedModels = []
+DefaultModel = ""
+ModelWatermark = "请输入模型名"

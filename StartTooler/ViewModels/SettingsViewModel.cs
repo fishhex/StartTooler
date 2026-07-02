@@ -15,6 +15,15 @@ public enum SettingsTab
     AI
 }
 
+/// <summary>AI 连接测试状态。驱动 View 里按钮文字 + 结果图标颜色。</summary>
+public enum AITestState
+{
+    Idle,
+    Running,
+    Ok,
+    Failed,
+}
+
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly IDirectoryPickerService _directoryPicker;
@@ -75,6 +84,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool isDirty;
     [ObservableProperty] private bool isSaving;
     [ObservableProperty] private string? statusMessage;
+
+    // AI 连接测试状态
+    [ObservableProperty] private AITestState aiTestState = AITestState.Idle;
+    [ObservableProperty] private string? aiTestMessage;
 
     public SettingsViewModel(IDirectoryPickerService directoryPicker, IFilePickerService filePicker, IConfigService configService)
     {
@@ -282,18 +295,21 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (!_isInitialized) return;
         RecomputeDirty();
+        TestConnectionCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnAiBaseUrlChanged(string value)
     {
         if (!_isInitialized) return;
         RecomputeDirty();
+        TestConnectionCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnAiModelChanged(string value)
     {
         if (!_isInitialized) return;
         RecomputeDirty();
+        TestConnectionCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnAiRecommendedModelsChanged(System.Collections.Generic.IReadOnlyList<string> value)
@@ -446,6 +462,56 @@ public partial class SettingsViewModel : ObservableObject
 
         while (RecentDirectories.Count > 10)
             RecentDirectories.RemoveAt(RecentDirectories.Count - 1);
+    }
+
+    /// <summary>
+    /// 测试当前 AI 配置是否打通真服务。发一个极小请求验证：
+    ///   BaseUrl 可达 + 鉴权通过 + Model 存在。
+    /// 跑测试时按钮 disabled，避免重复点。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanTestConnection))]
+    private async Task TestConnectionAsync()
+    {
+        var meta = AiProviderMeta;
+        if (meta == null) return;
+
+        AiTestState = AITestState.Running;
+        AiTestMessage = "测试中…";
+
+        try
+        {
+            var result = await AITester.TestAsync(
+                meta,
+                AiApiKey ?? "",
+                AiBaseUrl ?? "",
+                AiModel ?? "");
+
+            AiTestState = result.Success ? AITestState.Ok : AITestState.Failed;
+            AiTestMessage = result.Success
+                ? (string.IsNullOrEmpty(result.ProtocolNote) ? result.Message : $"{result.Message}（{result.ProtocolNote}）")
+                : result.Message;
+        }
+        catch (Exception ex)
+        {
+            AiTestState = AITestState.Failed;
+            AiTestMessage = $"测试异常：{ex.Message}";
+        }
+        finally
+        {
+            TestConnectionCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private bool CanTestConnection()
+        => _isInitialized
+           && AiTestState != AITestState.Running
+           && !string.IsNullOrWhiteSpace(AiApiKey)
+           && !string.IsNullOrWhiteSpace(AiBaseUrl)
+           && !string.IsNullOrWhiteSpace(AiModel);
+
+    partial void OnAiTestStateChanged(AITestState value)
+    {
+        TestConnectionCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand]

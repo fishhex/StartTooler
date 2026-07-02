@@ -5,12 +5,12 @@ namespace StartTooler.Services;
 /// <summary>
 /// AI 模型厂商枚举 + 元数据。
 ///
-/// 新增厂商只需：
-///   1. 在 enum 里加一项
-///   2. 在 <see cref="AIProviderMeta.All"/> 里登记 BaseUrl + 推荐模型列表
+/// 厂商元数据来源：<see cref="AIProviderLoader"/>（TOML 配置），不再硬编码。
+/// 改厂商/模型/默认 URL：编辑
+///   - 内置默认：Resources/ai-providers.default.toml（重编译生效）
+///   - 用户覆盖：~/Library/Application Support/StartTooler/ai-providers.toml（重启生效）
 ///
-/// UI 切厂商时，<see cref="StartTooler.ViewModels.SettingsViewModel"/> 会自动同步
-/// 默认 BaseUrl 和推荐 Model，用户可自由覆盖。
+/// 新增厂商：枚举加一项 + TOML 里加一条；只改枚举不写 TOML 会导致该厂商被 loader 跳过 + warning。
 /// </summary>
 public enum AIProvider
 {
@@ -24,12 +24,17 @@ public enum AIProvider
     Custom,
 }
 
+/// <summary>
+/// 单个厂商的元数据。来源 TOML，由 <see cref="AIProviderLoader"/> 构造。
+/// UI / VM 只读，不需要写。
+/// </summary>
 public sealed record AIProviderMeta(
     AIProvider Provider,
     string DisplayName,
     string DefaultBaseUrl,
     IReadOnlyList<string> RecommendedModels,
-    string? ModelWatermark)
+    string? ModelWatermark,
+    ProtocolKind ProtocolKind)
 {
     /// <summary>
     /// UI 切厂商时给的"默认值"。
@@ -39,58 +44,15 @@ public sealed record AIProviderMeta(
     public string DefaultModel => RecommendedModels.Count > 0 ? RecommendedModels[0] : "";
 }
 
+/// <summary>
+/// 厂商元数据目录。数据来自 <see cref="AIProviderLoader"/>（TOML）。
+/// </summary>
 public static class AIProviderCatalog
 {
-    public static readonly IReadOnlyList<AIProviderMeta> All = new AIProviderMeta[]
-    {
-        new(AIProvider.Anthropic,
-            "Anthropic (Claude)",
-            "https://api.anthropic.com",
-            new[] { "claude-sonnet-4-5", "claude-opus-4-1", "claude-3-5-haiku-latest" },
-            "claude-sonnet-4-5"),
-
-        new(AIProvider.OpenAI,
-            "OpenAI (GPT)",
-            "https://api.openai.com/v1",
-            new[] { "gpt-4o", "gpt-4o-mini", "o1", "o1-mini" },
-            "gpt-4o"),
-
-        new(AIProvider.Gemini,
-            "Google Gemini",
-            "https://generativelanguage.googleapis.com/v1beta",
-            new[] { "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash" },
-            "gemini-2.0-flash"),
-
-        new(AIProvider.DeepSeek,
-            "DeepSeek",
-            "https://api.deepseek.com",
-            new[] { "deepseek-chat", "deepseek-reasoner" },
-            "deepseek-chat"),
-
-        new(AIProvider.Zhipu,
-            "智谱 GLM",
-            "https://open.bigmodel.cn/api/paas/v4",
-            new[] { "glm-4-plus", "glm-4-flash", "glm-4-air" },
-            "glm-4-plus"),
-
-        new(AIProvider.Moonshot,
-            "月之暗面 Kimi",
-            "https://api.moonshot.cn/v1",
-            new[] { "kimi-k2-0711-preview", "moonshot-v1-128k", "moonshot-v1-32k" },
-            "moonshot-v1-128k"),
-
-        new(AIProvider.DashScope,
-            "阿里云百炼 (Qwen)",
-            "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            new[] { "qwen-max", "qwen-plus", "qwen-turbo" },
-            "qwen-max"),
-
-        new(AIProvider.Custom,
-            "自定义",
-            "",
-            System.Array.Empty<string>(),
-            "请输入模型名"),
-    };
+    /// <summary>
+    /// 所有厂商元数据。Lazy 加载：首次访问触发 TOML 读盘 + 解析，之后命中缓存。
+    /// </summary>
+    public static IReadOnlyList<AIProviderMeta> All => AIProviderLoader.Load();
 
     public static AIProviderMeta Get(AIProvider provider)
     {
