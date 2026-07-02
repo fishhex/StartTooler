@@ -344,6 +344,7 @@ public partial class PublicRelayViewModel : ObservableObject, IDisposable
     {
         UpdateRelayStateText();
         StopCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(IsPublicRelayRunning));
     }
 
     private void OnRelayPendingCountChanged(int count)

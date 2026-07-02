@@ -219,8 +219,9 @@
                             <Button Content="启动" Classes="primary-button"
                                     Command="{Binding PublicRelayViewModel.StartCommand}"
                                     IsEnabled="{Binding PublicRelayViewModel.IsProjectPathSet}"/>
-                            <Button Content="停止" Classes="secondary-button"
-                                    Command="{Binding PublicRelayViewModel.StopCommand}"/>
+                            <Button Content="停止" Classes="primary-button"
+                                    Command="{Binding PublicRelayViewModel.StopCommand}"
+                                    IsVisible="{Binding PublicRelayViewModel.IsPublicRelayRunning}"/>
                         </StackPanel>
 
                         <!-- 状态 / 待下载 / 错误 / 日志 -->
