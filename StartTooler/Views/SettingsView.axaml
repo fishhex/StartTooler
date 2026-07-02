@@ -23,9 +23,9 @@
                         Command="{Binding SelectTabCommand}"
                         CommandParameter="{x:Static vm:SettingsTab.Oss}"/>
                 <Button Content="AI" Classes="tab-item"
-                        Classes.active="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.Anthropic}}"
+                        Classes.active="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.AI}}"
                         Command="{Binding SelectTabCommand}"
-                        CommandParameter="{x:Static vm:SettingsTab.Anthropic}"/>
+                        CommandParameter="{x:Static vm:SettingsTab.AI}"/>
             </StackPanel>
         </Border>
 
@@ -256,19 +256,40 @@
                 </Border>
             </StackPanel>
 
-            <!-- Anthropic AI Tab -->
-            <StackPanel IsVisible="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.Anthropic}}">
+            <!-- AI Tab -->
+            <StackPanel IsVisible="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.AI}}">
                 <!-- 说明横幅 -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
                     <StackPanel Spacing="6">
-                        <TextBlock Text="Anthropic Claude 大模型配置"
+                        <TextBlock Text="AI 大模型配置"
                                    FontSize="13" FontWeight="SemiBold"
                                    Foreground="{DynamicResource Text.Primary}"/>
                         <TextBlock TextWrapping="Wrap"
                                    FontSize="12"
                                    Foreground="{DynamicResource Text.Secondary}"
-                                   Text="在 https://console.anthropic.com/ 申请 API Key。Key 仅保存在本地 config.db，不上传任何服务。BaseUrl 默认官方，私有化部署时改这里。"/>
+                                   Text="选择厂商后会自动填入该厂商的默认 Base URL 和推荐模型。模型字段可直接下拉选择推荐值，也可手动输入任意模型名（厂商发布新模型不用等 UI 更新）。所有信息仅保存在本地 config.db，不上传任何服务。"/>
                     </StackPanel>
+                </Border>
+
+                <!-- 厂商 -->
+                <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*" Height="64">
+                        <TextBlock Grid.Column="0" Text="厂商"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="1"
+                                  Width="280"
+                                  HorizontalAlignment="Left"
+                                  VerticalAlignment="Center"
+                                  ItemsSource="{Binding AiProviders}"
+                                  SelectedItem="{Binding AiProvider, Mode=TwoWay}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayName}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </Grid>
                 </Border>
 
                 <!-- API Key -->
@@ -278,10 +299,10 @@
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
                         <TextBox Grid.Column="1"
-                                 Text="{Binding AnthropicApiKey, Mode=TwoWay}"
+                                 Text="{Binding AiApiKey, Mode=TwoWay}"
                                  FontSize="13"
                                  PasswordChar="•"
-                                 Watermark="sk-ant-..."
+                                 Watermark="请输入 API Key"
                                  VerticalAlignment="Center"
                                  Width="420" HorizontalAlignment="Left"/>
                     </Grid>
@@ -294,15 +315,15 @@
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
                         <TextBox Grid.Column="1"
-                                 Text="{Binding AnthropicBaseUrl, Mode=TwoWay}"
+                                 Text="{Binding AiBaseUrl, Mode=TwoWay}"
                                  FontSize="13"
-                                 Watermark="https://api.anthropic.com"
+                                 Watermark="切换厂商会自动填入默认值"
                                  VerticalAlignment="Center"
                                  Width="420" HorizontalAlignment="Left"/>
                     </Grid>
                 </Border>
 
-                <!-- Model -->
+                <!-- Model（可编辑下拉：推荐值 + 自由输入） -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
                     <Grid ColumnDefinitions="160,*" Height="64">
                         <TextBlock Grid.Column="0" Text="模型"
@@ -313,14 +334,8 @@
                                   HorizontalAlignment="Left"
                                   VerticalAlignment="Center"
                                   IsEditable="True"
-                                  Text="{Binding AnthropicModel, Mode=TwoWay}">
-                            <ComboBoxItem Content="claude-3-5-sonnet-latest"/>
-                            <ComboBoxItem Content="claude-3-5-haiku-latest"/>
-                            <ComboBoxItem Content="claude-3-opus-latest"/>
-                            <ComboBoxItem Content="claude-3-5-sonnet-20241022"/>
-                            <ComboBoxItem Content="claude-3-5-haiku-20241022"/>
-                            <ComboBoxItem Content="claude-3-opus-20240229"/>
-                        </ComboBox>
+                                  ItemsSource="{Binding AiRecommendedModels}"
+                                  Text="{Binding AiModel, Mode=TwoWay}"/>
                     </Grid>
                 </Border>
             </StackPanel>

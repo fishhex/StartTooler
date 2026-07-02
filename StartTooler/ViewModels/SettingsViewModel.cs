@@ -12,7 +12,7 @@ public enum SettingsTab
 {
     General,
     Oss,
-    Anthropic
+    AI
 }
 
 public partial class SettingsViewModel : ObservableObject
@@ -30,8 +30,8 @@ public partial class SettingsViewModel : ObservableObject
     // OSS Tab 快照
     private OssConfig? _lastSavedOss;
 
-    // Anthropic Tab 快照
-    private AnthropicConfig? _lastSavedAnthropic;
+    // AI Tab 快照
+    private AIConfig? _lastSavedAI;
 
     private ProjectConfig? _projectConfig;
     private bool _isInitialized;
@@ -55,10 +55,18 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string ossSecretKey = "";
     [ObservableProperty] private string ossPathPrefix = "";
 
-    // Anthropic Tab 字段
-    [ObservableProperty] private string anthropicApiKey = "";
-    [ObservableProperty] private string anthropicBaseUrl = "https://api.anthropic.com";
-    [ObservableProperty] private string anthropicModel = "claude-3-5-sonnet-latest";
+    // AI Tab 字段
+    [ObservableProperty] private AIProvider aiProvider = AIProvider.Anthropic;
+    [ObservableProperty] private string aiApiKey = "";
+    [ObservableProperty] private string aiBaseUrl = "";
+    [ObservableProperty] private string aiModel = "";
+
+    /// <summary>当前厂商的推荐模型列表，驱动 Model 下拉的 ItemsSource。</summary>
+    [ObservableProperty] private System.Collections.Generic.IReadOnlyList<string> aiRecommendedModels
+        = AIProviderCatalog.Get(AIProvider.Anthropic).RecommendedModels;
+
+    /// <summary>所有厂商元数据列表，驱动厂商 ComboBox 的 ItemsSource。</summary>
+    public System.Collections.Generic.IReadOnlyList<AIProviderMeta> AiProviders => AIProviderCatalog.All;
 
     // 状态
     [ObservableProperty] private bool isDirty;
@@ -109,10 +117,10 @@ public partial class SettingsViewModel : ObservableObject
         _lastSavedOss = ossConfig;
         LoadOssFromConfig(ossConfig);
 
-        // 加载 Anthropic 配置
-        var anthropicConfig = await _configService.GetOrCreateAsync<AnthropicConfig>(ConfigKeys.Anthropic);
-        _lastSavedAnthropic = anthropicConfig;
-        LoadAnthropicFromConfig(anthropicConfig);
+        // 加载 AI 配置（v1 起从 "ai" key 读；旧 "anthropic" key 不再读）
+        var aiConfig = await _configService.GetOrCreateAsync<AIConfig>(ConfigKeys.AI);
+        _lastSavedAI = aiConfig;
+        LoadAIFromConfig(aiConfig);
 
         // 最后才标记初始化完成
         _isInitialized = true;
@@ -142,20 +150,39 @@ public partial class SettingsViewModel : ObservableObject
         };
     }
 
-    private void LoadAnthropicFromConfig(AnthropicConfig cfg)
+    private void LoadAIFromConfig(AIConfig cfg)
     {
-        AnthropicApiKey = cfg.ApiKey ?? "";
-        AnthropicBaseUrl = string.IsNullOrWhiteSpace(cfg.BaseUrl) ? "https://api.anthropic.com" : cfg.BaseUrl;
-        AnthropicModel = string.IsNullOrWhiteSpace(cfg.Model) ? "claude-3-5-sonnet-latest" : cfg.Model;
+        // Provider 字符串 → 枚举（兼容未来枚举值重排/废弃）
+        AIProvider provider = AIProvider.Anthropic;
+        if (!string.IsNullOrWhiteSpace(cfg.Provider)
+            && System.Enum.TryParse<AIProvider>(cfg.Provider, ignoreCase: true, out var parsed))
+        {
+            provider = parsed;
+        }
+        var meta = AIProviderCatalog.Get(provider);
+
+        AiProvider = provider;
+        AiApiKey = cfg.ApiKey ?? "";
+
+        // BaseUrl：空 → 用厂商默认；非空 → 用保存值（用户可能填了私有化部署 / 代理）
+        AiBaseUrl = string.IsNullOrWhiteSpace(cfg.BaseUrl) ? meta.DefaultBaseUrl : cfg.BaseUrl;
+
+        // Model：空 → 用厂商推荐第一个；非空 → 用保存值
+        AiModel = string.IsNullOrWhiteSpace(cfg.Model) ? meta.DefaultModel : cfg.Model;
+
+        // 刷新推荐列表
+        AiRecommendedModels = meta.RecommendedModels;
     }
 
-    private AnthropicConfig BuildAnthropicConfigFromVm()
+    private AIConfig BuildAIConfigFromVm()
     {
-        return new AnthropicConfig
+        var meta = AIProviderCatalog.Get(AiProvider);
+        return new AIConfig
         {
-            ApiKey = AnthropicApiKey?.Trim() ?? "",
-            BaseUrl = string.IsNullOrWhiteSpace(AnthropicBaseUrl) ? "https://api.anthropic.com" : AnthropicBaseUrl.Trim(),
-            Model = string.IsNullOrWhiteSpace(AnthropicModel) ? "claude-3-5-sonnet-latest" : AnthropicModel.Trim(),
+            Provider = AiProvider.ToString(),
+            ApiKey = (AiApiKey ?? "").Trim(),
+            BaseUrl = string.IsNullOrWhiteSpace(AiBaseUrl) ? meta.DefaultBaseUrl : AiBaseUrl.Trim(),
+            Model = string.IsNullOrWhiteSpace(AiModel) ? meta.DefaultModel : AiModel.Trim(),
         };
     }
 
@@ -223,20 +250,52 @@ public partial class SettingsViewModel : ObservableObject
         RecomputeDirty();
     }
 
-    partial void OnAnthropicApiKeyChanged(string value)
+    partial void OnAiProviderChanged(AIProvider value)
+    {
+        if (!_isInitialized) return;
+
+        var meta = AIProviderCatalog.Get(value);
+        // 切换厂商：刷新推荐列表 + 同步默认 BaseUrl
+        AiRecommendedModels = meta.RecommendedModels;
+
+        // BaseUrl：自定义厂商不强制填；其它厂商一律同步默认（不同厂商 URL 不同，
+        // 留旧值没有意义）。用户可随后手动改。
+        if (value != AIProvider.Custom)
+        {
+            AiBaseUrl = meta.DefaultBaseUrl;
+        }
+        else
+        {
+            AiBaseUrl = "";
+        }
+
+        // Model 同步到推荐列表第一个（不同厂商模型名不能混用）
+        AiModel = meta.DefaultModel;
+
+        RecomputeDirty();
+    }
+
+    partial void OnAiApiKeyChanged(string value)
     {
         if (!_isInitialized) return;
         RecomputeDirty();
     }
 
-    partial void OnAnthropicBaseUrlChanged(string value)
+    partial void OnAiBaseUrlChanged(string value)
     {
         if (!_isInitialized) return;
         RecomputeDirty();
     }
 
-    partial void OnAnthropicModelChanged(string value)
+    partial void OnAiModelChanged(string value)
     {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+    }
+
+    partial void OnAiRecommendedModelsChanged(System.Collections.Generic.IReadOnlyList<string> value)
+    {
+        // 推荐列表变了，触发 IsDirty 重算（因为 Dirty 比的是 BaseUrl/Model 等字段值）
         if (!_isInitialized) return;
         RecomputeDirty();
     }
@@ -253,10 +312,10 @@ public partial class SettingsViewModel : ObservableObject
         var currentOss = BuildOssConfigFromVm();
         var ossDirty = !OssConfigEquals(currentOss, _lastSavedOss);
 
-        var currentAnthropic = BuildAnthropicConfigFromVm();
-        var anthropicDirty = !AnthropicConfigEquals(currentAnthropic, _lastSavedAnthropic);
+        var currentAI = BuildAIConfigFromVm();
+        var aiDirty = !AIConfigEquals(currentAI, _lastSavedAI);
 
-        var newValue = generalDirty || ossDirty || anthropicDirty;
+        var newValue = generalDirty || ossDirty || aiDirty;
         if (IsDirty != newValue)
         {
             IsDirty = newValue;
@@ -274,10 +333,11 @@ public partial class SettingsViewModel : ObservableObject
             && a.PathPrefix == b.PathPrefix;
     }
 
-    private static bool AnthropicConfigEquals(AnthropicConfig a, AnthropicConfig? b)
+    private static bool AIConfigEquals(AIConfig a, AIConfig? b)
     {
         if (b == null) return false;
-        return a.ApiKey == b.ApiKey
+        return a.Provider == b.Provider
+            && a.ApiKey == b.ApiKey
             && a.BaseUrl == b.BaseUrl
             && a.Model == b.Model;
     }
@@ -305,10 +365,10 @@ public partial class SettingsViewModel : ObservableObject
             LoadOssFromConfig(_lastSavedOss);
         }
 
-        // 恢复 Anthropic
-        if (_lastSavedAnthropic != null)
+        // 恢复 AI
+        if (_lastSavedAI != null)
         {
-            LoadAnthropicFromConfig(_lastSavedAnthropic);
+            LoadAIFromConfig(_lastSavedAI);
         }
 
         IsDirty = false;
@@ -477,9 +537,9 @@ public partial class SettingsViewModel : ObservableObject
             var ossConfig = BuildOssConfigFromVm();
             await _configService.SetAsync(ConfigKeys.Oss, ossConfig);
 
-            // 保存 Anthropic 配置
-            var anthropicConfig = BuildAnthropicConfigFromVm();
-            await _configService.SetAsync(ConfigKeys.Anthropic, anthropicConfig);
+            // 保存 AI 配置
+            var aiConfig = BuildAIConfigFromVm();
+            await _configService.SetAsync(ConfigKeys.AI, aiConfig);
 
             // 刷新快照
             _lastSavedDirectory = SelectedProjectDirectory;
@@ -487,7 +547,7 @@ public partial class SettingsViewModel : ObservableObject
             _lastSavedFfmpegPath = trimmedFfmpegPath;
             _lastSavedFfprobePath = trimmedFfprobePath;
             _lastSavedOss = ossConfig;
-            _lastSavedAnthropic = anthropicConfig;
+            _lastSavedAI = aiConfig;
 
             IsDirty = false;
             StatusMessage = "已保存";
