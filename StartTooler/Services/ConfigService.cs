@@ -32,13 +32,8 @@ public class ConfigService : IConfigService
         using var connection = new SqliteConnection(_connectionString);
         connection.Open();
 
-        // 兼容路径：PascalCase 表名 Config → config（10-trap-book.md §5）
-        MigrateLegacyTableNameIfNeeded(connection);
-
-        // 兼容路径：PascalCase 列名 Key/Value/UpdatedAt → snake_case + 加 created_at
-        // 详见 02-data-layer.md §11
-        MigrateSchemaToSnakeCaseIfNeeded(connection);
-
+        // 1) 先确保 config 表存在。新装场景：建表；老 PascalCase 库场景：IF NOT EXISTS 不会动
+        //    已存在的 Config 表，留给下一步改名处理；snake_case 老库：no-op。
         var command = connection.CreateCommand();
         command.CommandText = @"
             CREATE TABLE IF NOT EXISTS config (
@@ -48,6 +43,13 @@ public class ConfigService : IConfigService
                 updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             )";
         command.ExecuteNonQuery();
+
+        // 2) 兼容路径：PascalCase 表名 Config → config（10-trap-book.md §5）
+        MigrateLegacyTableNameIfNeeded(connection);
+
+        // 3) 兼容路径：PascalCase 列名 Key/Value/UpdatedAt → snake_case + 加 created_at
+        //    详见 02-data-layer.md §11
+        MigrateSchemaToSnakeCaseIfNeeded(connection);
     }
 
     private static void MigrateLegacyTableNameIfNeeded(SqliteConnection connection)
@@ -81,6 +83,10 @@ public class ConfigService : IConfigService
     /// </summary>
     private static void MigrateSchemaToSnakeCaseIfNeeded(SqliteConnection connection)
     {
+        // 兜底：如果调用方没经过 InitializeDatabase 直接进到这里（例如未来从别的入口走），
+        // config 表可能还不存在，下面的 ALTER 操作会报 no such table。这里直接早退。
+        if (!Data.SqliteMigrations.TableExists(connection, "config")) return;
+
         Data.SqliteMigrations.RenameColumnIfExists(connection, "config", "Key", "key");
         Data.SqliteMigrations.RenameColumnIfExists(connection, "config", "Value", "value");
         Data.SqliteMigrations.RenameColumnIfExists(connection, "config", "UpdatedAt", "updated_at");

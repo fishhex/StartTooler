@@ -67,7 +67,7 @@ public partial class GalleryViewModel : ObservableObject
     public bool IsBatchActionEnabled => IsMultiSelectMode && SelectedFiles.Count > 0 && !IsUploading;
     public string? ProjectPath => _projectPath;
     public bool HasNoProject => string.IsNullOrEmpty(_projectPath);
-    public bool IsEmpty => !IsLoadingDateGroups && DateGroups.Count == 0;
+    public bool IsEmpty => !HasNoProject && !IsLoadingDateGroups && DateGroups.Count == 0;
 
     public GalleryViewModel(
         IMediaRepository mediaRepo,

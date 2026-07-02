@@ -40,6 +40,16 @@ internal static class SqliteDateTime
 /// </summary>
 internal static class SqliteMigrations
 {
+    /// <summary>表是否存在（大小写不敏感，兼容 PascalCase 老库）。</summary>
+    public static bool TableExists(SqliteConnection connection, string table)
+    {
+        using var cmd = new SqliteCommand(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=@name LIMIT 1",
+            connection);
+        cmd.Parameters.AddWithValue("@name", table);
+        return cmd.ExecuteScalar() is not null;
+    }
+
     /// <summary>列是否存在（大小写不敏感，兼容 PascalCase 老库）。</summary>
     public static bool ColumnExists(SqliteConnection connection, string table, string column)
     {
