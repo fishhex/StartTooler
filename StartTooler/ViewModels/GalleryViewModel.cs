@@ -25,6 +25,8 @@ public partial class GalleryViewModel : ObservableObject
     private readonly IOssStorageFactory _ossFactory;
     private readonly IUploadJobRepository _uploadJobRepo;
     private readonly Func<Task<bool>>? _onOssNotConfigured;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNoProject))]
     private string? _projectPath;
     private CancellationTokenSource? _cts;
     private CancellationTokenSource? _uploadCts;
@@ -65,8 +67,7 @@ public partial class GalleryViewModel : ObservableObject
 
     public int SelectedCount => SelectedFiles.Count;
     public bool IsBatchActionEnabled => IsMultiSelectMode && SelectedFiles.Count > 0 && !IsUploading;
-    public string? ProjectPath => _projectPath;
-    public bool HasNoProject => string.IsNullOrEmpty(_projectPath);
+    public bool HasNoProject => string.IsNullOrEmpty(ProjectPath);
     public bool IsEmpty => !HasNoProject && !IsLoadingDateGroups && DateGroups.Count == 0;
 
     public GalleryViewModel(
@@ -130,16 +131,16 @@ public partial class GalleryViewModel : ObservableObject
 
             // 读项目配置
             var projectConfig = await _configService.GetOrCreateAsync<ProjectConfig>(ConfigKeys.Project);
-            _projectPath = projectConfig.CurrentDirectory;
+            ProjectPath = projectConfig.CurrentDirectory;
 
-            if (string.IsNullOrEmpty(_projectPath))
+            if (string.IsNullOrEmpty(ProjectPath))
             {
                 IsLoadingDateGroups = false;
                 return;
             }
 
             // 加载日期分组
-            var dateGroups = await _mediaRepo.GetDateGroupsAsync(_projectPath, ct);
+            var dateGroups = await _mediaRepo.GetDateGroupsAsync(ProjectPath, ct);
             foreach (var group in dateGroups)
             {
                 DateGroups.Add(new TimelineEntry(group.Date, group.Count));
@@ -192,20 +193,20 @@ public partial class GalleryViewModel : ObservableObject
 
     private async Task LoadDateAsync(TimelineEntry entry, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(_projectPath)) return;
+        if (string.IsNullOrEmpty(ProjectPath)) return;
 
         try
         {
             IsLoadingMedia = true;
 
-            var files = await _mediaRepo.GetByDateAsync(_projectPath, entry.Date, ct);
+            var files = await _mediaRepo.GetByDateAsync(ProjectPath, entry.Date, ct);
 
             // 反推 UploadStatus：upload_jobs 里有未完成 job 的 → Paused，否则按 IsUploaded
             // 单日最多几千条，直接全表扫成本可接受
             IReadOnlyList<UploadJob> jobs;
             try
             {
-                jobs = await _uploadJobRepo.GetInProgressAsync(_projectPath, ct);
+                jobs = await _uploadJobRepo.GetInProgressAsync(ProjectPath, ct);
             }
             catch
             {
@@ -256,7 +257,7 @@ public partial class GalleryViewModel : ObservableObject
     [RelayCommand]
     private async Task RefreshAsync()
     {
-        if (string.IsNullOrEmpty(_projectPath))
+        if (string.IsNullOrEmpty(ProjectPath))
         {
             return;
         }
@@ -281,10 +282,10 @@ public partial class GalleryViewModel : ObservableObject
 
         try
         {
-            var result = await _mediaRepo.ScanDirectoryAsync(_projectPath, progress, _cts?.Token ?? default);
+            var result = await _mediaRepo.ScanDirectoryAsync(ProjectPath, progress, _cts?.Token ?? default);
 
             ScanStatusMessage = "正在生成缩略图...";
-            await _mediaRepo.GenerateThumbnailsAsync(_projectPath, _thumbnailService, progress, _cts?.Token ?? default);
+            await _mediaRepo.GenerateThumbnailsAsync(ProjectPath, _thumbnailService, progress, _cts?.Token ?? default);
 
             await InitializeAsync();
 
