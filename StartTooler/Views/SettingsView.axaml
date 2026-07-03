@@ -8,6 +8,8 @@
     <UserControl.Resources>
         <converters:StringNullOrEmptyToTextConverter x:Key="NullOrEmptyToPlaceholder"/>
         <converters:StringNullOrEmptyToPlaceholderClassConverter x:Key="NullOrEmptyToPlaceholderClass"/>
+        <converters:BoolToPasswordCharConverter x:Key="BoolToPasswordChar"/>
+        <converters:BoolToApiKeyToggleTextConverter x:Key="BoolToApiKeyToggleText"/>
     </UserControl.Resources>
 
     <Grid RowDefinitions="Auto,Auto,Auto,*">
@@ -298,13 +300,41 @@
                         <TextBlock Grid.Column="0" Text="API Key"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="1"
-                                 Text="{Binding AiApiKey, Mode=TwoWay}"
-                                 FontSize="13"
-                                 PasswordChar="•"
-                                 Watermark="请输入 API Key"
-                                 VerticalAlignment="Center"
-                                 Width="420" HorizontalAlignment="Left"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <!-- TextBox 主体：PasswordChar 通过 converter 跟 IsAiApiKeyVisible 联动 -->
+                            <TextBox Text="{Binding AiApiKey, Mode=TwoWay}"
+                                     FontSize="13"
+                                     PasswordChar="{Binding IsAiApiKeyVisible, Converter={StaticResource BoolToPasswordChar}}"
+                                     Watermark="请输入 API Key"
+                                     VerticalAlignment="Center"
+                                     Width="420" HorizontalAlignment="Left"/>
+                            <!-- 眼睛切换按钮：图标 + 文字；按当前状态切显示/隐藏 -->
+                            <Button Command="{Binding ToggleAiApiKeyVisibilityCommand}"
+                                    Padding="10,6"
+                                    FontSize="12"
+                                    VerticalAlignment="Center"
+                                    ToolTip.Tip="切换 API Key 明文/隐藏"
+                                    Classes="secondary-button">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <!-- 默认隐藏 → 显示 Eye（点这个会变明文） -->
+                                    <Path Data="{DynamicResource Icon.Eye}"
+                                          Stretch="Uniform"
+                                          Width="14" Height="14"
+                                          Fill="{DynamicResource Text.Secondary}"
+                                          IsVisible="{Binding !IsAiApiKeyVisible}"/>
+                                    <!-- 当前明文 → 显示 EyeOff（点这个会再隐藏） -->
+                                    <Path Data="{DynamicResource Icon.EyeOff}"
+                                          Stretch="Uniform"
+                                          Width="14" Height="14"
+                                          Fill="{DynamicResource Text.Secondary}"
+                                          IsVisible="{Binding IsAiApiKeyVisible}"/>
+                                    <TextBlock Text="{Binding IsAiApiKeyVisible, Converter={StaticResource BoolToApiKeyToggleText}}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Text.Secondary}"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
                     </Grid>
                 </Border>
 

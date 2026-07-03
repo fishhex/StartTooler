@@ -89,6 +89,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private AITestState aiTestState = AITestState.Idle;
     [ObservableProperty] private string? aiTestMessage;
 
+    /// <summary>API Key 显示/隐藏切换。默认 false = 隐藏（密码框）。不持久化 —— UI 临时状态。</summary>
+    [ObservableProperty] private bool isAiApiKeyVisible;
+
     public SettingsViewModel(IDirectoryPickerService directoryPicker, IFilePickerService filePicker, IConfigService configService)
     {
         _directoryPicker = directoryPicker;
@@ -463,6 +466,13 @@ public partial class SettingsViewModel : ObservableObject
         while (RecentDirectories.Count > 10)
             RecentDirectories.RemoveAt(RecentDirectories.Count - 1);
     }
+
+    /// <summary>
+    /// 切换 API Key 明文/隐藏。纯 UI 状态，不进 Config，不进 dirty 计算。
+    /// 每次切换焦点不丢：直接 toggle PasswordChar 不重建 TextBox。
+    /// </summary>
+    [RelayCommand]
+    private void ToggleAiApiKeyVisibility() => IsAiApiKeyVisible = !IsAiApiKeyVisible;
 
     /// <summary>
     /// 测试当前 AI 配置是否打通真服务。发一个极小请求验证：
