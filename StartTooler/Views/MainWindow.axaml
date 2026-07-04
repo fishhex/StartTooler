@@ -121,6 +121,18 @@
                             IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"/>
 
                     <Button Classes="toolbar-button"
+                            Content="全选"
+                            Command="{Binding GalleryViewModel.SelectAllCommand}"
+                            ToolTip.Tip="全选当前日期"
+                            IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"/>
+
+                    <Button Classes="toolbar-button"
+                            Content="反选"
+                            Command="{Binding GalleryViewModel.InvertSelectionCommand}"
+                            ToolTip.Tip="反选当前日期"
+                            IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"/>
+
+                    <Button Classes="toolbar-button"
                             Content="批量上传"
                             Command="{Binding GalleryViewModel.BatchUploadCommand}"
                             IsEnabled="{Binding GalleryViewModel.IsBatchActionEnabled}"

@@ -87,6 +87,14 @@ public partial class GalleryViewModel : ObservableObject
         _uploadJobRepo = uploadJobRepo;
         _onOssNotConfigured = onOssNotConfigured;
         SelectedFiles.CollectionChanged += OnSelectedFilesChanged;
+        CurrentMediaFiles.CollectionChanged += OnCurrentMediaFilesChanged;
+    }
+
+    private void OnCurrentMediaFilesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        // CurrentMediaFiles 内容变化（全选/反选命令的可用性主要依赖它）
+        SelectAllCommand.NotifyCanExecuteChanged();
+        InvertSelectionCommand.NotifyCanExecuteChanged();
     }
 
     private void OnSelectedFilesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -328,6 +336,8 @@ public partial class GalleryViewModel : ObservableObject
         {
             SelectedFiles.Clear();
         }
+        SelectAllCommand.NotifyCanExecuteChanged();
+        InvertSelectionCommand.NotifyCanExecuteChanged();
     }
 
     // === v2.3 多选模式命令 ===
@@ -342,6 +352,84 @@ public partial class GalleryViewModel : ObservableObject
     private void ExitMultiSelect()
     {
         IsMultiSelectMode = false;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanSelectAll))]
+    private void SelectAll()
+    {
+        if (!IsMultiSelectMode) return;
+
+        BatchUpdateSelectedFiles(() =>
+        {
+            foreach (var mf in CurrentMediaFiles)
+            {
+                if (!SelectedFiles.Contains(mf))
+                {
+                    SelectedFiles.Add(mf);
+                }
+            }
+        });
+    }
+
+    private bool CanSelectAll() => IsMultiSelectMode && CurrentMediaFiles.Count > 0;
+
+    [RelayCommand(CanExecute = nameof(CanInvertSelection))]
+    private void InvertSelection()
+    {
+        if (!IsMultiSelectMode) return;
+
+        BatchUpdateSelectedFiles(() =>
+        {
+            foreach (var mf in CurrentMediaFiles)
+            {
+                if (SelectedFiles.Contains(mf))
+                {
+                    SelectedFiles.Remove(mf);
+                }
+                else
+                {
+                    SelectedFiles.Add(mf);
+                }
+            }
+        });
+    }
+
+    private bool CanInvertSelection() => IsMultiSelectMode && CurrentMediaFiles.Count > 0;
+
+    /// <summary>
+    /// 批量修改 SelectedFiles：先 unsubscribe CollectionChanged 抑制逐条同步，
+    /// 跑完 callback 后 re-subscribe，再手动把全部 mf.IsSelected 同步成与 SelectedFiles 一致，
+    /// 并触发一次 Reset 让 VM 的 SelectedCount / IsBatchActionEnabled 重新计算。
+    /// 避免逐条 Add/Remove 触发 N 次 PropertyChanged 让 UI 抖动。
+    /// </summary>
+    private void BatchUpdateSelectedFiles(Action mutate)
+    {
+        SelectedFiles.CollectionChanged -= OnSelectedFilesChanged;
+
+        try
+        {
+            mutate();
+        }
+        finally
+        {
+            SelectedFiles.CollectionChanged += OnSelectedFilesChanged;
+        }
+
+        // 手动同步 mf.IsSelected（基于 SelectedFiles 当前的真相）
+        foreach (var mf in CurrentMediaFiles)
+        {
+            var shouldBeSelected = SelectedFiles.Contains(mf);
+            if (mf.IsSelected != shouldBeSelected)
+            {
+                mf.IsSelected = shouldBeSelected;
+            }
+        }
+
+        // 通知 VM 自身的属性变化（SelectedCount / IsBatchActionEnabled）
+        OnSelectedFilesChanged(
+            SelectedFiles,
+            new System.Collections.Specialized.NotifyCollectionChangedEventArgs(
+                System.Collections.Specialized.NotifyCollectionChangedAction.Reset));
     }
 
     [RelayCommand]
