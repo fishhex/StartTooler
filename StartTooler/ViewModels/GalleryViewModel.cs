@@ -465,9 +465,22 @@ public partial class GalleryViewModel : ObservableObject
             return;
         }
 
-        var files = SelectedFiles.ToList();
+        var allSelected = SelectedFiles.ToList();
+        // 过滤已上传（IsUploaded 是 DB 持久化字段；进 Gallery 时由 LoadDateAsync 反推 UploadStatus=Uploaded）
+        var files = allSelected.Where(f => !f.IsUploaded).ToList();
+        var skipped = allSelected.Count - files.Count;
+
         ExitMultiSelect();
-        ShowToast($"开始上传 {files.Count} 个文件…");
+
+        if (files.Count == 0)
+        {
+            ShowToast($"所选 {skipped} 个文件均已上传，无需重复上传");
+            return;
+        }
+
+        ShowToast(skipped > 0
+            ? $"跳过 {skipped} 个已上传，开始上传 {files.Count} 个文件…"
+            : $"开始上传 {files.Count} 个文件…");
 
         var ossCfg = await GetOssConfigSnapshotAsync();
         await UploadManyAsync(files, storage, ossCfg);
