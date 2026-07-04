@@ -324,11 +324,14 @@ public sealed class AliyunOssStorage : IOssStorage, IDisposable
 /// 包一层 BoundedReadStream 后阿里云 SDK 读够 length 字节就会停。
 ///
 /// 关键不变量：inner 流的位置由调用方负责 seek 到正确 offset，
-/// 本类只负责「读够 N 字节就停」，不负责 seek。
+/// 本类只负责「读够 N 字节就停」，同时透传 inner 的 seekable 能力让阿里云 SDK
+/// 内部的 PartialWrapperStream 校验通过（之前 CanSeek=false 会触发
+/// "Base stream of PartialWrapperStream must be seekable" 报错）。
 /// </summary>
 internal sealed class BoundedReadStream : Stream
 {
     private readonly Stream _inner;
+    private readonly long _initialLength;
     private long _remaining;
 
     public BoundedReadStream(Stream inner, long length)
@@ -336,17 +339,25 @@ internal sealed class BoundedReadStream : Stream
         if (inner == null) throw new ArgumentNullException(nameof(inner));
         if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
         _inner = inner;
+        _initialLength = length;
         _remaining = length;
     }
 
     public override bool CanRead => true;
-    public override bool CanSeek => false;
+    public override bool CanSeek => _inner.CanSeek;
     public override bool CanWrite => false;
-    public override long Length => throw new NotSupportedException();
+    public override long Length => _initialLength;
     public override long Position
     {
-        get => throw new NotSupportedException();
-        set => throw new NotSupportedException();
+        get => _initialLength - _remaining;
+        set
+        {
+            if (value < 0 || value > _initialLength)
+                throw new ArgumentOutOfRangeException(nameof(value));
+            var delta = value - Position;
+            _inner.Seek(delta, SeekOrigin.Current);
+            _remaining -= delta;
+        }
     }
 
     public override int Read(byte[] buffer, int offset, int count)
@@ -359,7 +370,18 @@ internal sealed class BoundedReadStream : Stream
     }
 
     public override void Flush() { }
-    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override long Seek(long offset, SeekOrigin origin)
+    {
+        long newPos = origin switch
+        {
+            SeekOrigin.Begin => offset,
+            SeekOrigin.Current => Position + offset,
+            SeekOrigin.End => _initialLength + offset,
+            _ => throw new ArgumentException($"Unknown SeekOrigin: {origin}", nameof(origin)),
+        };
+        Position = newPos;
+        return newPos;
+    }
     public override void SetLength(long value) => throw new NotSupportedException();
     public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 }
