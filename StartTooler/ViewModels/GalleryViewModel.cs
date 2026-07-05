@@ -65,10 +65,55 @@ public partial class GalleryViewModel : ObservableObject
     partial void OnUploadCompletedCountChanged(int value) => OnPropertyChanged(nameof(UploadProgressText));
     partial void OnUploadTotalCountChanged(int value) => OnPropertyChanged(nameof(UploadProgressText));
 
+    // === v0.6 AI 打标状态（spec doc/12-ai-toolbar-buttons.md §3.3.1） ===
+    [ObservableProperty] private bool _isTagging;
+    [ObservableProperty] private int _tagCompletedCount;
+    [ObservableProperty] private int _tagTotalCount;
+    public string TagProgressText => IsTagging && TagTotalCount > 0
+        ? $"打标中 {TagCompletedCount}/{TagTotalCount}"
+        : string.Empty;
+    partial void OnIsTaggingChanged(bool value)
+    {
+        // IsTagging 影响：进度文本、批量操作可用性、多选/全选/反选命令的可用性
+        OnPropertyChanged(nameof(TagProgressText));
+        OnPropertyChanged(nameof(IsBatchActionEnabled));
+        SelectAllCommand.NotifyCanExecuteChanged();
+        InvertSelectionCommand.NotifyCanExecuteChanged();
+    }
+    partial void OnTagCompletedCountChanged(int value) => OnPropertyChanged(nameof(TagProgressText));
+    partial void OnTagTotalCountChanged(int value) => OnPropertyChanged(nameof(TagProgressText));
+
+    // === v0.6 分类与排序（spec §3.3.1） ===
+    [ObservableProperty] private GroupMode _groupMode = GroupMode.Date;
+    [ObservableProperty] private SortMode _sortMode = SortMode.TimeDesc;
+
+    /// <summary>
+    /// ComboBox SelectedIndex 桥接属性：0=时间↓ / 1=评分↓。
+    /// 比直接绑 SortMode 更适合 Avalonia ComboBoxItem 列表场景。
+    /// </summary>
+    public int SortModeIndex
+    {
+        get => SortMode == SortMode.TimeDesc ? 0 : 1;
+        set => SortMode = value == 0 ? SortMode.TimeDesc : SortMode.ScoreDesc;
+    }
+
+    /// <summary>左栏"标签"tab 用（本期 UI 不实现，方法先就绪）。</summary>
+    public ObservableCollection<(string Tag, int Count)> TagGroups { get; } = new();
+
     public int SelectedCount => SelectedFiles.Count;
-    public bool IsBatchActionEnabled => IsMultiSelectMode && SelectedFiles.Count > 0 && !IsUploading;
+    public bool IsBatchActionEnabled => IsMultiSelectMode && SelectedFiles.Count > 0 && !IsUploading && !IsTagging;
     public bool HasNoProject => string.IsNullOrEmpty(ProjectPath);
     public bool IsEmpty => !HasNoProject && !IsLoadingDateGroups && DateGroups.Count == 0;
+
+    // === v0.6 排序联动（spec §3.3.2） ===
+    // 切排序方式 → 重新加载当前日期文件，按新排序展示。
+    // 走 _cts 复用 SelectAsync 的 cancel-and-restart 模式，避免双发请求。
+    partial void OnSortModeChanged(SortMode value)
+    {
+        Trace.WriteLine($"[Gallery] SortMode 切换 → {value}, ProjectPath={ProjectPath ?? "(null)"}, SelectedDate={SelectedDate?.Date:yyyy-MM-dd}");
+        if (string.IsNullOrEmpty(ProjectPath) || SelectedDate == null) return;
+        _ = SelectAsync(SelectedDate);
+    }
 
     public GalleryViewModel(
         IMediaRepository mediaRepo,
@@ -207,7 +252,7 @@ public partial class GalleryViewModel : ObservableObject
         {
             IsLoadingMedia = true;
 
-            var files = await _mediaRepo.GetByDateAsync(ProjectPath, entry.Date, SortMode.TimeDesc, ct);
+            var files = await _mediaRepo.GetByDateAsync(ProjectPath, entry.Date, SortMode, ct);
 
             // 反推 UploadStatus：upload_jobs 里有未完成 job 的 → Paused，否则按 IsUploaded
             // 单日最多几千条，直接全表扫成本可接受
