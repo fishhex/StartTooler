@@ -85,9 +85,9 @@ ModelWatermark = ""
 
 [[Providers]]
 Key = "Custom"
-DisplayName = "自定义 (Anthropic 协议)"
+DisplayName = "自定义（需选协议）"
 DefaultBaseUrl = ""
-Protocol = "Anthropic"
+Protocol = ""  # v0.6 改：清空协议，强制用户在设置页 UI 显式选 OpenAI 或 Anthropic
 RecommendedModels = []
 DefaultModel = ""
 ModelWatermark = "请输入模型名"
