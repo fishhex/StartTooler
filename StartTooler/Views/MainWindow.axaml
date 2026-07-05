@@ -103,6 +103,18 @@
                     </StackPanel>
                 </Button>
 
+                <!-- 排序 ComboBox（v0.6）：刷新的左侧，Gallery 页常驻 -->
+                <ComboBox DockPanel.Dock="Right"
+                          SelectedIndex="{Binding GalleryViewModel.SortModeIndex}"
+                          IsVisible="{Binding IsGalleryPage}"
+                          ToolTip.Tip="排序方式"
+                          Classes="sort-combo"
+                          Width="80"
+                          Margin="0,0,8,0">
+                    <ComboBoxItem Content="时间↓"/>
+                    <ComboBoxItem Content="评分↓"/>
+                </ComboBox>
+
                 <!-- 左侧：动作按钮组（媒体页） -->
                 <StackPanel Orientation="Horizontal"
                             Spacing="8"
@@ -144,11 +156,31 @@
                             IsEnabled="{Binding GalleryViewModel.IsBatchActionEnabled}"
                             IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"/>
 
+                    <!-- v0.6: 开始AI 按钮（多选模式下显示，受 IsBatchActionEnabled 控制） -->
+                    <Button Classes="toolbar-button"
+                            Content="开始AI"
+                            Command="{Binding GalleryViewModel.BatchTagCommand}"
+                            IsEnabled="{Binding GalleryViewModel.IsBatchActionEnabled}"
+                            IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"/>
+
                     <!-- 上传中：取消按钮 + 进度文本 -->
                     <Button Classes="toolbar-button-danger"
                             Content="取消上传"
                             Command="{Binding GalleryViewModel.CancelUploadCommand}"
                             IsVisible="{Binding GalleryViewModel.IsUploading}"/>
+
+                    <!-- v0.6: 打标中：取消按钮 + 进度文本 -->
+                    <Button Classes="toolbar-button-danger"
+                            Content="取消打标"
+                            Command="{Binding GalleryViewModel.CancelTagCommand}"
+                            IsVisible="{Binding GalleryViewModel.IsTagging}"/>
+
+                    <TextBlock Text="{Binding GalleryViewModel.TagProgressText}"
+                               FontSize="12"
+                               Foreground="{DynamicResource Accent.Stellar}"
+                               VerticalAlignment="Center"
+                               Margin="8,0,0,0"
+                               IsVisible="{Binding GalleryViewModel.IsTagging}"/>
 
                     <TextBlock Text="{Binding GalleryViewModel.UploadProgressText}"
                                FontSize="12"
