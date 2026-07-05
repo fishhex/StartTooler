@@ -158,10 +158,17 @@
 
                     <!-- v0.6: 开始AI 按钮（多选模式下显示，受 IsBatchActionEnabled 控制） -->
                     <Button Classes="toolbar-button"
-                            Content="开始AI"
                             Command="{Binding GalleryViewModel.BatchTagCommand}"
                             IsEnabled="{Binding GalleryViewModel.IsBatchActionEnabled}"
-                            IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"/>
+                            IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Path Data="{DynamicResource Icon.Sparkles}"
+                                  Width="14" Height="14"
+                                  Fill="{DynamicResource Text.Secondary}"
+                                  Stretch="Uniform"/>
+                            <TextBlock Text="开始AI"/>
+                        </StackPanel>
+                    </Button>
 
                     <!-- 上传中：取消按钮 + 进度文本 -->
                     <Button Classes="toolbar-button-danger"
