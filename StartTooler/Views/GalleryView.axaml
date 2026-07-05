@@ -19,6 +19,10 @@
         <converters:FilePathToBitmapConverter x:Key="FilePathToBitmap"/>
         <converters:FilePathToVisibilityConverter x:Key="FilePathToVis"/>
         <converters:UploadStatusToVisibilityConverter x:Key="UploadStatusToVis"/>
+        <!-- v0.6: AI 打标 3 个 Converter（photo tile 评分角标/标签条/TagError） -->
+        <converters:ScoreToBrushConverter x:Key="ScoreToBrush"/>
+        <converters:ScoreToDisplayConverter x:Key="ScoreToDisplay"/>
+        <converters:TagsToShortTextConverter x:Key="TagsToShortText"/>
     </UserControl.Resources>
 
     <!-- v2.3: 工具栏已移至 MainWindow 全局工具栏 -->
