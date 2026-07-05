@@ -164,6 +164,14 @@
         <Setter Property="BorderBrush" Value="{DynamicResource Accent.Stellar}"/>
     </Style>
 
+    <!-- v0.6: 工具栏排序 ComboBox（紧凑型，比默认小一号贴工具栏） -->
+    <Style Selector="ComboBox.sort-combo">
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Height" Value="28"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    </Style>
+
     <!-- TextBox 样式（深色主题） -->
     <Style Selector="TextBox">
         <Setter Property="Background" Value="{DynamicResource Bg.Surface}"/>
