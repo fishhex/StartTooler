@@ -21,8 +21,8 @@
 | 新增 | 内容 |
 |---|---|
 | **数据层** | `media_files` 加 4 列：`tags` (TEXT JSON) / `score` (INTEGER 0-100) / `tagged_at` (INTEGER unix ms) / `tag_error` (TEXT) |
-| **服务层** | `AITagger`（图片 + 视频 vision 调用）、`AIVideoFrameExtractor`（ffmpeg 抽帧） |
-| **AI 配置** | AIProvider TOML 增加 `gemini` 协议分支 |
+| **服务层** | `AITagger`（图片 + 视频 vision 调用，OpenAI/Anthropic 双协议）、`AIVideoFrameExtractor`（ffmpeg 抽帧） |
+| **AI 配置** | `AIConfig` 加 `Protocol` 字段（运行时唯一权威）；TOML 仅渲染设置页；v0.6 移除 Gemini 原生协议 |
 | **VM 层** | `GroupMode` (Date/Tag)、`SortMode` (TimeDesc/ScoreDesc)、`TagGroups`、`IsTagging` / `TagCompletedCount` / `TagTotalCount` / `TagError` |
 | **UI** | 左栏顶部 TabControl [时间 \| 标签]、工具栏「批量打标 / 取消打标 / 排序」ComboBox、photo tile 评分角标、底部标签小角标条、右键 "AI 打标" |
 
@@ -51,7 +51,7 @@
 - ✅ DB 加 `tags` (TEXT JSON) / `score` (INTEGER 0-100) / `tagged_at` / `tag_error`，迁移幂等
 - ✅ 左栏顶部 [时间 \| 标签] tab 切换；切到「标签」显示 `TagGroups`
 - ✅ 工具栏排序 ComboBox：`时间↓` / `评分↓`；评分 null 排最后
-- ✅ photo tile 显示评分 + 标签；评分颜色梯度 ≥8 绿 / 6-8 黄 / <6 灰
+- ✅ photo tile 显示评分 + 标签；评分颜色梯度 ≥80 绿 / 60–79 黄 / <60 灰（原始 0–100 值）；Display 显示 `score/10` 一位小数（如 82 → "8.2"）
 - ✅ 失败文件保留 `tag_error`，UI 红色徽章 + hover tooltip
 - ✅ AI 未配置或 Key 缺失：toast 提示，不影响其他功能
 
@@ -117,7 +117,7 @@ SqliteMigrations.AddColumnIfMissing(connection, "media_files", "tag_error",
 
 ### 2.3 `MediaFile` 模型字段（`Data/MediaFile.cs`）
 
-新增 4 个持久化字段 + 1 个 UI 瞬时字段：
+新增 4 个持久化字段 + 2 个 UI 派生字段：
 
 ```csharp
 /// <summary>AI 打标标签列表（中文白名单）。DB 列 tags，JSON 序列化。</summary>
@@ -137,6 +137,9 @@ private string? _tagError;
 
 /// <summary>派生：评分是否有效（用于排序时空值处理）。</summary>
 public bool HasScore => Score.HasValue;
+
+/// <summary>派生：是否有打标结果（含仅标签无评分的情况，用于 UI 可见性绑定）。</summary>
+public bool HasTags => Tags is { Count: > 0 };
 ```
 
 **字段分类：**
@@ -147,6 +150,8 @@ public bool HasScore => Score.HasValue;
 | `Score` | `int?`（[ObservableProperty]） | DB 读出 | ✅ | 同上 |
 | `TaggedAt` | `long?` | DB 读出 | ✅ | 同上 |
 | `TagError` | `string?`（[ObservableProperty]） | DB 读出 | ✅ | 打标失败写 / 成功清 |
+| `HasScore` | `bool` | 派生 | ❌ | Score 变化联动 |
+| `HasTags` | `bool` | 派生 | ❌ | Tags 变化联动 |
 
 ### 2.4 Repository 接口扩展（`Data/IMediaRepository.cs`）
 
@@ -242,7 +247,7 @@ TagFileAsync (MediaType == Image)
   ├─ 3. base64 编码
   ├─ 4. 构造 messages：
   │     └─ content: [text prompt, image attachment]
-  ├─ 5. 发 HTTP 请求（按 ProtocolKind 路由，见 §3.4）
+  ├─ 5. 发 HTTP 请求（按 AIConfig.Protocol 字符串路由，见 §3.4）
   ├─ 6. 解析响应 JSON（见 §3.7）
   ├─ 7. 返回 TagResult
   └─ 失败 → 返回 TagFailure（IsFatal 由 HTTP 状态码决定）
@@ -304,6 +309,7 @@ ffmpeg -y -i input.avi \
 - `-frames:v 8`：限制输出 8 帧（thumbnail filter 默认会去重）
 - `-vsync vfr`：可变帧率，避免重复帧
 - `thumbnail=10000`：选色彩变化最大的，N=10000 是经验值（跟项目现 thumbnail 一致）
+- **实际帧数 < 8 的处理**：短视频或画面变化少时，thumbnail 去重后可能只产出 2-7 帧。此时直接发送实际帧数（≥1），Prompt 开头动态改为「正在分析一段天文视频的 N 帧采样」，不用硬编码"8 帧"
 
 **调用方式：** 通过 `FfmpegSnapshotRunner`（已存在，`Services/FfmpegSnapshotRunner.cs`）的扩展，或新建 `FfmpegFrameExtractorRunner`：
 
@@ -314,11 +320,17 @@ ffmpeg -y -i input.avi \
 
 ### 3.4 协议层
 
-按 `ProtocolKind` 路由。**Gemini 新增独立分支**（当前 TOML 把 Gemini 配成 OpenAI 协议，但 Gemini 原生 vision 用 `inline_data` 格式不同）。
+> **v0.6 实施边界声明**（用户拍板）：
+> - **`AIConfig` 是运行时唯一权威**（Provider / ApiKey / BaseUrl / Model / **Protocol** 五个字段）
+> - **TOML（`ai-providers.default.toml`）仅用于渲染设置页厂商下拉框**（DisplayName / DefaultBaseUrl / RecommendedModels / DefaultModel），不参与运行时
+> - **`AITagger` 不依赖 `AIProviderMeta` 透传**；只读 `AIConfig.Protocol` 字符串路由（"OpenAI" / "Anthropic"）
+> - **v0.6 不实现 Gemini 原生协议**（用户决策）；Gemini 厂商走 OpenAI 兼容分支（TOML `Protocol = "OpenAI"` + 用户在 UI 选 OpenAI 协议）
+
+按 `AIConfig.Protocol` 字符串路由。AITagger 编译期 switch `"OpenAI"` / `"Anthropic"`，未识别值抛 `NotSupportedException`。
 
 #### 3.4.1 OpenAI 兼容
 
-适配：`OpenAI` / `DeepSeek` / `Zhipu` / `Moonshot` / `DashScope` / `Custom (protocol=openai)`
+适配：`OpenAI` / `DeepSeek` / `Zhipu` / `Moonshot` / `DashScope` / `Gemini (protocol=openai)` / `Custom (protocol=openai)`
 
 ```http
 POST {baseUrl}/chat/completions
@@ -382,66 +394,6 @@ Content-Type: application/json
     "text": "{\"tags\": [\"星云\"], \"score\": 82}"
   }]
 }
-```
-
-#### 3.4.3 Gemini 原生（**v0.6 新增**）
-
-适配：`Gemini`（TOML 里 `Protocol = "gemini"`）
-
-```http
-POST {baseUrl}/v1beta/models/{model}:generateContent
-?key={apiKey}
-Content-Type: application/json
-
-{
-  "contents": [{
-    "parts": [
-      { "text": "<PROMPT>" },
-      { "inline_data": { "mime_type": "image/jpeg", "data": "<B64>" } },
-      ... 更多图片（视频场景）...
-    ]
-  }],
-  "generationConfig": { "maxOutputTokens": 300 }
-}
-```
-
-**响应解析：**
-```json
-{
-  "candidates": [{
-    "content": {
-      "parts": [{ "text": "{\"tags\": [\"星云\"], \"score\": 82}" }]
-    }
-  }]
-}
-```
-
-**TOML 配置更新（`Resources/ai-providers.default.toml`）：**
-
-```toml
-[[Providers]]
-Key = "Gemini"
-DisplayName = "Google Gemini"
-DefaultBaseUrl = "https://generativelanguage.googleapis.com"
-Protocol = "gemini"  # v0.6 改：原为 "openai"
-RecommendedModels = ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash-exp"]
-DefaultModel = "gemini-1.5-pro"
-```
-
-**`ProtocolKind` 枚举新增（`Services/AIProviderConfig.cs`）：**
-
-```csharp
-public enum ProtocolKind
-{
-    Anthropic,
-    OpenAI,
-    Gemini,  // v0.6 新增
-}
-```
-
-**`AIProviderLoader.ParseProtocol` 加分支：**
-```csharp
-"gemini" => ProtocolKind.Gemini,
 ```
 
 ### 3.5 中文 Prompt（图片版）
@@ -769,6 +721,8 @@ private bool CanCancelTag() => IsTagging;
 
 ### 4.4 单文件打标（右键菜单用）
 
+`TagSingle` 用独立的 `_tagCts`（不是共享的 `_cts`），避免用户切日期 / 刷新时取消打标。
+
 ```csharp
 [RelayCommand]
 private async Task TagSingle(MediaFile? file)
@@ -783,12 +737,13 @@ private async Task TagSingle(MediaFile? file)
     }
     var meta = AIProviderCatalog.Get(Enum.Parse<AIProvider>(aiCfg.Provider));
 
+    _tagCts = new CancellationTokenSource();
     IsTagging = true;
     TagTotalCount = 1;
     TagCompletedCount = 0;
     try
     {
-        var (result, failure) = await _aiTagger.TagFileAsync(file, aiCfg, meta, _cts?.Token ?? default);
+        var (result, failure) = await _aiTagger.TagFileAsync(file, aiCfg, meta, _tagCts.Token);
         if (failure != null)
         {
             file.TagError = TruncateError(failure.Reason);
@@ -808,6 +763,9 @@ private async Task TagSingle(MediaFile? file)
     }
     finally
     {
+        _tagCts?.Cancel();
+        _tagCts?.Dispose();
+        _tagCts = null;
         IsTagging = false;
     }
 }
@@ -1227,7 +1185,7 @@ partial void OnSortModeChanged(SortMode value)
 
 ### 7.4 设置页（`Views/SettingsView.axaml`）
 
-AI 配置页签加一个 "批量打标测试" 按钮（沿用现有 AITester，**不动 AITester 本体**）：
+AI 配置页签加一个 "批量打标测试" 按钮（沿用现有 AITester）：
 
 ```xml
 <Button Content="测试连接"
@@ -1235,7 +1193,9 @@ AI 配置页签加一个 "批量打标测试" 按钮（沿用现有 AITester，*
         Classes="primary-button"/>
 ```
 
-`TestAiCommand` 已在 v0.5 实现（调 AITester），不需要新逻辑。
+`TestAiCommand` 已在 v0.5 实现（调 AITester）。
+
+> **v0.6 实施变更**：`AITester` 改用 `AIConfig.Protocol` 字符串参数（不再依赖 `AIProviderMeta.ProtocolKind`），Gemini 走 OpenAI 兼容分支（用户在 UI 选 OpenAI 协议）。
 
 ---
 
@@ -1257,7 +1217,7 @@ GalleryViewModel.BatchTag
   │   ├─ AITagger.TagFileAsync(file, aiCfg, meta, ct)
   │   │   ├─ 图片：SkiaSharp resize 512px + base64
   │   │   ├─ 视频：ffmpeg thumbnail 抽 8 帧 → resize → base64
-  │   │   ├─ 构造 messages（按 ProtocolKind 路由）
+  │   │   ├─ 构造 messages（按 AIConfig.Protocol 路由）
   │   │   ├─ HTTP POST → 解析 JSON → 白名单校验
   │   │   └─ 返回 TagResult / TagFailure
   │   ├─ 成功 → file.Tags / file.Score / file.TagError = null
@@ -1357,11 +1317,9 @@ CurrentMediaFiles 重建（按新排序）
 | `AITagger` 主服务 | `Services/AITagger.cs` 新建 | 5 张图 mock 测试：返回 tags/score |
 | `AIVideoFrameExtractor` | `Services/AIVideoFrameExtractor.cs` 新建 | 1 段视频 mock 测试：抽出 8 张 |
 | `FfmpegFrameExtractorRunner`（ffmpeg 封装） | `Services/FfmpegFrameExtractorRunner.cs` 新建 | 进程退出码 + 文件存在 |
-| `ProtocolKind.Gemini` 分支 | `Services/AIProviderConfig.cs` + `AITagger` | Gemini 调用 mock 成功 |
-| `AIProviderLoader.ParseProtocol` | `Services/AIProviderLoader.cs` | "gemini" 字串解析成功 |
-| TOML Gemini Protocol 改 "gemini" | `Resources/ai-providers.default.toml` | 重启后 meta.ProtocolKind = Gemini |
 | `ChineseTagVocabulary` 常量 | `Services/AITagger.cs` 内 | 56 个词 |
 | 中文 prompt 模板 | `Services/AITagger.cs` 内 | 启动拼入 messages |
+| DI 注册 `IAITagger` / `IAIVideoFrameExtractor` / `FfmpegFrameExtractorRunner` | `Program.cs` (`Main`) 或 `App.axaml.cs` 的 `ServiceCollection` | 注入 GalleryViewModel 不抛 |
 
 ### 10.3 VM 层
 
@@ -1413,8 +1371,7 @@ CurrentMediaFiles 重建（按新排序）
 - **临时目录并发安全** — `ai-frames/<hash>_<unix-ms>/` 加 unix-ms 后缀，避免两个相同视频并发抽帧冲突
 - **HttpClient 复用** — `AITagger` 持有 static `HttpClient`（`SocketsHttpHandler` 池化），不要每次 new（DNS 缓存 / TIME_WAIT 累积）
 - **AI 超时 ≠ 用户取消** — `TaskCanceledException` 分两种：`ct.IsCancellationRequested` 走用户取消路径；否则走超时重试
-- **协议假定 Custom** — Custom 默认 OpenAI 兼容（loader 已处理），但用户在 TOML 里手动改成 gemini / anthropic 不会冲突
-- **Gemini image 限制** — Gemini 1.5 Pro 接受 inline_data，但每张图 < 4MB；resize 512px 后不会超
+- **协议独立于厂商** — v0.6 起 `AIConfig.Protocol` 是运行时唯一权威，`AIProviderMeta.ProtocolKind` 仅供设置页渲染；用户可在 UI 强制选 OpenAI 或 Anthropic（覆盖厂商默认）
 
 ---
 
@@ -1466,95 +1423,6 @@ public static readonly IReadOnlyList<string> ChineseTagVocabulary = new[]
 
 ---
 
-## 附录 B：Gemini 协议分支细节
-
-### B.1 TOML 增量
-
-`Resources/ai-providers.default.toml` 改：
-
-```toml
-[[Providers]]
-Key = "Gemini"
-DisplayName = "Google Gemini"
-DefaultBaseUrl = "https://generativelanguage.googleapis.com"
-- Protocol = "openai"
-+ Protocol = "gemini"  # v0.6 改：Gemini 原生多模态协议
-RecommendedModels = ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash-exp"]
-DefaultModel = "gemini-1.5-pro"
-```
-
-### B.2 代码改动
-
-**`Services/AIProviderConfig.cs`：**
-```csharp
-public enum ProtocolKind
-{
-    Anthropic,
-    OpenAI,
-    Gemini,  // v0.6 新增
-}
-```
-
-**`Services/AIProviderLoader.cs:142` `ParseProtocol`：**
-```csharp
-private static ProtocolKind ParseProtocol(string? raw, string key, string source)
-{
-    if (string.IsNullOrWhiteSpace(raw)) return ProtocolKind.OpenAI;
-    return raw.Trim().ToLowerInvariant() switch
-    {
-        "anthropic" => ProtocolKind.Anthropic,
-        "openai" => ProtocolKind.OpenAI,
-+       "gemini"   => ProtocolKind.Gemini,  // v0.6 新增
-        _ => UnknownProtocolFallback(key, raw, source),
-    };
-}
-```
-
-### B.3 请求构造
-
-**`AITagger.BuildGeminiRequest`（伪代码）：**
-```csharp
-var url = $"{baseUrl.TrimEnd('/')}/v1beta/models/{model}:generateContent?key={Uri.EscapeDataString(apiKey)}";
-
-var parts = new List<object> { new { text = prompt } };
-foreach (var (b64, _) in images)
-{
-    parts.Add(new
-    {
-        inline_data = new
-        {
-            mime_type = "image/jpeg",
-            data = b64
-        }
-    });
-}
-
-var body = new
-{
-    contents = new[] { new { parts = parts.ToArray() } },
-    generationConfig = new { maxOutputTokens = 300 }
-};
-
-var req = new HttpRequestMessage(HttpMethod.Post, url);
-req.Content = JsonContent.Create(body);
-```
-
-**响应解析：**
-```csharp
-var text = root.GetProperty("candidates")[0]
-              .GetProperty("content")
-              .GetProperty("parts")[0]
-              .GetProperty("text")
-              .GetString();
-```
-
-### B.4 已知 Gemini 差异
-
-- **Safety block**：Gemini 有 safety filter，偶尔把"星云"判成敏感内容返回空 → 走 ParseAndValidate 的 "JSON 解析失败" 分支 → retry 1 次
-- **Token 限制**：Gemini 1.5 Pro 接受单 request 1M token（远超需求），但 image 单独 ≤ 4MB
-- **API Key 在 URL**：Gemini 用 query string `?key=xxx` 而非 header，记得 `Uri.EscapeDataString`
-- **Stream 不支持**：v0.6 不做 streaming，统一走单次非流式
-
 ---
 
 ## 附录 C：实施阶段拆分（roadmap）
@@ -1562,11 +1430,11 @@ var text = root.GetProperty("candidates")[0]
 | Phase | 内容 | 估时 | 依赖 |
 |---|---|---|---|
 | **D.1 数据 + 服务基础** | DB migration / `MediaFile` 字段 / `IMediaRepository` 扩展 / `AITagger` 图片版（OpenAI + Anthropic）/ `ChineseTagVocabulary` / `BatchTag` 命令 | 2-3 天 | 无 |
-| **D.2 Gemini + 视频** | `ProtocolKind.Gemini` / TOML 改 / Gemini 协议分支 / `AIVideoFrameExtractor` / ffmpeg 封装 | 1-2 天 | D.1 |
+| **D.2 视频抽帧**（v0.6 改：去 Gemini） | `AIVideoFrameExtractor` / `FfmpegFrameExtractorRunner` / `AITagger` 视频分支 / 临时目录管理 / `App.OnStartup` sweep 7 天前 ai-frames | 1-2 天 | D.1 |
 | **D.3 Gallery 分类 + 排序** | `GroupMode` / `SortMode` / 左栏 tab / 工具栏 ComboBox / 排序联动 | 1 天 | D.1 |
 | **D.4 UI 打磨** | photo tile 评分角标 + 标签条 + TagError 徽章 / 右键菜单 / 3 个 Converter | 1 天 | D.1 |
 | **D.5 文档同步** | `02-data-layer.md` §3.1/§3.2 / `05-gallery-view.md` §2/§3/§4/§9 / `06-settings.md` §2 / `09-ui-commons.md` §20 | 0.5 天 | 全部 |
-| **D.6 调试 + 单测** | SQLite json_each fallback / Gemini safety block / ffmpeg 抽帧异常 / 临时目录清理 / 100 张图端到端 | 1 天 | D.1-D.5 |
+| **D.6 调试 + 单测** | SQLite json_each fallback / ffmpeg 抽帧异常 / 临时目录清理 / 100 张图端到端 | 1 天 | D.1-D.5 |
 
 **总计 ~6-8 天**。
 
