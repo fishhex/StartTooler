@@ -19,6 +19,26 @@ public enum RefreshState
     Stopped
 }
 
+// === v0.6 AI 打标排序/分类（spec doc/12-ai-toolbar-buttons.md §3.2） ===
+
+/// <summary>
+/// Gallery 左栏分类模式。Date = 按拍摄日期分组（现有行为）；Tag = 按 AI 标签分组（v0.6 预留，本期不实现 UI）。
+/// </summary>
+public enum GroupMode
+{
+    Date,
+    Tag,
+}
+
+/// <summary>
+/// Gallery 文件排序方式。TimeDesc = 拍摄时间倒序（现有默认）；ScoreDesc = AI 评分降序（v0.6 新增，null 排最后）。
+/// </summary>
+public enum SortMode
+{
+    TimeDesc,
+    ScoreDesc,
+}
+
 public partial class TimelineEntry : ObservableObject
 {
     public DateTime Date { get; }
