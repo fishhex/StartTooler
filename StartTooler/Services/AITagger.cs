@@ -302,6 +302,19 @@ public sealed class AITagger : IAITagger
             }
 
             // 成功：解析响应 → 提取文本 → ParseAndValidate
+
+            // stop_reason == "max_tokens" 时文本可能不完整，直接重试
+            if (TryGetStopReason(respBody) == "max_tokens")
+            {
+                if (jsonRetryLeft > 0)
+                {
+                    jsonRetryLeft--;
+                    Trace.WriteLine("[AITagger] stop_reason=max_tokens 响应不完整，重试 1 次");
+                    continue;
+                }
+                return (null, new TagFailure("AI 响应被截断（max_tokens），重试后仍失败", IsFatal: false));
+            }
+
             var text = ExtractContentText(respBody, protocol);
             if (text == null)
             {
@@ -387,7 +400,12 @@ public sealed class AITagger : IAITagger
         req.Content = JsonContent.Create(new
         {
             model = config.Model,
-            max_tokens = 300,
+            max_tokens = 2048,
+            thinking = new
+            {
+                type = "enabled",
+                budget_tokens = 512,
+            },
             messages = new[] { new { role = "user", content = contentParts.ToArray() } }
         });
 
@@ -395,7 +413,29 @@ public sealed class AITagger : IAITagger
     }
 
     /// <summary>
-    /// 从响应 body 提取文本内容。OpenAI: choices[0].message.content；Anthropic: content[0].text。
+    /// 读取 Anthropic / OpenAI 响应中的 stop_reason。若不存在或取值不是 "max_tokens" 则返回 null。
+    /// </summary>
+    private static string? TryGetStopReason(string? respBody)
+    {
+        if (string.IsNullOrWhiteSpace(respBody)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(respBody);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("stop_reason", out var sr) && sr.GetString() == "max_tokens")
+                return "max_tokens";
+            if (root.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
+            {
+                var finish = choices[0].GetProperty("finish_reason").GetString();
+                if (finish == "length") return "max_tokens";  // OpenAI 用 "length" 表示 token 耗尽
+            }
+            return null;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// 从响应 body 提取文本内容。OpenAI: choices[0].message.content；Anthropic: 遍历 content 数组找 type="text" 块。
     /// </summary>
     private static string? ExtractContentText(string? respBody, string protocol)
     {
@@ -416,7 +456,15 @@ public sealed class AITagger : IAITagger
             {
                 if (!root.TryGetProperty("content", out var content) || content.GetArrayLength() == 0)
                     return null;
-                return content[0].GetProperty("text").GetString();
+                // 遍历 content 数组找到 type="text" 的块（跳过 thinking 块）
+                foreach (var block in content.EnumerateArray())
+                {
+                    if (block.TryGetProperty("type", out var t) && t.GetString() == "text")
+                    {
+                        return block.GetProperty("text").GetString();
+                    }
+                }
+                return null;
             }
             return null;
         }
