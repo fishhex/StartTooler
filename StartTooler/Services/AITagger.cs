@@ -117,6 +117,10 @@ public sealed class AITagger : IAITagger
         // 3. prompt（含白名单拼入）
         var prompt = BuildImagePrompt();
 
+        // debug: 打印 prompt（排查"响应未提取到文本"等解析问题用）
+        Trace.WriteLine($"[AITagger] Prompt → model={config.Model}, protocol={protocol}, imageBytes={imageBytes.Length}, promptLen={prompt.Length}");
+        Trace.WriteLine($"--- PROMPT START ---\n{prompt}\n--- PROMPT END ---");
+
         // 4. 发请求 + 重试 + 解析
         return await CallAndParseAsync(config, protocol, prompt, new[] { b64 }, ct);
     }
@@ -261,6 +265,10 @@ public sealed class AITagger : IAITagger
                 }
 
                 respBody = await resp.Content.ReadAsStringAsync(reqCts.Token);
+
+                // debug: 打印 response body（排查 schema 不匹配 / tool_calls-only 等"未提取到文本"问题）
+                Trace.WriteLine($"[AITagger] Response ← status={(int)resp.StatusCode}, bodyLen={respBody?.Length ?? 0}, protocol={protocol}");
+                Trace.WriteLine($"--- RESPONSE START ---\n{respBody}\n--- RESPONSE END ---");
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
