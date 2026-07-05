@@ -170,6 +170,14 @@
                                         Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).ToggleSelectionCommand}"
                                         CommandParameter="{Binding}"
                                         DoubleTapped="OnPhotoTileDoubleTapped">
+                                    <!-- v0.6: 右键菜单 AI 打标 -->
+                                    <Button.ContextFlyout>
+                                        <MenuFlyout>
+                                            <MenuItem Header="AI 打标"
+                                                      Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).TagSingleCommand}"
+                                                      CommandParameter="{Binding}"/>
+                                        </MenuFlyout>
+                                    </Button.ContextFlyout>
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
                                             <Grid>
@@ -366,6 +374,53 @@
                                                                   Fill="{DynamicResource State.Warning}"
                                                                   HorizontalAlignment="Center"
                                                                   VerticalAlignment="Center"/>
+                                                        </Border>
+
+                                                        <!-- v0.6: 评分角标 (左下) -->
+                                                        <Border IsVisible="{Binding HasScore}"
+                                                                HorizontalAlignment="Left"
+                                                                VerticalAlignment="Bottom"
+                                                                Margin="6,6,10,6"
+                                                                Padding="6,2"
+                                                                Background="{Binding Score, Converter={StaticResource ScoreToBrush}}"
+                                                                CornerRadius="8">
+                                                            <TextBlock Text="{Binding Score, Converter={StaticResource ScoreToDisplay}}"
+                                                                       FontSize="11"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="#FFFFFF"
+                                                                       VerticalAlignment="Center"/>
+                                                        </Border>
+
+                                                        <!-- v0.6: 标签小角标条 (底部居中, hover tooltip 看完整) -->
+                                                        <Border IsVisible="{Binding HasTags}"
+                                                                HorizontalAlignment="Center"
+                                                                VerticalAlignment="Bottom"
+                                                                Margin="0,0,0,6"
+                                                                Padding="6,2"
+                                                                MaxWidth="140"
+                                                                Background="#CC0A0E1A"
+                                                                CornerRadius="8"
+                                                                ToolTip.Tip="{Binding Tags, Converter={StaticResource TagsToShortText}, ConverterParameter=Full}">
+                                                            <TextBlock Text="{Binding Tags, Converter={StaticResource TagsToShortText}}"
+                                                                       FontSize="10"
+                                                                       Foreground="#E6FFFFFF"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       MaxLines="1"/>
+                                                        </Border>
+
+                                                        <!-- v0.6: 打标失败徽章 (右下, hover tooltip 看错误原因) -->
+                                                        <Border IsVisible="{Binding TagError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                                HorizontalAlignment="Right"
+                                                                VerticalAlignment="Bottom"
+                                                                Margin="6,6,10,6"
+                                                                Width="20" Height="20"
+                                                                Background="#CCFFFFFF"
+                                                                CornerRadius="10"
+                                                                ToolTip.Tip="{Binding TagError}">
+                                                            <Path Data="{DynamicResource Icon.AlertTriangle}"
+                                                                  Width="12" Height="12"
+                                                                  Fill="{DynamicResource State.Danger}"
+                                                                  Stretch="Uniform"/>
                                                         </Border>
 
                                                         <!-- 选中时遮罩: 半透明蓝色叠加 -->

@@ -62,6 +62,7 @@ public class ScoreToDisplayConverter : IValueConverter
 ///   null/empty → ""
 ///   ≤3 个 → " · " join
 ///   &gt;3 个 → 前 2 个 + " +N"  （N = 剩余数量）
+///   ConverterParameter="Full" → 全部 join 不截断（tooltip 用）
 /// </summary>
 public class TagsToShortTextConverter : IValueConverter
 {
@@ -71,6 +72,12 @@ public class TagsToShortTextConverter : IValueConverter
     {
         if (value is List<string> tags && tags.Count > 0)
         {
+            // 完整列表（tooltip 用），通过 ConverterParameter="Full" 触发
+            if (parameter is string s && string.Equals(s, "Full", StringComparison.OrdinalIgnoreCase))
+            {
+                return string.Join(Separator, tags);
+            }
+            // 角标截断显示（默认）
             if (tags.Count <= 3)
             {
                 return string.Join(Separator, tags);
