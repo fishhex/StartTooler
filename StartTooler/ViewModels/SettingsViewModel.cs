@@ -77,6 +77,10 @@ public partial class SettingsViewModel : ObservableObject
     /// </summary>
     [ObservableProperty] private string aiProtocol = "";
 
+    /// <summary>协议选项列表（驱动 UI ComboBox）。空串不列 —— 强制让用户选 OpenAI 或 Anthropic。</summary>
+    public System.Collections.Generic.IReadOnlyList<string> AiProtocolOptions { get; }
+        = new[] { "OpenAI", "Anthropic" };
+
     /// <summary>当前厂商的推荐模型列表，驱动 Model 下拉的 ItemsSource。</summary>
     [ObservableProperty] private System.Collections.Generic.IReadOnlyList<string> aiRecommendedModels
         = AIProviderCatalog.Get(AIProvider.Anthropic).RecommendedModels;

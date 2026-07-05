@@ -294,6 +294,26 @@
                     </Grid>
                 </Border>
 
+                <!-- 协议（v0.6 新增：与厂商解耦，强制用户显式选） -->
+                <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*" Height="64">
+                        <TextBlock Grid.Column="0" Text="协议"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <ComboBox Width="200"
+                                      HorizontalAlignment="Left"
+                                      VerticalAlignment="Center"
+                                      ItemsSource="{Binding AiProtocolOptions}"
+                                      SelectedItem="{Binding AiProtocol, Mode=TwoWay}"/>
+                            <TextBlock Text="* 与厂商解耦，私有化部署可手动选 OpenAI/Anthropic 协议"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Text.Tertiary}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
                 <!-- API Key -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
                     <Grid ColumnDefinitions="160,*" Height="64">
