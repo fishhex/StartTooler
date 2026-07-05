@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace StartTooler.Data;
@@ -85,6 +86,45 @@ public partial class MediaFile : ObservableObject
     /// </summary>
     [ObservableProperty]
     private string? _uploadError;
+
+    // === v0.6 AI 打标字段（spec doc/12-ai-toolbar-buttons.md §3.1.1） ===
+
+    /// <summary>
+    /// AI 标签列表（DB 存 TEXT，JSON 数组序列化）。批量打标时整列表替换。
+    /// UI 通过 HasTags 联动显示标签小条。
+    /// </summary>
+    [ObservableProperty]
+    private List<string> _tags = new();
+
+    /// <summary>
+    /// AI 评分 0-100，null 表示未打标。DB 列 score INTEGER NULL。
+    /// UI 通过 HasScore 联动显示评分角标。
+    /// </summary>
+    [ObservableProperty]
+    private int? _score;
+
+    /// <summary>
+    /// 最近一次成功打标的 UTC unix 毫秒时间戳，null 表示从未打标。
+    /// DB 列 tagged_at INTEGER NULL。可用于「按打标时间筛选」(后续 phase)。
+    /// </summary>
+    [ObservableProperty]
+    private long? _taggedAt;
+
+    /// <summary>
+    /// 打标失败原因：有值 = 卡片右下显示红色三角徽章 + hover tooltip 显示完整原因。
+    /// 成功打标后由 BatchTag/TagSingle 清空。
+    /// DB 列 tag_error TEXT NULL。
+    /// </summary>
+    [ObservableProperty]
+    private string? _tagError;
+
+    // === v0.6 UI 便捷属性（XAML 绑定用） ===
+
+    /// <summary>photo tile 评分角标 IsVisible 绑定。Score=null 时隐藏。</summary>
+    public bool HasScore => Score.HasValue;
+
+    /// <summary>photo tile 标签条 IsVisible 绑定。Tags 为空列表或 null 时隐藏。</summary>
+    public bool HasTags => Tags is { Count: > 0 };
 
     public DateTime? ShotAtDateTime => ShotAt.HasValue
         ? DateTimeOffset.FromUnixTimeMilliseconds(ShotAt.Value).DateTime
