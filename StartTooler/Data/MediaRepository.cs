@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
@@ -70,6 +72,31 @@ public class MediaRepository : IMediaRepository
         SqliteMigrations.AddColumnIfMissing(
             connection, "media_files", "updated_at",
             "TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.0000000Z'");
+
+        // === v0.6 AI 打标字段（spec doc/12-ai-toolbar-buttons.md §3.1.3） ===
+        // tags 用 JSON 数组（System.Text.Json 序列化），默认 '[]' 占位让老行非空可 LIKE 查询。
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "tags",
+            "TEXT NOT NULL DEFAULT '[]'");
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "score",
+            "INTEGER");
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "tagged_at",
+            "INTEGER");
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "tag_error",
+            "TEXT");
+
+        // 评分排序的 B-tree 索引。tags 索引对未来 SQLite JSON1 查询有用，
+        // 当前 LIKE '%"标签"%' 仍走全表扫（B-tree 不加速前缀模糊）。
+        using (var idxCmd = new SqliteCommand(@"
+            CREATE INDEX IF NOT EXISTS idx_media_files_score ON media_files(score);
+            CREATE INDEX IF NOT EXISTS idx_media_files_tags ON media_files(tags);
+        ", connection))
+        {
+            idxCmd.ExecuteNonQuery();
+        }
     }
 
     public async Task<IReadOnlyList<DateCount>> GetDateGroupsAsync(string projectPath, CancellationToken ct = default)
@@ -113,7 +140,7 @@ public class MediaRepository : IMediaRepository
         return results;
     }
 
-    public async Task<IReadOnlyList<MediaFile>> GetByDateAsync(string projectPath, DateTime date, CancellationToken ct = default)
+    public async Task<IReadOnlyList<MediaFile>> GetByDateAsync(string projectPath, DateTime date, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default)
     {
         var results = new List<MediaFile>();
 
@@ -129,17 +156,25 @@ public class MediaRepository : IMediaRepository
         var startTimestamp = new DateTimeOffset(startOfDay).ToUnixTimeMilliseconds();
         var endTimestamp = new DateTimeOffset(endOfDay).ToUnixTimeMilliseconds();
 
-        var sql = @"
+        // sortMode 决定 ORDER BY 子句。SQL 拼接安全（orderBy 是硬编码常量，无用户输入）。
+        var orderBy = sortMode switch
+        {
+            SortMode.ScoreDesc => "ORDER BY score IS NULL, score DESC, shot_at DESC, file_name ASC",
+            _ => "ORDER BY shot_at DESC, file_name ASC",
+        };
+
+        var sql = $@"
             SELECT
                 id, project_path, relative_path, file_name, media_type,
                 file_size, last_modified, shot_at, is_uploaded, local_exists,
                 thumbnail_path, remote_url, uploaded_at, scanned_at,
-                created_at, updated_at
+                created_at, updated_at,
+                tags, score, tagged_at, tag_error
             FROM media_files
             WHERE project_path = @projectPath
               AND shot_at >= @startTime
               AND shot_at < @endTime
-            ORDER BY shot_at DESC
+            {orderBy}
             LIMIT 1000";
 
         await using var cmd = new SqliteCommand(sql, connection);
@@ -150,25 +185,7 @@ public class MediaRepository : IMediaRepository
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
-            results.Add(new MediaFile
-            {
-                Id = reader.GetInt64(0),
-                ProjectPath = reader.GetString(1),
-                RelativePath = reader.GetString(2),
-                FileName = reader.GetString(3),
-                MediaType = (MediaType)reader.GetInt32(4),
-                FileSize = reader.GetInt64(5),
-                LastModified = reader.GetInt64(6),
-                ShotAt = reader.IsDBNull(7) ? null : reader.GetInt64(7),
-                IsUploaded = reader.GetInt32(8) == 1,
-                LocalExists = reader.GetInt32(9) == 1,
-                ThumbnailPath = reader.IsDBNull(10) ? null : reader.GetString(10),
-                RemoteUrl = reader.IsDBNull(11) ? null : reader.GetString(11),
-                UploadedAt = reader.IsDBNull(12) ? null : reader.GetInt64(12),
-                ScannedAt = reader.GetInt64(13),
-                CreatedAt = SqliteDateTime.FromDb(reader.GetString(14)),
-                UpdatedAt = SqliteDateTime.FromDb(reader.GetString(15)),
-            });
+            results.Add(ReadMediaFileRow(reader));
         }
 
         return results;
@@ -404,5 +421,157 @@ public class MediaRepository : IMediaRepository
         cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
 
         await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    // === v0.6 AI 打标实现（spec doc/12-ai-toolbar-buttons.md §3.1.2 + §3.1.3） ===
+
+    public async Task UpdateTagAsync(long fileId, IEnumerable<string> tags, int score, long taggedAt, string? tagError, CancellationToken ct = default)
+    {
+        // tags 序列化为 JSON 数组字符串（例 ["星空","银河"]），与 SELECT 时的 ParseTags 对称。
+        var tagsList = tags.ToList();
+        var tagsJson = JsonSerializer.Serialize(tagsList);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var sql = @"
+            UPDATE media_files
+            SET tags = @tags,
+                score = @score,
+                tagged_at = @taggedAt,
+                tag_error = @tagError,
+                updated_at = @updatedAt
+            WHERE id = @id";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@id", fileId);
+        cmd.Parameters.AddWithValue("@tags", tagsJson);
+        cmd.Parameters.AddWithValue("@score", score);
+        cmd.Parameters.AddWithValue("@taggedAt", taggedAt);
+        cmd.Parameters.AddWithValue("@tagError", (object?)tagError ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
+
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<(string Tag, int Count)>> GetTagGroupsAsync(string projectPath, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var tagCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        // 只取非空、非 [] 的 tags 列，全量加载到内存后聚合。
+        // 项目级标签量级小（几千文件 × 几个标签），全内存聚合比 SQL JSON 函数可读性更好。
+        var sql = @"
+            SELECT tags FROM media_files
+            WHERE project_path = @projectPath
+              AND tags IS NOT NULL
+              AND tags != '[]'";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var tagsJson = reader.GetString(0);
+            var tags = ParseTags(tagsJson);
+            foreach (var tag in tags)
+            {
+                if (string.IsNullOrWhiteSpace(tag)) continue;
+                tagCounts[tag] = tagCounts.GetValueOrDefault(tag) + 1;
+            }
+        }
+
+        return tagCounts
+            .Select(kv => (kv.Key, kv.Value))
+            .OrderByDescending(x => x.Item2)
+            .ThenBy(x => x.Item1, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath, string tag, CancellationToken ct = default)
+    {
+        var results = new List<MediaFile>();
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        // LIKE '%"标签"%' 匹配 JSON 数组里的标签项（数组里标签都是 "标签" 形式）。
+        // 假设 AI 返回的标签不含双引号（实测模型输出安全）；如果将来发现误匹配，切到 SQLite JSON1 函数。
+        var sql = @"
+            SELECT
+                id, project_path, relative_path, file_name, media_type,
+                file_size, last_modified, shot_at, is_uploaded, local_exists,
+                thumbnail_path, remote_url, uploaded_at, scanned_at,
+                created_at, updated_at,
+                tags, score, tagged_at, tag_error
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND tags LIKE @tagPattern
+            ORDER BY shot_at DESC
+            LIMIT 1000";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+        cmd.Parameters.AddWithValue("@tagPattern", $"%\"{tag}\"%");
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            results.Add(ReadMediaFileRow(reader));
+        }
+
+        return results;
+    }
+
+    // === Row 映射 helpers（GetByDateAsync / GetByTagAsync 共用） ===
+
+    /// <summary>
+    /// SELECT 列序：16 基础列 + 4 AI 列（tags/score/tagged_at/tag_error），共 20 列。
+    /// SELECT 模板见 GetByDateAsync / GetByTagAsync 的 sql 字符串。
+    /// </summary>
+    private static MediaFile ReadMediaFileRow(SqliteDataReader reader)
+    {
+        return new MediaFile
+        {
+            Id = reader.GetInt64(0),
+            ProjectPath = reader.GetString(1),
+            RelativePath = reader.GetString(2),
+            FileName = reader.GetString(3),
+            MediaType = (MediaType)reader.GetInt32(4),
+            FileSize = reader.GetInt64(5),
+            LastModified = reader.GetInt64(6),
+            ShotAt = reader.IsDBNull(7) ? null : reader.GetInt64(7),
+            IsUploaded = reader.GetInt32(8) == 1,
+            LocalExists = reader.GetInt32(9) == 1,
+            ThumbnailPath = reader.IsDBNull(10) ? null : reader.GetString(10),
+            RemoteUrl = reader.IsDBNull(11) ? null : reader.GetString(11),
+            UploadedAt = reader.IsDBNull(12) ? null : reader.GetInt64(12),
+            ScannedAt = reader.GetInt64(13),
+            CreatedAt = SqliteDateTime.FromDb(reader.GetString(14)),
+            UpdatedAt = SqliteDateTime.FromDb(reader.GetString(15)),
+            Tags = ParseTags(reader.IsDBNull(16) ? null : reader.GetString(16)),
+            Score = reader.IsDBNull(17) ? null : reader.GetInt32(17),
+            TaggedAt = reader.IsDBNull(18) ? null : reader.GetInt64(18),
+            TagError = reader.IsDBNull(19) ? null : reader.GetString(19),
+        };
+    }
+
+    /// <summary>JSON 数组字符串 → List&lt;string&gt;。空/损坏 → 空 list。</summary>
+    private static List<string> ParseTags(string? json)
+    {
+        if (string.IsNullOrEmpty(json) || json == "[]") return new List<string>();
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
+        }
+        catch (JsonException)
+        {
+            return new List<string>();
+        }
     }
 }

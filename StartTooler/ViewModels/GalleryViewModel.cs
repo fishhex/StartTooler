@@ -207,7 +207,7 @@ public partial class GalleryViewModel : ObservableObject
         {
             IsLoadingMedia = true;
 
-            var files = await _mediaRepo.GetByDateAsync(ProjectPath, entry.Date, ct);
+            var files = await _mediaRepo.GetByDateAsync(ProjectPath, entry.Date, SortMode.TimeDesc, ct);
 
             // 反推 UploadStatus：upload_jobs 里有未完成 job 的 → Paused，否则按 IsUploaded
             // 单日最多几千条，直接全表扫成本可接受
