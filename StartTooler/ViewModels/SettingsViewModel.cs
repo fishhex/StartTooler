@@ -70,6 +70,13 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string aiBaseUrl = "";
     [ObservableProperty] private string aiModel = "";
 
+    /// <summary>
+    /// AI 协议（"OpenAI" / "Anthropic"）。与厂商解耦 —— 切厂商不联动。
+    /// 默认 "" 空串：强制用户显式选，不允许有静默默认值。
+    /// 老 config.db 反序列化时 cfg.Protocol 缺失 → AIProtocol 保持空 → UI 强制让用户选。
+    /// </summary>
+    [ObservableProperty] private string aiProtocol = "";
+
     /// <summary>当前厂商的推荐模型列表，驱动 Model 下拉的 ItemsSource。</summary>
     [ObservableProperty] private System.Collections.Generic.IReadOnlyList<string> aiRecommendedModels
         = AIProviderCatalog.Get(AIProvider.Anthropic).RecommendedModels;
@@ -189,6 +196,9 @@ public partial class SettingsViewModel : ObservableObject
         // Model：空 → 用厂商推荐第一个；非空 → 用保存值
         AiModel = string.IsNullOrWhiteSpace(cfg.Model) ? meta.DefaultModel : cfg.Model;
 
+        // Protocol：老 JSON 缺失 / 空 → 保持空 → UI 强制让用户选（不联动厂商 meta.ProtocolKind）
+        AiProtocol = cfg.Protocol ?? "";
+
         // 刷新推荐列表
         AiRecommendedModels = meta.RecommendedModels;
     }
@@ -202,6 +212,7 @@ public partial class SettingsViewModel : ObservableObject
             ApiKey = (AiApiKey ?? "").Trim(),
             BaseUrl = string.IsNullOrWhiteSpace(AiBaseUrl) ? meta.DefaultBaseUrl : AiBaseUrl.Trim(),
             Model = string.IsNullOrWhiteSpace(AiModel) ? meta.DefaultModel : AiModel.Trim(),
+            Protocol = AiProtocol ?? "",
         };
     }
 
@@ -274,7 +285,7 @@ public partial class SettingsViewModel : ObservableObject
         if (!_isInitialized) return;
 
         var meta = value;
-        // 切换厂商：刷新推荐列表 + 同步默认 BaseUrl
+        // 切换厂商：刷新推荐列表 + 同步默认 BaseUrl + Model
         AiRecommendedModels = meta.RecommendedModels;
 
         // BaseUrl：自定义厂商不强制填；其它厂商一律同步默认（不同厂商 URL 不同，
@@ -291,6 +302,7 @@ public partial class SettingsViewModel : ObservableObject
         // Model 同步到推荐列表第一个（不同厂商模型名不能混用）
         AiModel = meta.DefaultModel;
 
+        // Protocol **不联动**：保留用户已选；未选保持空（UI 强制让用户选）
         RecomputeDirty();
     }
 
@@ -309,6 +321,13 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     partial void OnAiModelChanged(string value)
+    {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+        TestConnectionCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnAiProtocolChanged(string value)
     {
         if (!_isInitialized) return;
         RecomputeDirty();
@@ -361,7 +380,8 @@ public partial class SettingsViewModel : ObservableObject
         return a.Provider == b.Provider
             && a.ApiKey == b.ApiKey
             && a.BaseUrl == b.BaseUrl
-            && a.Model == b.Model;
+            && a.Model == b.Model
+            && a.Protocol == b.Protocol;
     }
 
     public void DiscardChanges()
@@ -517,7 +537,8 @@ public partial class SettingsViewModel : ObservableObject
            && AiTestState != AITestState.Running
            && !string.IsNullOrWhiteSpace(AiApiKey)
            && !string.IsNullOrWhiteSpace(AiBaseUrl)
-           && !string.IsNullOrWhiteSpace(AiModel);
+           && !string.IsNullOrWhiteSpace(AiModel)
+           && !string.IsNullOrWhiteSpace(AiProtocol);
 
     partial void OnAiTestStateChanged(AITestState value)
     {
@@ -532,6 +553,13 @@ public partial class SettingsViewModel : ObservableObject
         if (hasDirectory && !Directory.Exists(SelectedProjectDirectory))
         {
             StatusMessage = $"目录不存在：{SelectedProjectDirectory}";
+            return;
+        }
+
+        // AI Protocol 校验：强制用户显式选，不允许空保存（防止老 config.db 缺字段时静默默认值）
+        if (string.IsNullOrWhiteSpace(AiProtocol))
+        {
+            StatusMessage = "请选择 AI 协议（OpenAI 或 Anthropic）";
             return;
         }
 
