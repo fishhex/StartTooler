@@ -8,66 +8,57 @@ using System.Threading.Tasks;
 namespace StartTooler.Services;
 
 /// <summary>
-/// AI 配置连通性测试。发一个极小请求（max_tokens=16，prompt="say 'ok'"）验证：
-///   - BaseUrl 可达
-///   - 鉴权通过
-///   - Model 存在
-///
-/// 请求协议由 <see cref="AIProviderMeta.ProtocolKind"/> 决定：
-///   - Anthropic：POST {base}/v1/messages，header x-api-key + anthropic-version
-///   - OpenAI  ：POST {base}/chat/completions，header Authorization: Bearer
-///
-/// Custom 默认走 OpenAI 兼容；测试结果附"协议假定"标注。
-/// </summary>
-public static class AITester
-{
-    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
-    private const string AnthropicVersion = "2023-06-01";
-
-    public sealed record TestResult(
-        bool Success,
-        string Message,
-        int LatencyMs,
-        string? ProtocolNote = null);
-
-    public static async Task<TestResult> TestAsync(
-        AIProviderMeta meta,
-        string apiKey,
-        string baseUrl,
-        string model,
-        CancellationToken ct = default)
+    /// AI 配置连通性测试。发一个极小请求（max_tokens=16，prompt="say 'ok'"）验证：
+    ///   - BaseUrl 可达
+    ///   - 鉴权通过
+    ///   - Model 存在
+    ///
+    /// 请求协议由调用方传入的 <paramref name="protocol"/> 字符串决定（"OpenAI" / "Anthropic"）：
+    ///   - "Anthropic"：POST {base}/v1/messages，header x-api-key + anthropic-version
+    ///   - "OpenAI"  ：POST {base}/chat/completions，header Authorization: Bearer
+    ///
+    /// v0.6 改：AITester 不再依赖 AIProviderMeta.ProtocolKind，由 SettingsViewModel 显式传入
+    /// AIConfig.Protocol（UI 强制让用户选 OpenAI 或 Anthropic）。Custom 厂商特例已废除 —— 协议独立选。
+    /// </summary>
+    public static class AITester
     {
-        // 输入校验（本地直接 fail，避免发无意义的请求）
-        if (meta.Provider == AIProvider.Custom && meta.ProtocolKind == ProtocolKind.OpenAI)
-        {
-            // 继续，但 message 加 note
-        }
-        if (string.IsNullOrWhiteSpace(apiKey))
-            return new TestResult(false, "API Key 为空，请先填写", 0);
-        if (string.IsNullOrWhiteSpace(baseUrl))
-            return new TestResult(false, "Base URL 为空，请先填写", 0);
-        if (string.IsNullOrWhiteSpace(model))
-            return new TestResult(false, "Model 为空，请先填写", 0);
+        private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
+        private const string AnthropicVersion = "2023-06-01";
 
-        var sw = Stopwatch.StartNew();
-        try
-        {
-            var result = meta.ProtocolKind switch
-            {
-                ProtocolKind.Anthropic => await SendAnthropicAsync(baseUrl, apiKey, model, ct),
-                ProtocolKind.OpenAI => await SendOpenAIAsync(baseUrl, apiKey, model, ct),
-                _ => new TestResult(false, $"未知协议：{meta.ProtocolKind}", (int)sw.ElapsedMilliseconds),
-            };
+        public sealed record TestResult(
+            bool Success,
+            string Message,
+            int LatencyMs,
+            string? ProtocolNote = null);
 
-            // Custom 用 OpenAI 协议时附一条 note（loader 已经把 Custom 默认配为 openai）
-            if (meta.Provider == AIProvider.Custom
-                && meta.ProtocolKind == ProtocolKind.OpenAI
-                && result.Success)
+        public static async Task<TestResult> TestAsync(
+            string protocol,
+            string apiKey,
+            string baseUrl,
+            string model,
+            CancellationToken ct = default)
+        {
+            // 输入校验（本地直接 fail，避免发无意义的请求）
+            if (string.IsNullOrWhiteSpace(protocol))
+                return new TestResult(false, "AI 协议未选择，请先在设置页选 OpenAI 或 Anthropic", 0);
+            if (string.IsNullOrWhiteSpace(apiKey))
+                return new TestResult(false, "API Key 为空，请先填写", 0);
+            if (string.IsNullOrWhiteSpace(baseUrl))
+                return new TestResult(false, "Base URL 为空，请先填写", 0);
+            if (string.IsNullOrWhiteSpace(model))
+                return new TestResult(false, "Model 为空，请先填写", 0);
+
+            var sw = Stopwatch.StartNew();
+            try
             {
-                return result with { ProtocolNote = "Custom 假定 OpenAI 兼容协议；如服务端用其它协议请检查" };
+                var result = protocol switch
+                {
+                    "Anthropic" => await SendAnthropicAsync(baseUrl, apiKey, model, ct),
+                    "OpenAI" => await SendOpenAIAsync(baseUrl, apiKey, model, ct),
+                    _ => new TestResult(false, $"未知协议：{protocol}", (int)sw.ElapsedMilliseconds),
+                };
+                return result;
             }
-            return result;
-        }
         catch (TaskCanceledException) when (!ct.IsCancellationRequested)
         {
             sw.Stop();

@@ -504,27 +504,27 @@ public partial class SettingsViewModel : ObservableObject
     /// 跑测试时按钮 disabled，避免重复点。
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanTestConnection))]
-    private async Task TestConnectionAsync()
-    {
-        var meta = AiProviderMeta;
-        if (meta == null) return;
-
-        AiTestState = AITestState.Running;
-        AiTestMessage = "测试中…";
-
-        try
+private async Task TestConnectionAsync()
         {
-            var result = await AITester.TestAsync(
-                meta,
-                AiApiKey ?? "",
-                AiBaseUrl ?? "",
-                AiModel ?? "");
+            var meta = AiProviderMeta;
+            if (meta == null) return;
 
-            AiTestState = result.Success ? AITestState.Ok : AITestState.Failed;
-            AiTestMessage = result.Success
-                ? (string.IsNullOrEmpty(result.ProtocolNote) ? result.Message : $"{result.Message}（{result.ProtocolNote}）")
-                : result.Message;
-        }
+            AiTestState = AITestState.Running;
+            AiTestMessage = "测试中…";
+
+            try
+            {
+                var result = await AITester.TestAsync(
+                    AiProtocol ?? "",
+                    AiApiKey ?? "",
+                    AiBaseUrl ?? "",
+                    AiModel ?? "");
+
+                AiTestState = result.Success ? AITestState.Ok : AITestState.Failed;
+                AiTestMessage = result.Success
+                    ? (string.IsNullOrEmpty(result.ProtocolNote) ? result.Message : $"{result.Message}（{result.ProtocolNote}）")
+                    : result.Message;
+            }
         catch (Exception ex)
         {
             AiTestState = AITestState.Failed;
