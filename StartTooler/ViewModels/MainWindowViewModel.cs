@@ -50,6 +50,7 @@ public partial class MainWindowViewModel : ObservableObject
         var uploadJobRepo = new UploadJobRepository();
         var thumbnailService = new ThumbnailService();
         var systemShell = new SystemShellService();
+        var aiTagger = new AITagger();  // v0.6 新增：AI 打标服务，静态 HttpClient 池化
 
         // OSS Storage 工厂：OssConfig 在 Settings 加载前为空，所以延迟构造。
         // configProvider 每次调用都从 configService 拿最新值，确保用户在 Settings
@@ -66,6 +67,7 @@ public partial class MainWindowViewModel : ObservableObject
         // onOssNotConfigured: Gallery 触发上传时如果 OSS 未配置，由 MainWindow 弹对话框并提供「去设置」入口
         GalleryViewModel = new GalleryViewModel(
             mediaRepository, thumbnailService, configService, systemShell, ossFactory, uploadJobRepo,
+            aiTagger,
             onOssNotConfigured: ShowOssNotConfiguredDialogAsync);
         UploadServerViewModel = new UploadServerViewModel(
             GalleryViewModel,

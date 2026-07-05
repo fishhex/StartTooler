@@ -24,12 +24,14 @@ public partial class GalleryViewModel : ObservableObject
     private readonly ISystemShellService _systemShell;
     private readonly IOssStorageFactory _ossFactory;
     private readonly IUploadJobRepository _uploadJobRepo;
+    private readonly IAITagger _aiTagger;  // v0.6 新增
     private readonly Func<Task<bool>>? _onOssNotConfigured;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasNoProject))]
     private string? _projectPath;
     private CancellationTokenSource? _cts;
     private CancellationTokenSource? _uploadCts;
+    private CancellationTokenSource? _tagCts;  // v0.6 新增，独立于 _cts，切日期/刷新不取消打标
 
     // === 数据源 ===
     public ObservableCollection<TimelineEntry> DateGroups { get; } = new();
@@ -122,6 +124,7 @@ public partial class GalleryViewModel : ObservableObject
         ISystemShellService systemShell,
         IOssStorageFactory ossFactory,
         IUploadJobRepository uploadJobRepo,
+        IAITagger aiTagger,
         Func<Task<bool>>? onOssNotConfigured = null)
     {
         _mediaRepo = mediaRepo;
@@ -130,6 +133,7 @@ public partial class GalleryViewModel : ObservableObject
         _systemShell = systemShell;
         _ossFactory = ossFactory;
         _uploadJobRepo = uploadJobRepo;
+        _aiTagger = aiTagger;
         _onOssNotConfigured = onOssNotConfigured;
         SelectedFiles.CollectionChanged += OnSelectedFilesChanged;
         CurrentMediaFiles.CollectionChanged += OnCurrentMediaFilesChanged;
@@ -540,6 +544,213 @@ public partial class GalleryViewModel : ObservableObject
         ShowToast($"已请求删除 {count} 个文件（待实现）");
         ExitMultiSelect();
     }
+
+    // === v0.6 AI 打标命令（spec doc/12-ai-toolbar-buttons.md §3.3.4） ===
+
+    [RelayCommand]
+    private async Task BatchTag()
+    {
+        if (IsTagging || !IsBatchActionEnabled) return;
+
+        // 1. AI 配置检查（spec §3.3.4 BatchTag）
+        AIConfig aiCfg;
+        try
+        {
+            aiCfg = await _configService.GetAsync<AIConfig>(ConfigKeys.AI) ?? new AIConfig();
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[Gallery] BatchTag: 读 AIConfig 失败: {ex.Message}");
+            ShowToast("读取 AI 配置失败");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(aiCfg.ApiKey) || string.IsNullOrWhiteSpace(aiCfg.Protocol))
+        {
+            ShowToast("AI 未配置，请在设置页填写 API Key 和协议");
+            return;
+        }
+
+        // 2. 过滤本地不存在的文件
+        var allSelected = SelectedFiles.ToList();
+        var files = allSelected.Where(f => f.LocalExists).ToList();
+        var skipped = allSelected.Count - files.Count;
+
+        ExitMultiSelect();
+
+        if (files.Count == 0)
+        {
+            ShowToast(skipped > 0 ? "所选文件本地不存在，无法打标" : "未选中文件");
+            return;
+        }
+
+        ShowToast(skipped > 0
+            ? $"跳过 {skipped} 个本地缺失，开始打标 {files.Count} 个文件…"
+            : $"开始打标 {files.Count} 个文件…");
+
+        await BatchTagCoreAsync(files, aiCfg);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanCancelTag))]
+    private void CancelTag()
+    {
+        _tagCts?.Cancel();
+        Trace.WriteLine("[Gallery] CancelTag: 用户请求取消打标");
+    }
+    private bool CanCancelTag() => IsTagging;
+
+    [RelayCommand]
+    private async Task TagSingle(MediaFile? file)
+    {
+        if (file == null || !file.LocalExists || IsTagging) return;
+
+        AIConfig aiCfg;
+        try
+        {
+            aiCfg = await _configService.GetAsync<AIConfig>(ConfigKeys.AI) ?? new AIConfig();
+        }
+        catch
+        {
+            ShowToast("读取 AI 配置失败");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(aiCfg.ApiKey) || string.IsNullOrWhiteSpace(aiCfg.Protocol))
+        {
+            ShowToast("AI 未配置");
+            return;
+        }
+
+        ShowToast($"开始打标 {file.FileName}…");
+        await BatchTagCoreAsync(new List<MediaFile> { file }, aiCfg);
+    }
+
+    /// <summary>
+    /// 打标核心循环：串行调用 AI + 200ms 节流 + 失败汇总 + 成功写 DB。
+    /// 镜像 UploadManyAsync 模式，但用 _tagCts（独立）保证切日期/刷新不取消打标。
+    /// </summary>
+    private async Task BatchTagCoreAsync(IList<MediaFile> files, AIConfig aiCfg)
+    {
+        IsTagging = true;
+        TagCompletedCount = 0;
+        TagTotalCount = files.Count;
+        _tagCts = new CancellationTokenSource();
+        var ct = _tagCts.Token;
+
+        var ok = 0;
+        var fail = 0;
+        var cancelled = 0;
+        var errors = new List<(string FileName, string Reason)>();
+        var fatalError = (string?)null;
+
+        Trace.WriteLine($"[Gallery] BatchTag 启动: files={files.Count}, protocol={aiCfg.Protocol}, model={aiCfg.Model}");
+
+        try
+        {
+            foreach (var file in files)
+            {
+                if (ct.IsCancellationRequested) break;
+
+                try
+                {
+                    var (result, failure) = await _aiTagger.TagFileAsync(file, aiCfg, ct);
+                    if (ct.IsCancellationRequested) { cancelled++; break; }
+
+                    if (failure != null)
+                    {
+                        file.TagError = TruncateError(failure.Reason);
+                        if (failure.IsFatal)
+                        {
+                            fatalError = failure.Reason;
+                            ShowToast($"AI 错误：{failure.Reason}");
+                            break;
+                        }
+                        errors.Add((file.FileName, failure.Reason));
+                    }
+                    else if (result != null)
+                    {
+                        file.Tags = result.Tags.ToList();
+                        file.Score = result.Score;
+                        file.TagError = null;
+                        await _mediaRepo.UpdateTagAsync(
+                            file.Id,
+                            result.Tags,
+                            result.Score,
+                            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                            null,
+                            ct);
+                        ok++;
+                    }
+                    else
+                    {
+                        errors.Add((file.FileName, "AI 返回为空"));
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    cancelled++;
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    file.TagError = TruncateError(ex.Message);
+                    errors.Add((file.FileName, ex.Message));
+                }
+
+                TagCompletedCount++;
+
+                // 节流：避免连续打爆 AI。CancellationToken 让 Task.Delay 也能被取消。
+                try { await Task.Delay(200, ct); }
+                catch (OperationCanceledException) { cancelled++; break; }
+            }
+        }
+        finally
+        {
+            _tagCts?.Dispose();
+            _tagCts = null;
+            IsTagging = false;
+            Trace.WriteLine($"[Gallery] BatchTag 结束: ok={ok}, fail={fail}, cancelled={cancelled}, total={files.Count}");
+        }
+
+        // 摘要 toast
+        if (fatalError != null)
+        {
+            // fatal 在循环内已 ShowToast，这里不重复
+        }
+        else if (cancelled > 0)
+        {
+            ShowToast($"打标已取消（完成 {ok + fail}/{files.Count}）");
+        }
+        else if (fail == 0)
+        {
+            ShowToast($"打标完成：{ok} 个文件");
+        }
+        else
+        {
+            ShowToast($"打标完成：成功 {ok}，失败 {fail}");
+        }
+
+        // 失败详情弹窗（多的时候）
+        if (errors.Count > 0)
+        {
+            var window = DialogHelper.GetMainWindow();
+            if (window == null) return;
+            var sb = new StringBuilder();
+            foreach (var (name, reason) in errors.Take(20))
+            {
+                sb.AppendLine($"• {name}: {reason}");
+            }
+            if (errors.Count > 20) sb.AppendLine($"…及其他 {errors.Count - 20} 项");
+            await DialogHelper.ShowAlertAsync(window, $"打标失败（{errors.Count}）", sb.ToString());
+        }
+
+        // 排序模式是按评分时，打标完重排一次让用户立刻看到效果
+        if (ok > 0 && SortMode == SortMode.ScoreDesc)
+        {
+            _ = SelectAsync(SelectedDate);
+        }
+    }
+
+    private static string TruncateError(string? s) =>
+        string.IsNullOrEmpty(s) ? string.Empty : (s.Length > 80 ? s[..80] + "…" : s);
 
     [RelayCommand]
     private void OpenInFolder(MediaFile? file)
