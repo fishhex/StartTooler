@@ -86,7 +86,11 @@ public partial class GalleryViewModel : ObservableObject
     partial void OnTagTotalCountChanged(int value) => OnPropertyChanged(nameof(TagProgressText));
 
     // === v0.6 分类与排序（spec §3.3.1） ===
-    [ObservableProperty] private GroupMode _groupMode = GroupMode.Date;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDateGroupMode))]
+    [NotifyPropertyChangedFor(nameof(IsTagGroupMode))]
+    [NotifyPropertyChangedFor(nameof(GroupModeIndex))]
+    private GroupMode _groupMode = GroupMode.Date;
     [ObservableProperty] private SortMode _sortMode = SortMode.TimeDesc;
 
     /// <summary>
@@ -99,22 +103,69 @@ public partial class GalleryViewModel : ObservableObject
         set => SortMode = value == 0 ? SortMode.TimeDesc : SortMode.ScoreDesc;
     }
 
-    /// <summary>左栏"标签"tab 用（本期 UI 不实现，方法先就绪）。</summary>
-    public ObservableCollection<(string Tag, int Count)> TagGroups { get; } = new();
+    /// <summary>左栏"标签"tab 用（v0.6.1 已接 UI）。</summary>
+    public ObservableCollection<TagGroupItem> TagGroups { get; } = new();
+
+    // === v0.6.1 左栏分类状态（spec doc/11-ai-tagging.md §5.5/§5.6） ===
+
+    /// <summary>当前选中的标签名（Tag 视图下有效）。</summary>
+    [ObservableProperty] private string? _selectedTag;
+
+    /// <summary>TabControl SelectedIndex 桥接：0=Date, 1=Tag。</summary>
+    public int GroupModeIndex
+    {
+        get => GroupMode == GroupMode.Date ? 0 : 1;
+        set => GroupMode = value == 0 ? GroupMode.Date : GroupMode.Tag;
+    }
+
+    /// <summary>ScrollViewer IsVisible 绑定（Date 视图）。</summary>
+    public bool IsDateGroupMode => GroupMode == GroupMode.Date;
+
+    /// <summary>ScrollViewer IsVisible 绑定（Tag 视图）。</summary>
+    public bool IsTagGroupMode => GroupMode == GroupMode.Tag;
+
+    /// <summary>
+    /// GroupMode 切换回调：Date → 重新初始化时间轴；Tag → 加载 TagGroups + 自动选中第一个。
+    /// v0.6.1 用户决策：切到「标签」tab 自动选中第一个，不再留空白。
+    /// </summary>
+    partial void OnGroupModeChanged(GroupMode value)
+    {
+        Trace.WriteLine($"[Gallery] GroupMode 切换 → {value}, ProjectPath={ProjectPath ?? "(null)"}");
+        switch (value)
+        {
+            case GroupMode.Date:
+                _ = InitializeAsync();
+                break;
+            case GroupMode.Tag:
+                _ = LoadTagGroupsAsync(_cts?.Token ?? default);
+                break;
+        }
+    }
 
     public int SelectedCount => SelectedFiles.Count;
     public bool IsBatchActionEnabled => IsMultiSelectMode && SelectedFiles.Count > 0 && !IsUploading && !IsTagging;
     public bool HasNoProject => string.IsNullOrEmpty(ProjectPath);
     public bool IsEmpty => !HasNoProject && !IsLoadingDateGroups && DateGroups.Count == 0;
 
-    // === v0.6 排序联动（spec §3.3.2） ===
-    // 切排序方式 → 重新加载当前日期文件，按新排序展示。
+    // === v0.6 排序联动（spec §3.3.2 / v0.6.1 §6.2） ===
+    // 切排序方式 → 重新加载当前视图（Date 或 Tag），按新排序展示。
     // 走 _cts 复用 SelectAsync 的 cancel-and-restart 模式，避免双发请求。
     partial void OnSortModeChanged(SortMode value)
     {
-        Trace.WriteLine($"[Gallery] SortMode 切换 → {value}, ProjectPath={ProjectPath ?? "(null)"}, SelectedDate={SelectedDate?.Date:yyyy-MM-dd}");
-        if (string.IsNullOrEmpty(ProjectPath) || SelectedDate == null) return;
-        _ = SelectAsync(SelectedDate);
+        Trace.WriteLine($"[Gallery] SortMode 切换 → {value}, GroupMode={GroupMode}, SelectedDate={SelectedDate?.Date:yyyy-MM-dd}, SelectedTag={SelectedTag ?? "(null)"}");
+        if (string.IsNullOrEmpty(ProjectPath)) return;
+
+        switch (GroupMode)
+        {
+            case GroupMode.Date when SelectedDate != null:
+                _ = SelectAsync(SelectedDate);
+                break;
+            case GroupMode.Tag when SelectedTag != null:
+                // 通过 Tag 找 TagGroupItem 重载（保留 TagGroups 顺序）
+                var group = TagGroups.FirstOrDefault(g => g.Tag == SelectedTag);
+                if (group != null) _ = SelectTagAsync(group);
+                break;
+        }
     }
 
     public GalleryViewModel(
@@ -301,6 +352,133 @@ public partial class GalleryViewModel : ObservableObject
         catch (Exception ex)
         {
             LoadErrorMessage = $"加载失败：{ex.Message}";
+            IsLoadingMedia = false;
+        }
+    }
+
+    // === v0.6.1 标签分类（spec doc/11-ai-tagging.md §5.6） ===
+
+    /// <summary>
+    /// 加载项目的 TagGroups + 自动选中第一个 tag（用户决策：切 tab 即看到内容）。
+    /// 复用 _cts 模式：被 OnGroupModeChanged 调用前会先 _cts.Cancel() 旧请求。
+    /// </summary>
+    [RelayCommand]
+    private async Task LoadTagGroupsAsync(CancellationToken ct)
+    {
+        Trace.WriteLine($"[Gallery] LoadTagGroupsAsync 启动: ProjectPath={ProjectPath ?? "(null)"}");
+
+        if (string.IsNullOrEmpty(ProjectPath))
+        {
+            Trace.WriteLine("[Gallery] LoadTagGroupsAsync 早返回: ProjectPath 为空");
+            return;
+        }
+
+        try
+        {
+            var groups = await _mediaRepo.GetTagGroupsAsync(ProjectPath, ct);
+            TagGroups.Clear();
+            foreach (var g in groups) TagGroups.Add(g);
+            Trace.WriteLine($"[Gallery] LoadTagGroupsAsync 完成: 共 {TagGroups.Count} 个 tag");
+
+            if (TagGroups.Count > 0)
+            {
+                // 用户决策：自动选中第一个 tag
+                Trace.WriteLine($"[Gallery] 自动选中第一个 tag: '{TagGroups[0].Tag}' ({TagGroups[0].Count} 张)");
+                await SelectTagAsync(TagGroups[0]);
+            }
+            else
+            {
+                // 项目还没打过标 → 清空 + 显示空态（沿用现有 IsEmpty 逻辑）
+                Trace.WriteLine("[Gallery] TagGroups 为空, 清空 CurrentMediaFiles");
+                SelectedTag = null;
+                CurrentMediaFiles.Clear();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 忽略取消（OnGroupModeChanged 切走时会触发）
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[Gallery] LoadTagGroupsAsync 失败: {ex.Message}");
+            LoadErrorMessage = $"加载标签失败：{ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// 选中某个 tag → 调 GetByTagAsync + 反推 UploadStatus + 灌入 CurrentMediaFiles。
+    /// 镜像 LoadDateAsync 模式（cancel-and-restart + UploadStatus 派生）。
+    /// </summary>
+    [RelayCommand]
+    private async Task SelectTagAsync(TagGroupItem? group)
+    {
+        if (group == null)
+        {
+            Trace.WriteLine("[Gallery] SelectTagAsync 早返回: group 为 null");
+            return;
+        }
+
+        Trace.WriteLine($"[Gallery] SelectTagAsync: tag='{group.Tag}', count={group.Count}");
+
+        if (string.IsNullOrEmpty(ProjectPath)) return;
+
+        // 取消之前的加载 + 切 tag 时退出多选模式
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+
+        ExitMultiSelect();
+        SelectedTag = group.Tag;
+
+        try
+        {
+            IsLoadingMedia = true;
+
+            var files = await _mediaRepo.GetByTagAsync(ProjectPath, group.Tag, SortMode, ct);
+            Trace.WriteLine($"[Gallery] GetByTagAsync 返回: {files.Count} 个文件, SortMode={SortMode}");
+
+            // 反推 UploadStatus（跟 LoadDateAsync 一致）
+            IReadOnlyList<UploadJob> jobs;
+            try
+            {
+                jobs = await _uploadJobRepo.GetInProgressAsync(ProjectPath, ct);
+            }
+            catch
+            {
+                jobs = Array.Empty<UploadJob>();
+            }
+            var pausedSet = new HashSet<string>(
+                jobs.Select(j => j.RelativePath),
+                StringComparer.OrdinalIgnoreCase);
+
+            CurrentMediaFiles.Clear();
+            foreach (var file in files)
+            {
+                if (file.IsUploaded)
+                {
+                    file.UploadStatus = UploadStatus.Uploaded;
+                }
+                else if (pausedSet.Contains(file.RelativePath))
+                {
+                    file.UploadStatus = UploadStatus.Paused;
+                }
+                else
+                {
+                    file.UploadStatus = UploadStatus.NotUploaded;
+                }
+                CurrentMediaFiles.Add(file);
+            }
+
+            IsLoadingMedia = false;
+        }
+        catch (OperationCanceledException)
+        {
+            // 忽略取消
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[Gallery] SelectTagAsync 失败: {ex.Message}");
+            LoadErrorMessage = $"加载标签文件失败：{ex.Message}";
             IsLoadingMedia = false;
         }
     }
