@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,6 +23,17 @@ public class MediaRepository : IMediaRepository
         _connectionString = $"Data Source={dbPath}";
         EnsureDatabase();
     }
+
+    /// <summary>
+    /// 写 tags 列时用的 JsonSerializerOptions：用 UnsafeRelaxedJsonEscaping 让中文等非 ASCII 字符
+    /// 原样写入（"月亮"），不被转义成 "\u6708\u4EAE"。
+    /// 默认的 JavaScriptEncoder.Default 会把所有非 ASCII 转成 \uXXXX，导致
+    /// GetByTagAsync 的 LIKE '%"标签"%' 模式失效。
+    /// </summary>
+    private static readonly JsonSerializerOptions s_writeTagsOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 
     private static string GetDbPath()
     {
@@ -97,6 +110,53 @@ public class MediaRepository : IMediaRepository
         {
             idxCmd.ExecuteNonQuery();
         }
+
+        // 一次性迁移：把老数据里被 JavaScriptEncoder.Default 转义的 \uXXXX 中文 tag
+        // 反序列化 + 用 UnsafeRelaxedJsonEscaping 重新写回。新数据用 s_writeTagsOptions 直接写原始中文。
+        // 幂等：跑过一次后 tags 列已无 \u 转义，第二次不会命中 LIKE 模式。
+        MigrateEscapedTagsToRaw(connection);
+    }
+
+    /// <summary>
+    /// 老版本 UpdateTagAsync 写入的 tags 形如 ["\u6708\u4EAE", "\u5E7F\u89D2"]，导致 GetByTagAsync
+    /// 的 LIKE '%"标签"%' 模式匹配不上（DB 里实际是 \u6708\u4EAE，不是中文"月亮"）。
+    ///
+    /// 这里把命中 \u 转义的行读出来 → 反序列化（JsonSerializer 透明处理 \uXXXX）→ 用
+    /// s_writeTagsOptions 重新序列化 → UPDATE。第二次跑不会命中 LIKE，幂等。
+    /// </summary>
+    private static void MigrateEscapedTagsToRaw(SqliteConnection connection)
+    {
+        var selectSql = @"SELECT id, tags FROM media_files WHERE tags LIKE '%\u%'";
+        var rows = new List<(long Id, string Tags)>();
+        using (var cmd = new SqliteCommand(selectSql, connection))
+        using (var reader = cmd.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                rows.Add((reader.GetInt64(0), reader.GetString(1)));
+            }
+        }
+
+        if (rows.Count == 0) return;
+
+        Trace.WriteLine($"[MediaRepository] MigrateEscapedTagsToRaw: 命中 {rows.Count} 行待修复");
+
+        using var tx = connection.BeginTransaction();
+        var updateSql = "UPDATE media_files SET tags = @tags, updated_at = @updatedAt WHERE id = @id";
+        foreach (var (id, oldJson) in rows)
+        {
+            var tags = ParseTags(oldJson);
+            var newJson = JsonSerializer.Serialize(tags, s_writeTagsOptions);
+            if (newJson == oldJson) continue;  // 防御性：万一转义形式未变化就不写
+
+            using var cmd = new SqliteCommand(updateSql, connection, tx);
+            cmd.Parameters.AddWithValue("@tags", newJson);
+            cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.ExecuteNonQuery();
+        }
+        tx.Commit();
+        Trace.WriteLine($"[MediaRepository] MigrateEscapedTagsToRaw: 完成");
     }
 
     public async Task<IReadOnlyList<DateCount>> GetDateGroupsAsync(string projectPath, CancellationToken ct = default)
@@ -428,8 +488,9 @@ public class MediaRepository : IMediaRepository
     public async Task UpdateTagAsync(long fileId, IEnumerable<string> tags, int score, long taggedAt, string? tagError, CancellationToken ct = default)
     {
         // tags 序列化为 JSON 数组字符串（例 ["星空","银河"]），与 SELECT 时的 ParseTags 对称。
+        // 用 UnsafeRelaxedJsonEscaping 让中文原样写入，避免被转义成 \uXXXX。
         var tagsList = tags.ToList();
-        var tagsJson = JsonSerializer.Serialize(tagsList);
+        var tagsJson = JsonSerializer.Serialize(tagsList, s_writeTagsOptions);
 
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(ct);
