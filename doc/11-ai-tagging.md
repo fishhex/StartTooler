@@ -1514,44 +1514,51 @@ CurrentMediaFiles 重建（按新排序）
 
 ---
 
-## 附录 A：中文标签白名单（56 个）
+## 附录 A：中文标签白名单
 
-代码常量 `ChineseTagVocabulary`：
+> **v0.7 拆分**（spec doc/13-tag-quality-split.md §2）：v0.6 的 `ChineseTagVocabulary`（56 个）拆成
+> - **`SubjectTagVocabulary`**（**18 个星体名称**，用户决策）：天体本体（深空+太阳系+命名） → AI `tags` 字段 + 左栏聚合 + `GetByTagAsync` 筛选
+> - **`QualityTagVocabulary`**（10 个）：画质问题 → AI `quality_tags` 字段 + 后续 Search/Filter
+>
+> 旧 `ChineseTagVocabulary` 保留并标 `[Obsolete]`，值为 Subject + Quality 拼接，供外部引用平滑过渡。
+> 完整词表拆分对照见 `doc/13-tag-quality-split.md` 附录 A。
+
+### A.1 主体词表 `SubjectTagVocabulary`（**18 个星体**）
+
+代码常量 `SubjectTagVocabulary`：
 
 ```csharp
-public static readonly IReadOnlyList<string> ChineseTagVocabulary = new[]
+public static readonly IReadOnlyList<string> SubjectTagVocabulary = new[]
 {
-    // 深空天体 (5)
-    "星云", "星系", "星团", "超新星遗迹", "暗星云",
+    // 深空天体 (3)
+    "星云", "星系", "星团",
 
-    // 太阳系 (8)
-    "行星", "月亮", "太阳", "彗星", "小行星", "流星", "卫星", "国际空间站",
+    // 太阳系 (7)
+    "行星", "月亮", "太阳", "彗星", "小行星", "流星", "卫星",
 
-    // 命名天体 (15)
-    "猎户座大星云", "M42", "仙女座星系", "M31", "昴星团", "M45",
-    "银河", "银心", "土星", "木星", "火星", "金星",
-    "娥眉月", "满月", "月面特写",
-
-    // 现象 (6)
-    "极光", "日食", "月食", "凌日", "月掩星", "合相",
-
-    // 构图 / 拍摄手法 (10)
-    "广角", "窄带", "行星摄影", "深空摄影", "星座", "长焦",
-    "赤道仪跟踪", "行星叠加", "月面拼接", "全景",
-
-    // 质量问题 (10)
-    "拖线", "失焦", "噪点", "过曝", "欠曝", "色差",
-    "大气抖动", "视宁度差", "镜头眩光", "杂光",
-
-    // 特殊 (2)
-    "非天文", "未分类",
+    // 命名天体 (8)
+    "猎户座大星云", "仙女座星系", "昴星团", "银河",
+    "土星", "木星", "火星", "金星",
 };
-// 总计 56 个
+// 总计 18 个
 ```
 
-**白名单扩展流程（v0.6.1+）：**
-1. 用户提新词（如 "星轨" / "火流星"）
-2. 改 `ChineseTagVocabulary` 常量
+### A.2 质量词表 `QualityTagVocabulary`（10 个）
+
+代码常量 `QualityTagVocabulary`：
+
+```csharp
+public static readonly IReadOnlyList<string> QualityTagVocabulary = new[]
+{
+    "拖线", "失焦", "噪点", "过曝", "欠曝", "色差",
+    "大气抖动", "视宁度差", "镜头眩光", "杂光",
+};
+// 总计 10 个
+```
+
+**白名单扩展流程（v0.7+）：**
+1. 用户提新词（如主体 "星轨" / 质量 "火流星"）
+2. 改 `SubjectTagVocabulary` 或 `QualityTagVocabulary` 常量
 3. **不需要 DB 迁移**（已有标签无破坏）
 4. **不需要 AI 重新打标**（用户对历史文件可右键单文件重新打标）
 
