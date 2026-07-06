@@ -100,6 +100,10 @@ public class MediaRepository : IMediaRepository
         SqliteMigrations.AddColumnIfMissing(
             connection, "media_files", "tag_error",
             "TEXT");
+        // v0.7: 质量评价标签独立列（与 tags 同结构）
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "quality_tags",
+            "TEXT NOT NULL DEFAULT '[]'");
 
         // 评分排序的 B-tree 索引。tags 索引对未来 SQLite JSON1 查询有用，
         // 当前 LIKE '%"标签"%' 仍走全表扫（B-tree 不加速前缀模糊）。
@@ -229,7 +233,8 @@ public class MediaRepository : IMediaRepository
                 file_size, last_modified, shot_at, is_uploaded, local_exists,
                 thumbnail_path, remote_url, uploaded_at, scanned_at,
                 created_at, updated_at,
-                tags, score, tagged_at, tag_error
+                tags, score, tagged_at, tag_error,
+                quality_tags
             FROM media_files
             WHERE project_path = @projectPath
               AND shot_at >= @startTime
@@ -485,12 +490,14 @@ public class MediaRepository : IMediaRepository
 
     // === v0.6 AI 打标实现（spec doc/12-ai-toolbar-buttons.md §3.1.2 + §3.1.3） ===
 
-    public async Task UpdateTagAsync(long fileId, IEnumerable<string> tags, int score, long taggedAt, string? tagError, CancellationToken ct = default)
+    public async Task UpdateTagAsync(long fileId, IEnumerable<string> tags, IEnumerable<string> qualityTags, int score, long taggedAt, string? tagError, CancellationToken ct = default)
     {
-        // tags 序列化为 JSON 数组字符串（例 ["星空","银河"]），与 SELECT 时的 ParseTags 对称。
+        // tags / qualityTags 序列化为 JSON 数组字符串（例 ["星空","银河"] / ["欠曝","噪点"]）。
         // 用 UnsafeRelaxedJsonEscaping 让中文原样写入，避免被转义成 \uXXXX。
         var tagsList = tags.ToList();
         var tagsJson = JsonSerializer.Serialize(tagsList, s_writeTagsOptions);
+        var qualityTagsList = qualityTags.ToList();
+        var qualityTagsJson = JsonSerializer.Serialize(qualityTagsList, s_writeTagsOptions);
 
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(ct);
@@ -498,6 +505,7 @@ public class MediaRepository : IMediaRepository
         var sql = @"
             UPDATE media_files
             SET tags = @tags,
+                quality_tags = @qualityTags,
                 score = @score,
                 tagged_at = @taggedAt,
                 tag_error = @tagError,
@@ -507,6 +515,7 @@ public class MediaRepository : IMediaRepository
         await using var cmd = new SqliteCommand(sql, connection);
         cmd.Parameters.AddWithValue("@id", fileId);
         cmd.Parameters.AddWithValue("@tags", tagsJson);
+        cmd.Parameters.AddWithValue("@qualityTags", qualityTagsJson);
         cmd.Parameters.AddWithValue("@score", score);
         cmd.Parameters.AddWithValue("@taggedAt", taggedAt);
         cmd.Parameters.AddWithValue("@tagError", (object?)tagError ?? DBNull.Value);
@@ -578,7 +587,8 @@ public class MediaRepository : IMediaRepository
                 file_size, last_modified, shot_at, is_uploaded, local_exists,
                 thumbnail_path, remote_url, uploaded_at, scanned_at,
                 created_at, updated_at,
-                tags, score, tagged_at, tag_error
+                tags, score, tagged_at, tag_error,
+                quality_tags
             FROM media_files
             WHERE project_path = @projectPath
               AND tags LIKE @tagPattern
@@ -601,7 +611,7 @@ public class MediaRepository : IMediaRepository
     // === Row 映射 helpers（GetByDateAsync / GetByTagAsync 共用） ===
 
     /// <summary>
-    /// SELECT 列序：16 基础列 + 4 AI 列（tags/score/tagged_at/tag_error），共 20 列。
+    /// SELECT 列序：16 基础列 + 5 AI 列（tags/score/tagged_at/tag_error/quality_tags），共 21 列。
     /// SELECT 模板见 GetByDateAsync / GetByTagAsync 的 sql 字符串。
     /// </summary>
     private static MediaFile ReadMediaFileRow(SqliteDataReader reader)
@@ -628,6 +638,7 @@ public class MediaRepository : IMediaRepository
             Score = reader.IsDBNull(17) ? null : reader.GetInt32(17),
             TaggedAt = reader.IsDBNull(18) ? null : reader.GetInt64(18),
             TagError = reader.IsDBNull(19) ? null : reader.GetString(19),
+            QualityTags = ParseTags(reader.IsDBNull(20) ? null : reader.GetString(20)),
         };
     }
 

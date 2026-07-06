@@ -23,8 +23,9 @@ public interface IMediaRepository
 
     /// <summary>
     /// 保存 AI 打标结果（成功或失败）。成功时 tagError 传 null；失败时 tagError 传原因，tags/score 写空值。
+    /// v0.7 加 qualityTags 参数：质量评价标签独立写入 quality_tags 列。
     /// </summary>
-    Task UpdateTagAsync(long fileId, IEnumerable<string> tags, int score, long taggedAt, string? tagError, CancellationToken ct = default);
+    Task UpdateTagAsync(long fileId, IEnumerable<string> tags, IEnumerable<string> qualityTags, int score, long taggedAt, string? tagError, CancellationToken ct = default);
 
     /// <summary>
     /// 获取标签分组（标签名 → 文件数），按数量降序。UI 左栏"标签"tab 用（v0.6.1 patch 已接 UI）。
