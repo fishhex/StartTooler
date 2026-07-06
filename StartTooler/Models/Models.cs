@@ -60,3 +60,16 @@ public sealed class ScanProgress
     public int Failed { get; set; }
     public string? CurrentFile { get; set; }
 }
+
+// === v0.6.1 标签分类（spec doc/11-ai-tagging.md §5.2） ===
+
+/// <summary>
+/// 左栏「标签」tab 的单个标签项（标签名 + 在该项目下的文件数）。
+/// 取代 v0.6 用的 (string Tag, int Count) tuple，XAML x:DataType 写起来更顺。
+/// init-only 防 VM 误改字段（构造后不可变）。
+/// </summary>
+public sealed class TagGroupItem
+{
+    public string Tag { get; init; } = "";
+    public int Count { get; init; }
+}
