@@ -10,11 +10,11 @@
 
 | 项 | 值 |
 |---|---|
-| 文档版本 | **v0.6**（从 v0.5 加 AI 打标 + 标签分类 + 评分排序） |
+| 文档版本 | **v0.6.1**（v0.6 实施期偏差补丁：左栏 TabControl + 自动选中 + SortMode 接入 + TagGroupItem class） |
 | 目标用户 | 天文摄影爱好者（astrophotographer） |
-| 实施版本 | StartTooler v0.6.0 |
+| 实施版本 | StartTooler v0.6.1 |
 | 关联模块 | Gallery (05)、Data (02)、AI Settings (06)、UI Commons (09) |
-| 文档状态 | **spec（待实施）** — 用户已拍板方案，待开发完成后回填实际文件路径与行号 |
+| 文档状态 | **spec（实施期补丁）** — v0.6 数据/AI/photo tile 已实施，本节补完 Gallery 左栏分类 tab + VM 联动；细节见末尾 §12 实施期偏差一览 |
 
 ### v0.6 相对 v0.5 的变更摘要
 
@@ -173,6 +173,7 @@ public interface IMediaRepository
     Task<IReadOnlyList<TagGroupCount>> GetTagGroupsAsync(string projectPath, CancellationToken ct = default);
 
     /// <summary>按标签筛选 + 排序拉文件。tag 为空串表示"未分类"组。</summary>
+    /// <remarks>v0.6.1 加 SortMode：切「评分↓」时 tag 视图也按评分排序（v0.6 spec 漏写，已补）。</remarks>
     Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath,
                                                   string tag,
                                                   SortMode sortMode,
@@ -819,9 +820,26 @@ public bool IsTagGroupMode => GroupMode == GroupMode.Tag;
 
 ### 5.2 `TagGroups` collection
 
+> **v0.6.1 实施期变更**：原 spec 写的是 `(string Tag, int Count)` tuple，XAML 绑定时 `x:DataType` 写起来很别扭（要写 `sys:ValueTuple`）。改成轻量 record/class 后 XAML `x:DataType="models:TagGroupItem"` 一行就清晰。
+
 ```csharp
-public ObservableCollection<TagGroupCount> TagGroups { get; } = new();
+public ObservableCollection<TagGroupItem> TagGroups { get; } = new();
+
+// Models/Models.cs 新增
+public sealed class TagGroupItem
+{
+    public string Tag { get; init; } = "";   // "星云" / "未分类" 等
+    public int Count { get; init; }
+}
 ```
+
+**`IMediaRepository.GetTagGroupsAsync` 返回类型同步更新**：
+
+```csharp
+Task<IReadOnlyList<TagGroupItem>> GetTagGroupsAsync(string projectPath, CancellationToken ct = default);
+```
+
+`TagGroupItem` 与 `TagGroupCount` 字段一致，纯命名差（v0.6.1 改名以匹配"item"语义，VM 端不暴露 `Count` 给 XAML 时更顺）。
 
 ### 5.3 `LoadTagGroupsAsync` 方法
 
@@ -885,7 +903,9 @@ private async Task SelectTagAsync(TagGroupCount? group)
 
 ### 5.5 左栏顶部 TabControl
 
-`Views/GalleryView.axaml:26` 把外层 Grid 从 `ColumnDefinitions="180,*"` 改为：
+> **v0.6.1 实施期变更**：原 spec 用 RadioButton，用户拍板改成 `TabControl`（自带视觉、自带键盘导航）。
+
+`Views/GalleryView.axaml:30` 外层 Grid 不变（`ColumnDefinitions="180,*"`），把左栏 `Border` 内部从「单 ScrollViewer 时间轴」改为「DockPanel 顶部 Tab + 下方内容」：
 
 ```xml
 <Grid ColumnDefinitions="180,*">
@@ -893,32 +913,28 @@ private async Task SelectTagAsync(TagGroupCount? group)
     <Border Grid.Column="0" Background="{DynamicResource Bg.Outer}"
             BorderBrush="{DynamicResource Bg.Divider}" BorderThickness="0,0,1,0">
         <DockPanel>
-            <!-- 顶部 Tab 切换 -->
-            <Border DockPanel.Dock="Top" Padding="16,16,16,8">
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                    <RadioButton Content="时间" GroupName="GroupMode"
-                                 IsChecked="{Binding IsDateGroupMode}"
-                                 Classes="group-tab"/>
-                    <RadioButton Content="标签" GroupName="GroupMode"
-                                 IsChecked="{Binding IsTagGroupMode}"
-                                 Classes="group-tab"/>
-                </StackPanel>
-            </Border>
+            <!-- 顶部 TabControl (v0.6.1: 替代原 spec RadioButton) -->
+            <TabControl DockPanel.Dock="Top"
+                        SelectedIndex="{Binding GroupModeIndex}"
+                        Classes="group-tabs">
+                <TabItem Header="时间"/>
+                <TabItem Header="标签"/>
+            </TabControl>
 
-            <!-- 时间轴列表（IsDateGroupMode 时显示） -->
+            <!-- 时间轴列表（GroupMode=Date 时显示） -->
             <ScrollViewer IsVisible="{Binding IsDateGroupMode}">
                 <ItemsControl ItemsSource="{Binding DateGroups}" Margin="16,0,16,24">
                     <!-- 沿用现有 TimelineEntry template -->
                 </ItemsControl>
             </ScrollViewer>
 
-            <!-- 标签列表（IsTagGroupMode 时显示） -->
+            <!-- 标签列表（GroupMode=Tag 时显示） -->
             <ScrollViewer IsVisible="{Binding IsTagGroupMode}">
                 <ItemsControl ItemsSource="{Binding TagGroups}" Margin="16,0,16,24">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="data:TagGroupCount">
+                        <DataTemplate x:DataType="models:TagGroupItem">
                             <Button Classes="tag-node"
-                                    Command="{Binding $parent[UserControl].DataContext.SelectTagCommand}"
+                                    Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).SelectTagCommand}"
                                     CommandParameter="{Binding}">
                                 <Grid>
                                     <TextBlock Text="{Binding Tag, Converter={StaticResource EmptyTagToUntitled}}"
@@ -938,9 +954,46 @@ private async Task SelectTagAsync(TagGroupCount? group)
 </Grid>
 ```
 
-**新增 Converter（`Converters/EmptyTagToUntitledConverter.cs`）：** 空字符串 → "未分类"。
+**`GroupModeIndex` 桥接属性**（跟 `SortModeIndex` 一个套路）：
+
+```csharp
+public int GroupModeIndex
+{
+    get => GroupMode == GroupMode.Date ? 0 : 1;
+    set => GroupMode = value == 0 ? GroupMode.Date : GroupMode.Tag;
+}
+```
+
+**新增 Converter（`Converters/TagConverters.cs`）：**
+
+```csharp
+/// <summary>空字符串 / null → "未分类"，其他原值返回。</summary>
+public sealed class EmptyTagToUntitledConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => string.IsNullOrEmpty(value as string) ? "未分类" : value!;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+```
+
+**TabControl 样式（`Themes/Styles.axaml` 新增）：**
+
+```xml
+<Style Selector="TabControl.group-tabs">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Padding" Value="12,8"/>
+</Style>
+<Style Selector="TabControl.group-tabs > TabItem">
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Padding" Value="12,6"/>
+</Style>
+```
 
 ### 5.6 切 GroupMode 联动
+
+> **v0.6.1 实施期变更**：原 spec 切到 `Tag` 时 `SelectedTag = null; CurrentMediaFiles.Clear()`（空白让用户点）。用户拍板改成「自动选中第一个 tag」（更符合"切到 tab 就该看到内容"的预期）。
 
 ```csharp
 partial void OnGroupModeChanged(GroupMode value)
@@ -948,18 +1001,90 @@ partial void OnGroupModeChanged(GroupMode value)
     switch (value)
     {
         case GroupMode.Date:
-            // 重新加载时间轴
+            // 重新加载时间轴（沿用 InitializeAsync 行为）
             _ = InitializeAsync();
             break;
         case GroupMode.Tag:
-            // 加载 TagGroups
+            // 加载 TagGroups + 自动选中第一个
             _ = LoadTagGroupsAsync(_cts?.Token ?? default);
-            SelectedTag = null;  // 清空旧选中
-            CurrentMediaFiles.Clear();
             break;
     }
 }
+
+[RelayCommand]
+private async Task LoadTagGroupsAsync(CancellationToken ct)
+{
+    if (string.IsNullOrEmpty(ProjectPath)) return;
+
+    var groups = await _mediaRepo.GetTagGroupsAsync(ProjectPath, ct);
+    TagGroups.Clear();
+    foreach (var g in groups) TagGroups.Add(g);
+
+    // v0.6.1: 自动选中第一个 tag（若 TagGroups 非空）
+    if (TagGroups.Count > 0)
+    {
+        await SelectTagAsync(TagGroups[0]);
+    }
+    else
+    {
+        // 项目还没打过标 → 清空 + 显示空态（沿用现有 IsEmpty 逻辑）
+        SelectedTag = null;
+        CurrentMediaFiles.Clear();
+    }
+}
+
+[RelayCommand]
+private async Task SelectTagAsync(TagGroupItem? group)
+{
+    if (group == null) return;
+
+    _cts?.Cancel();
+    _cts = new CancellationTokenSource();
+    var ct = _cts.Token;
+
+    ExitMultiSelect();
+    SelectedTag = group.Tag;
+
+    IsLoadingMedia = true;
+    var files = await _mediaRepo.GetByTagAsync(ProjectPath!, group.Tag, SortMode, ct);
+
+    // 反推 UploadStatus（跟 LoadDateAsync 一致）
+    IReadOnlyList<UploadJob> jobs;
+    try
+    {
+        jobs = await _uploadJobRepo.GetInProgressAsync(ProjectPath, ct);
+    }
+    catch
+    {
+        jobs = Array.Empty<UploadJob>();
+    }
+    var pausedSet = new HashSet<string>(
+        jobs.Select(j => j.RelativePath),
+        StringComparer.OrdinalIgnoreCase);
+
+    CurrentMediaFiles.Clear();
+    foreach (var file in files)
+    {
+        if (file.IsUploaded) file.UploadStatus = UploadStatus.Uploaded;
+        else if (pausedSet.Contains(file.RelativePath)) file.UploadStatus = UploadStatus.Paused;
+        else file.UploadStatus = UploadStatus.NotUploaded;
+        CurrentMediaFiles.Add(file);
+    }
+
+    IsLoadingMedia = false;
+}
 ```
+
+**新增 VM 属性：**
+
+```csharp
+[ObservableProperty] private string? _selectedTag;
+
+public bool IsDateGroupMode => GroupMode == GroupMode.Date;
+public bool IsTagGroupMode => GroupMode == GroupMode.Tag;
+```
+
+**新增 SelectedTag 联动（`OnSelectedTagChanged`）**：当前为空；预留未来给「tag 行高亮同步用」。
 
 ---
 
@@ -983,27 +1108,41 @@ VM 字段：
 
 ### 6.2 `CurrentMediaFiles` 排序
 
-`LoadDateAsync` / `LoadTagAsync` / `OnSortModeChanged` 都触发重建：
+> **v0.6.1 实施期变更**：原 spec `OnSortModeChanged` 只在 Date 模式下重载；v0.6.1 补 Tag 模式分支（保留 `SelectedTag` 重载当前 view）。
+
+`LoadDateAsync` / `SelectTagAsync` / `OnSortModeChanged` 都触发重建：
 
 ```csharp
 partial void OnSortModeChanged(SortMode value)
 {
-    // 重新加载当前视图
-    _ = GroupMode switch
+    Trace.WriteLine($"[Gallery] SortMode 切换 → {value}, GroupMode={GroupMode}, SelectedDate={SelectedDate?.Date:yyyy-MM-dd}, SelectedTag={SelectedTag}");
+
+    _cts?.Cancel();
+    _cts = new CancellationTokenSource();
+    var ct = _cts.Token;
+
+    switch (GroupMode)
     {
-        GroupMode.Date when SelectedDate != null => LoadDateAsync(SelectedDate, _cts?.Token ?? default),
-        GroupMode.Tag when SelectedTag != null   => SelectTagAsync(TagGroups.FirstOrDefault(g => g.Tag == SelectedTag)),
-        _ => Task.CompletedTask,
-    };
+        case GroupMode.Date when SelectedDate != null:
+            _ = LoadDateAsync(SelectedDate, ct);
+            break;
+        case GroupMode.Tag when SelectedTag != null:
+            // 通过 Tag 找 TagGroupItem 重载（保留 TagGroups[0] 这种顺序）
+            var group = TagGroups.FirstOrDefault(g => g.Tag == SelectedTag);
+            if (group != null) _ = SelectTagAsync(group);
+            break;
+    }
 }
 ```
 
-**SQL 层排序：**
+**SQL 层排序（v0.6.1 统一：`GetByDateAsync` / `GetByTagAsync` 都按 SortMode 分支）：**
 
 | SortMode | SQL `ORDER BY` |
 |---|---|
-| `TimeDesc` | `ORDER BY shot_at DESC NULLS LAST` |
-| `ScoreDesc` | `ORDER BY score DESC NULLS LAST, shot_at DESC` |
+| `TimeDesc` | `ORDER BY shot_at DESC, file_name ASC` |
+| `ScoreDesc` | `ORDER BY score IS NULL, score DESC, shot_at DESC, file_name ASC` |
+
+> **v0.6.1 补漏**：`GetByTagAsync` v0.6 spec 漏写 SortMode 参数，导致切到「标签」tab 后选「评分↓」不生效。本次补上签名 + SQL 分支对齐 `GetByDateAsync`。
 
 **NULL 排最后（SQLite）：** SQLite 不支持 `NULLS LAST`，要用：
 
@@ -1440,6 +1579,48 @@ public static readonly IReadOnlyList<string> ChineseTagVocabulary = new[]
 
 ---
 
-> **本文档状态**：spec（待实施）。所有"对应代码"为占位，实施时回填实际 `file:line` 引用。
+> **本文档状态**：spec（v0.6.1 实施期补丁）。所有"对应代码"为占位，实施时回填实际 `file:line` 引用。
 >
-> **后续动作**：用户审完本 spec → 确认 → 开 Phase D.1 数据 + 服务基础。
+> **后续动作**：v0.6.1 patch 审完 → 实施：Step 1 IMediaRepository.SortMode → Step 2 VM 联动 → Step 3 Converter → Step 4 GalleryView XAML → Step 5 编译验证。
+
+---
+
+## 12. v0.6.1 实施期偏差一览
+
+> 本节是 v0.6 spec → v0.6.1 实施的偏差汇总。每条都标注了 spec 原写法 + 实施期改动 + 改动理由。所有改动已经过用户拍板。
+
+| # | 偏差项 | 原 spec（v0.6） | 实施期（v0.6.1） | 理由 |
+|---|---|---|---|---|
+| **D1** | 左栏 tab 形态 | `RadioButton` × 2 + `GroupMode` 派生 `IsChecked` | `TabControl` + `GroupModeIndex` 桥接 | 用户拍板：TabControl 自带视觉与键盘导航 |
+| **D2** | 切到「标签」tab 行为 | `SelectedTag = null; CurrentMediaFiles.Clear()` 空白 | 自动选中第一个 tag → `SelectTagAsync(TagGroups[0])` | 用户拍板：切 tab 即看到内容 |
+| **D3** | `TagGroups` 类型 | `ObservableCollection<TagGroupCount>` 字段式 class | `ObservableCollection<TagGroupItem>` init-only record | XAML `x:DataType` 命名一致；init-only 防 VM 误改 |
+| **D4** | `GetByTagAsync` 签名 | 已有 SortMode 参数（spec 写了） | 实现也对齐，但旧 spec SQL 漏写 ORDER BY 分支 | v0.6 写 spec 时漏了 OrderBy 分支，v0.6.1 补 |
+| **D5** | `EmptyTagToUntitledConverter` 命名 | 文件名 `EmptyTagToUntitledConverter.cs` | 合并到 `Converters/TagConverters.cs` 文件 | 项目已有 `AITagConverters.cs` 风格先例，多 Converter 同文件 |
+| **D6** | `OnSortModeChanged` Tag 模式分支 | spec 已有 `switch GroupMode` 但代码层没写 | v0.6.1 补 Tag 模式分支（保留 `SelectedTag` 重载） | 与 D4 联动：tag 视图下评分↓也要生效 |
+| **D7** | `GroupModeIndex` 桥接属性 | spec 未提（用了 RadioButton 双向绑定） | v0.6.1 加 `int GroupModeIndex` 桥接 TabControl.SelectedIndex | TabControl 只能绑 int/对象，仿 `SortModeIndex` 模式 |
+| **D8** | `IsDateGroupMode` / `IsTagGroupMode` | spec 用了 `NotifyPropertyChangedFor` 自动派生 bool | 保留派生 bool，但写法改成 `partial void OnGroupModeChanged` + 主动触发 PropertyChanged | RadioButton 不需要这俩（双向绑定自动），TabControl 必须用 `GroupModeIndex` 桥，所以派生 bool 只给 ScrollViewer IsVisible 用 |
+
+### 12.1 改动文件清单（v0.6.1 patch）
+
+| 文件 | 改动类型 | 行数（估） |
+|---|---|---|
+| `Data/IMediaRepository.cs` | `GetByTagAsync` 签名确认 + `GetTagGroupsAsync` 返回类型 `(string, int)` → `TagGroupItem` | ~10 |
+| `Data/MediaRepository.cs` | `GetByTagAsync` SQL 加 ORDER BY 分支；`GetTagGroupsAsync` 返回类型映射 | ~20 |
+| `Models/Models.cs` | 加 `TagGroupItem` sealed class | ~10 |
+| `ViewModels/GalleryViewModel.cs` | 加 `SelectedTag` / `IsDateGroupMode` / `IsTagGroupMode` / `GroupModeIndex` / `OnGroupModeChanged` / `LoadTagGroupsAsync` / `SelectTagAsync`；`OnSortModeChanged` 加 Tag 分支 | ~80 |
+| `Views/GalleryView.axaml` | 左栏改 `DockPanel` + `TabControl` + 标签列表 `ScrollViewer` | ~60 |
+| `Converters/TagConverters.cs`（新建） | `EmptyTagToUntitledConverter` | ~20 |
+| `Themes/Styles.axaml` | `.group-tabs` TabControl / TabItem 样式 | ~10 |
+
+总计 ~210 行（其中 ~150 行净新增，~60 行修改），计划 5 个 commit。
+
+### 12.2 验证清单（v0.6.1 patch）
+
+- ☐ 编译通过（`dotnet build` 无错）
+- ☐ DB schema 无变化（无迁移）
+- ☐ 切「时间」tab → 沿用 v0.6 行为（DateGroups + SelectedDate）
+- ☐ 切「标签」tab → 自动选中第一个 tag → CurrentMediaFiles 灌入该 tag 的文件
+- ☐ tag 视图下切排序「评分↓」 → 文件按 score DESC NULL LAST 重排
+- ☐ tag 视图下多选 → 「批量打标」可用 → 打标完成后 tag 分组自动刷新（如新增 tag）
+- ☐ 项目从未打过标（TagGroups 为空） → 切到「标签」tab 显示「还没有打过标」空态
+- ☐ RadioButton 替换 TabControl → 样式沿用 theme token，无硬编码颜色

@@ -10,11 +10,11 @@
 
 | 项 | 值 |
 |---|---|
-| 文档版本 | **v1.0** |
+| 文档版本 | **v1.1**（v0.6.1 实施期补丁：补 GetByTagAsync SortMode + TagGroupItem class + OnSortModeChanged Tag 分支 + Phase 7 左栏 TabControl） |
 | 目标用户 | 天文摄影爱好者 |
-| 实施版本 | StartTooler v0.6.0 |
-| 问题描述 | GalleryView 工具栏缺少「开始AI」和「评分」按钮，用户无法触发 AI 打标和评分排序 |
-| 文档状态 | **plan（待实施）** |
+| 实施版本 | StartTooler v0.6.1 |
+| 问题描述 | GalleryView 工具栏缺少「开始AI」和「评分」按钮；左栏缺「标签」分类 tab；tag 视图排序联动缺失 |
+| 文档状态 | **plan（v0.6.1 patch）** — 主 spec 见 `doc/11-ai-tagging.md` §5/§6/§12 |
 
 ---
 
@@ -104,8 +104,8 @@ Task UpdateTagAsync(long fileId, IEnumerable<string> tags, int score,
 // 获取标签分组（标签名 → 文件数）
 Task<List<(string Tag, int Count)>> GetTagGroupsAsync(string projectPath, CancellationToken ct);
 
-// 按标签筛选文件
-Task<List<MediaFile>> GetByTagAsync(string projectPath, string tag, CancellationToken ct);
+// 按标签筛选文件（v0.6.1: 加 SortMode 参数，切评分↓在 tag 视图也生效）
+Task<List<MediaFile>> GetByTagAsync(string projectPath, string tag, SortMode sortMode, CancellationToken ct);
 ```
 
 #### 3.1.3 `MediaRepository.cs` DB Migration
@@ -180,8 +180,15 @@ public int SortModeIndex
     set => SortMode = value == 0 ? SortMode.TimeDesc : SortMode.ScoreDesc;
 }
 
-// TagGroups 用于左栏"标签"tab
-public ObservableCollection<(string Tag, int Count)> TagGroups { get; } = new();
+// TagGroups 用于左栏"标签"tab（v0.6.1: 改为 TagGroupItem class，XAML x:DataType 更顺）
+public ObservableCollection<TagGroupItem> TagGroups { get; } = new();
+
+// Models/Models.cs 新增
+public sealed class TagGroupItem
+{
+    public string Tag { get; init; } = "";
+    public int Count { get; init; }
+}
 ```
 
 #### 3.3.2 属性联动
@@ -200,8 +207,13 @@ partial void OnTagTotalCountChanged(int value) => OnPropertyChanged(nameof(TagPr
 
 partial void OnSortModeChanged(SortMode value)
 {
-    // 重新加载当前日期文件（按新排序）
-    _ = SelectAsync(SelectedDate);
+    // v0.6.1: 按 GroupMode 分支重载当前视图
+    _ = GroupMode switch
+    {
+        GroupMode.Date when SelectedDate != null => SelectAsync(SelectedDate),
+        GroupMode.Tag when SelectedTag != null   => SelectTagAsync(TagGroups.FirstOrDefault(g => g.Tag == SelectedTag)),
+        _ => Task.CompletedTask,
+    };
 }
 ```
 
@@ -543,6 +555,141 @@ public GalleryViewModel(
 
 ---
 
+## 3.7 Phase 7 (v0.6.1): Gallery 左栏 TabControl + 标签分类
+
+> 完整 spec 见 **`doc/11-ai-tagging.md` §5.5 / §5.6 / §6.2**。本节只列本 spec 视角的改动摘要。
+
+### 3.7.1 新增属性 + 命令
+
+```csharp
+// === v0.6.1 左栏分类状态 ===
+[ObservableProperty] private string? _selectedTag;
+
+public bool IsDateGroupMode => GroupMode == GroupMode.Date;
+public bool IsTagGroupMode => GroupMode == GroupMode.Tag;
+
+public int GroupModeIndex
+{
+    get => GroupMode == GroupMode.Date ? 0 : 1;
+    set => GroupMode = value == 0 ? GroupMode.Date : GroupMode.Tag;
+}
+
+partial void OnGroupModeChanged(GroupMode value)
+{
+    switch (value)
+    {
+        case GroupMode.Date: _ = InitializeAsync(); break;
+        case GroupMode.Tag:  _ = LoadTagGroupsAsync(_cts?.Token ?? default); break;
+    }
+}
+
+[RelayCommand]
+private async Task LoadTagGroupsAsync(CancellationToken ct)
+{
+    if (string.IsNullOrEmpty(ProjectPath)) return;
+    var groups = await _mediaRepo.GetTagGroupsAsync(ProjectPath, ct);
+    TagGroups.Clear();
+    foreach (var g in groups) TagGroups.Add(g);
+    if (TagGroups.Count > 0) await SelectTagAsync(TagGroups[0]);
+    else { SelectedTag = null; CurrentMediaFiles.Clear(); }
+}
+
+[RelayCommand]
+private async Task SelectTagAsync(TagGroupItem? group)
+{
+    if (group == null) return;
+    _cts?.Cancel();
+    _cts = new CancellationTokenSource();
+    var ct = _cts.Token;
+    ExitMultiSelect();
+    SelectedTag = group.Tag;
+
+    IsLoadingMedia = true;
+    var files = await _mediaRepo.GetByTagAsync(ProjectPath!, group.Tag, SortMode, ct);
+    // 反推 UploadStatus（跟 LoadDateAsync 一致）
+    var jobs = await _uploadJobRepo.GetInProgressAsync(ProjectPath, ct);
+    var pausedSet = new HashSet<string>(jobs.Select(j => j.RelativePath), StringComparer.OrdinalIgnoreCase);
+    CurrentMediaFiles.Clear();
+    foreach (var file in files)
+    {
+        if (file.IsUploaded) file.UploadStatus = UploadStatus.Uploaded;
+        else if (pausedSet.Contains(file.RelativePath)) file.UploadStatus = UploadStatus.Paused;
+        else file.UploadStatus = UploadStatus.NotUploaded;
+        CurrentMediaFiles.Add(file);
+    }
+    IsLoadingMedia = false;
+}
+```
+
+### 3.7.2 `OnSortModeChanged` 更新（v0.6.1）
+
+```csharp
+partial void OnSortModeChanged(SortMode value)
+{
+    // 重新加载当前视图（Date 或 Tag）
+    _ = GroupMode switch
+    {
+        GroupMode.Date when SelectedDate != null => SelectAsync(SelectedDate),
+        GroupMode.Tag when SelectedTag != null   => SelectTagAsync(TagGroups.FirstOrDefault(g => g.Tag == SelectedTag)),
+        _ => Task.CompletedTask,
+    };
+}
+```
+
+### 3.7.3 Converter（新建 `Converters/TagConverters.cs`）
+
+| Converter | 输入 | 输出 | 规则 |
+|---|---|---|---|
+| `EmptyTagToUntitledConverter` | `string?` | `string` | null/空 → "未分类"；其他原值 |
+
+### 3.7.4 GalleryView.axaml 左栏 XAML 改动
+
+`Views/GalleryView.axaml:30-75` 把 `<Border Grid.Column="0">` 内部从「单 ScrollViewer 时间轴」改为：
+
+```xml
+<DockPanel>
+    <TabControl DockPanel.Dock="Top" SelectedIndex="{Binding GroupModeIndex}" Classes="group-tabs">
+        <TabItem Header="时间"/>
+        <TabItem Header="标签"/>
+    </TabControl>
+    <ScrollViewer IsVisible="{Binding IsDateGroupMode}">
+        <ItemsControl ItemsSource="{Binding DateGroups}" .../>  <!-- 沿用现有 -->
+    </ScrollViewer>
+    <ScrollViewer IsVisible="{Binding IsTagGroupMode}">
+        <ItemsControl ItemsSource="{Binding TagGroups}">
+            <DataTemplate x:DataType="models:TagGroupItem">
+                <Button Classes="tag-node" Command="...SelectTagCommand" CommandParameter="{Binding}">
+                    <Grid>
+                        <TextBlock Text="{Binding Tag, Converter={StaticResource EmptyTagToUntitled}}"/>
+                        <TextBlock Text="{Binding Count, StringFormat='{}{0} 张'}"/>
+                    </Grid>
+                </Button>
+            </DataTemplate>
+        </ItemsControl>
+    </ScrollViewer>
+</DockPanel>
+```
+
+UserControl.Resources 加 `<converters:EmptyTagToUntitledConverter x:Key="EmptyTagToUntitled"/>`。
+
+### 3.7.5 Themes/Styles.axaml 新增
+
+```xml
+<Style Selector="TabControl.group-tabs">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Padding" Value="12,8"/>
+</Style>
+<Style Selector="TabControl.group-tabs > TabItem">
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Padding" Value="12,6"/>
+</Style>
+<Style Selector="Button.tag-node">
+    <!-- 沿用 timeline-node 视觉语言（圆点 + 文字） -->
+</Style>
+```
+
+---
+
 ## 4. 实施检查清单
 
 ### 4.1 数据层
@@ -550,9 +697,10 @@ public GalleryViewModel(
 | # | 改动 | 文件 |
 |---|---|---|
 | ☐ | `MediaFile` 加 Tags/Score/TaggedAt/TagError + HasScore/HasTags | `Data/MediaFile.cs` |
-| ☐ | `IMediaRepository` 加 3 方法签名 | `Data/IMediaRepository.cs` |
+| ☐ | `IMediaRepository` 加 3 方法签名（v0.6.1: `GetByTagAsync` 加 SortMode 参数，`GetTagGroupsAsync` 返回 `TagGroupItem`） | `Data/IMediaRepository.cs` |
 | ☐ | `EnsureDatabase` ALTER TABLE 4列 + 2索引 | `Data/MediaRepository.cs` |
 | ☐ | `GetByDateAsync` 扩展 SELECT + 排序 | `Data/MediaRepository.cs` |
+| ☐ | `GetByTagAsync` SQL ORDER BY 按 SortMode 分支（v0.6.1 补） | `Data/MediaRepository.cs` |
 | ☐ | `UpdateTagAsync` / `GetTagGroupsAsync` / `GetByTagAsync` 实现 | `Data/MediaRepository.cs` |
 
 ### 4.2 Models
@@ -560,6 +708,7 @@ public GalleryViewModel(
 | # | 改动 | 文件 |
 |---|---|---|
 | ☐ | 加 `GroupMode` / `SortMode` 枚举 | `Models/Models.cs` |
+| ☐ | **v0.6.1** 加 `TagGroupItem` sealed class | `Models/Models.cs` |
 
 ### 4.3 ViewModel
 
@@ -567,7 +716,9 @@ public GalleryViewModel(
 |---|---|---|
 | ☐ | 加 IsTagging/TagCompletedCount/TagTotalCount/TagProgressText | `GalleryViewModel.cs` |
 | ☐ | 加 GroupMode/SortMode/SortModeIndex/TagGroups | `GalleryViewModel.cs` |
-| ☐ | 加 OnSortModeChanged → SelectAsync 联动 | `GalleryViewModel.cs` |
+| ☐ | **v0.6.1** 加 SelectedTag / GroupModeIndex / IsDateGroupMode / IsTagGroupMode | `GalleryViewModel.cs` |
+| ☐ | **v0.6.1** 加 OnGroupModeChanged / LoadTagGroupsAsync / SelectTagAsync 命令 | `GalleryViewModel.cs` |
+| ☐ | 加 OnSortModeChanged → SelectAsync 联动（v0.6.1 加 Tag 分支） | `GalleryViewModel.cs` |
 | ☐ | 修改 IsBatchActionEnabled 加 `&& !IsTagging` | `GalleryViewModel.cs` |
 | ☐ | 加 BatchTag/CancelTag/TagSingle 命令 | `GalleryViewModel.cs` |
 | ☐ | 构造函数注入 IAITagger | `GalleryViewModel.cs` |
@@ -580,11 +731,15 @@ public GalleryViewModel(
 | ☐ | 工具栏加排序 ComboBox + "开始AI" + "取消打标" + 进度 | `Views/MainWindow.axaml` |
 | ☐ | photo tile 加评分角标 + 标签条 + TagError 徽章 | `Views/GalleryView.axaml` |
 | ☐ | 右键菜单加 "AI 打标" | `Views/GalleryView.axaml` |
+| ☐ | **v0.6.1** 左栏改 TabControl + 时间/标签双 ScrollViewer | `Views/GalleryView.axaml` |
+| ☐ | **v0.6.1** 注册 EmptyTagToUntitledConverter 到 UserControl.Resources | `Views/GalleryView.axaml` |
 | ☐ | 新建 ScoreToBrushConverter | `Converters/` |
 | ☐ | 新建 ScoreToDisplayConverter | `Converters/` |
 | ☐ | 新建 TagsToShortTextConverter | `Converters/` |
+| ☐ | **v0.6.1** 新建 EmptyTagToUntitledConverter（合并到 `TagConverters.cs`） | `Converters/` |
 | ☐ | 注册 Converter 到 App.axaml ResourceDictionary | `App.axaml` |
 | ☐ | 加 .sort-combo 样式 | `Themes/Styles.axaml` |
+| ☐ | **v0.6.1** 加 .group-tabs / TabItem / .tag-node 样式 | `Themes/Styles.axaml` |
 
 ### 4.5 验证
 
@@ -599,6 +754,13 @@ public GalleryViewModel(
 | ☐ | 点"取消打标" → 中断 + toast "已取消" |
 | ☐ | 失败文件显示红色徽章 + hover 看错误原因 |
 | ☐ | 打分标后刷新 → 数据持久化不丢失 |
+| **v0.6.1 专项** | |
+| ☐ | 切「时间」tab → 沿用 v0.6 行为（DateGroups + SelectedDate） |
+| ☐ | 切「标签」tab → 自动选中第一个 tag → 右侧渲染该 tag 的文件 |
+| ☐ | tag 视图下切排序「评分↓」 → 文件按 score DESC NULL LAST 重排 |
+| ☐ | tag 视图下多选 → 「批量打标」可用 → 打标完成 tag 分组自动刷新 |
+| ☐ | 项目从未打过标 → 切到「标签」tab 显示空态 |
+| ☐ | TabControl 样式沿用 theme token，无硬编码颜色 |
 
 ---
 
@@ -611,9 +773,15 @@ Phase 1 (数据层)
             ├─ Phase 4 (工具栏 UI)
             └─ Phase 5 (卡片 UI + Converter)
                  └─ Phase 6 (图标)
+
+v0.6.1 patch:
+  Phase 1a (Repository SortMode + TagGroupItem) ─┐
+                                                 ├─→ Phase 7 (左栏 TabControl + VM 联动 + Converter)
+                                                 │
+            Phase 1b (无 schema 变更) ───────────┘
 ```
 
-Phase 4 和 5 可并行。
+Phase 4 / 5 / 7 可并行；Phase 7 依赖 Phase 1a 的 SortMode 签名对齐。
 
 ---
 
@@ -629,6 +797,20 @@ Phase 4 和 5 可并行。
 
 ---
 
-> **本文档状态**：plan（待实施）。实施完成后回填实际文件路径与行号。
+> **本文档状态**：plan（v0.6.1 patch）。v0.6 主计划已实施完数据/AI/photo tile；本 patch 补左栏 tab + tag 视图排序联动。
 >
-> **下一步**：确认 plan → 开 Phase 1 数据层。
+> **下一步**：用户审 v0.6.1 patch → 确认 → 开 Step 1 Repository.SortMode → Step 2 VM 联动 → Step 3 Converter → Step 4 GalleryView XAML → Step 5 编译验证。
+
+---
+
+## 7. v0.6.1 patch 偏差对照
+
+> 与 `doc/11-ai-tagging.md` §12 一致。本 spec 视角的额外偏差：
+
+| # | 偏差 | 原 v1.0 spec | v1.1 (v0.6.1 patch) |
+|---|---|---|---|
+| P1 | `GetByTagAsync` 签名 | `(projectPath, tag, ct)` | `(projectPath, tag, sortMode, ct)` |
+| P2 | `TagGroups` 元素类型 | `(string Tag, int Count)` tuple | `TagGroupItem` sealed class |
+| P3 | `OnSortModeChanged` | 只重载 SelectedDate | switch GroupMode (Date/Tag 都重载) |
+| P4 | `OnGroupModeChanged` | 不存在 | 加：Tag → LoadTagGroupsAsync + 自动选第一个 |
+| P5 | 左栏 tab UI | 不在本文档范围（属 doc/11 §5.5） | 加 Phase 7 引用 doc/11 spec |
