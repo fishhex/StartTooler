@@ -23,55 +23,98 @@
         <converters:ScoreToBrushConverter x:Key="ScoreToBrush"/>
         <converters:ScoreToDisplayConverter x:Key="ScoreToDisplay"/>
         <converters:TagsToShortTextConverter x:Key="TagsToShortText"/>
+        <!-- v0.6.1: 标签分类 Converter（空标签 → 未分类） -->
+        <converters:EmptyTagToUntitledConverter x:Key="EmptyTagToUntitled"/>
     </UserControl.Resources>
 
     <!-- v2.3: 工具栏已移至 MainWindow 全局工具栏 -->
     <!-- 页面结构：时间轴(180) + 照片网格(*) -->
     <Grid ColumnDefinitions="180,*">
-        <!-- 时间轴 -->
+        <!-- v0.6.1: 左栏 — 顶部 TabControl + 下方 Date/Tag 双视图 -->
         <Border Grid.Column="0"
                 Background="{DynamicResource Bg.Outer}"
                 BorderBrush="{DynamicResource Bg.Divider}"
                 BorderThickness="0,0,1,0">
-            <ScrollViewer>
-                <ItemsControl ItemsSource="{Binding DateGroups}" Margin="16,24">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Spacing="0"/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="models:TimelineEntry">
-                            <Button Classes="timeline-node"
-                                    Command="{Binding $parent[UserControl].DataContext.SelectCommand}"
-                                    CommandParameter="{Binding}">
-                                <Button.Template>
-                                    <ControlTemplate TargetType="Button">
-                                        <Canvas Width="150" Height="56">
-                                            <!-- 圆点 -->
-                                            <Ellipse Width="10" Height="10"
-                                                     Fill="{Binding IsSelected, Converter={StaticResource BoolToAccentOrDivider}}"
-                                                     Canvas.Left="8" Canvas.Top="23"/>
-                                            <!-- 连接线段 (下方) -->
-                                            <Border Width="2" Height="36"
-                                                    Background="{DynamicResource Timeline.Line}"
-                                                    Opacity="0.3"
-                                                    Canvas.Left="12" Canvas.Top="33"/>
-                                            <!-- 日期文字 -->
-                                            <TextBlock Canvas.Left="32" Canvas.Top="20"
-                                                       Text="{Binding Date, StringFormat='{}{0:yyyy-MM-dd}'}"
-                                                       FontFamily="{DynamicResource Font.Mono}"
-                                                       FontSize="13"
-                                                       FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
-                                                       Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
-                                        </Canvas>
-                                    </ControlTemplate>
-                                </Button.Template>
-                            </Button>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
+            <DockPanel>
+                <!-- 顶部 TabControl（替代原 spec RadioButton）：0=时间 1=标签 -->
+                <TabControl DockPanel.Dock="Top"
+                            SelectedIndex="{Binding GroupModeIndex}"
+                            Classes="group-tabs">
+                    <TabItem Header="时间"/>
+                    <TabItem Header="标签"/>
+                </TabControl>
+
+                <!-- 时间轴列表（GroupMode=Date 时显示） -->
+                <ScrollViewer IsVisible="{Binding IsDateGroupMode}">
+                    <ItemsControl ItemsSource="{Binding DateGroups}" Margin="16,0,16,24">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Spacing="0"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:TimelineEntry">
+                                <Button Classes="timeline-node"
+                                        Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).SelectCommand}"
+                                        CommandParameter="{Binding}">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Canvas Width="150" Height="56">
+                                                <!-- 圆点 -->
+                                                <Ellipse Width="10" Height="10"
+                                                         Fill="{Binding IsSelected, Converter={StaticResource BoolToAccentOrDivider}}"
+                                                         Canvas.Left="8" Canvas.Top="23"/>
+                                                <!-- 连接线段 (下方) -->
+                                                <Border Width="2" Height="36"
+                                                        Background="{DynamicResource Timeline.Line}"
+                                                        Opacity="0.3"
+                                                        Canvas.Left="12" Canvas.Top="33"/>
+                                                <!-- 日期文字 -->
+                                                <TextBlock Canvas.Left="32" Canvas.Top="20"
+                                                           Text="{Binding Date, StringFormat='{}{0:yyyy-MM-dd}'}"
+                                                           FontFamily="{DynamicResource Font.Mono}"
+                                                           FontSize="13"
+                                                           FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
+                                                           Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
+                                            </Canvas>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!-- 标签列表（GroupMode=Tag 时显示） -->
+                <ScrollViewer IsVisible="{Binding IsTagGroupMode}">
+                    <ItemsControl ItemsSource="{Binding TagGroups}" Margin="16,0,16,24">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Spacing="0"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:TagGroupItem">
+                                <Button Classes="tag-node"
+                                        Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).SelectTagCommand}"
+                                        CommandParameter="{Binding}">
+                                    <Grid>
+                                        <TextBlock Text="{Binding Tag, Converter={StaticResource EmptyTagToUntitled}}"
+                                                   HorizontalAlignment="Left"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="13"/>
+                                        <TextBlock Text="{Binding Count, StringFormat='{}{0} 张'}"
+                                                   HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource Text.Secondary}"/>
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
         </Border>
 
         <!-- 照片网格区域 -->
