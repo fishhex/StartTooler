@@ -27,14 +27,16 @@ public interface IMediaRepository
     Task UpdateTagAsync(long fileId, IEnumerable<string> tags, int score, long taggedAt, string? tagError, CancellationToken ct = default);
 
     /// <summary>
-    /// 获取标签分组（标签名 → 文件数），按数量降序。UI 左栏"标签"tab 用（本期不实现 UI，方法先准备好）。
+    /// 获取标签分组（标签名 → 文件数），按数量降序。UI 左栏"标签"tab 用（v0.6.1 patch 已接 UI）。
     /// </summary>
-    Task<IReadOnlyList<(string Tag, int Count)>> GetTagGroupsAsync(string projectPath, CancellationToken ct = default);
+    Task<IReadOnlyList<TagGroupItem>> GetTagGroupsAsync(string projectPath, CancellationToken ct = default);
 
     /// <summary>
-    /// 按标签筛选文件。用 LIKE '%"标签"%' 匹配 JSON 数组里的标签项（假设标签名不含双引号）。
+    /// 按标签筛选文件 + 按 SortMode 排序。
+    /// 用 LIKE '%"标签"%' 匹配 JSON 数组里的标签项（假设标签名不含双引号）。
+    /// v0.6.1 加 SortMode 参数：切「评分↓」时 tag 视图也按评分排序。
     /// </summary>
-    Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath, string tag, CancellationToken ct = default);
+    Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath, string tag, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default);
 }
 
 public class ScanResult

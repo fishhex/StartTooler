@@ -454,7 +454,7 @@ public class MediaRepository : IMediaRepository
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
-    public async Task<IReadOnlyList<(string Tag, int Count)>> GetTagGroupsAsync(string projectPath, CancellationToken ct = default)
+    public async Task<IReadOnlyList<TagGroupItem>> GetTagGroupsAsync(string projectPath, CancellationToken ct = default)
     {
         var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
         var tagCounts = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -485,14 +485,15 @@ public class MediaRepository : IMediaRepository
             }
         }
 
+        // v0.6.1: 返回 TagGroupItem class（取代 v0.6 的 (string, int) tuple，XAML 更顺）
         return tagCounts
-            .Select(kv => (kv.Key, kv.Value))
-            .OrderByDescending(x => x.Item2)
-            .ThenBy(x => x.Item1, StringComparer.Ordinal)
+            .OrderByDescending(kv => kv.Value)
+            .ThenBy(kv => kv.Key, StringComparer.Ordinal)
+            .Select(kv => new TagGroupItem { Tag = kv.Key, Count = kv.Value })
             .ToList();
     }
 
-    public async Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath, string tag, CancellationToken ct = default)
+    public async Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath, string tag, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default)
     {
         var results = new List<MediaFile>();
         var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
@@ -500,9 +501,17 @@ public class MediaRepository : IMediaRepository
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(ct);
 
+        // v0.6.1: 跟 GetByDateAsync 对齐 ORDER BY 分支。
+        // sortMode 是硬编码常量（无用户输入），SQL 拼接安全。
+        var orderBy = sortMode switch
+        {
+            SortMode.ScoreDesc => "ORDER BY score IS NULL, score DESC, shot_at DESC, file_name ASC",
+            _ => "ORDER BY shot_at DESC, file_name ASC",
+        };
+
         // LIKE '%"标签"%' 匹配 JSON 数组里的标签项（数组里标签都是 "标签" 形式）。
         // 假设 AI 返回的标签不含双引号（实测模型输出安全）；如果将来发现误匹配，切到 SQLite JSON1 函数。
-        var sql = @"
+        var sql = $@"
             SELECT
                 id, project_path, relative_path, file_name, media_type,
                 file_size, last_modified, shot_at, is_uploaded, local_exists,
@@ -512,7 +521,7 @@ public class MediaRepository : IMediaRepository
             FROM media_files
             WHERE project_path = @projectPath
               AND tags LIKE @tagPattern
-            ORDER BY shot_at DESC
+            {orderBy}
             LIMIT 1000";
 
         await using var cmd = new SqliteCommand(sql, connection);
