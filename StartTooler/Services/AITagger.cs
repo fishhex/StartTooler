@@ -16,13 +16,16 @@ using StartTooler.Data;
 namespace StartTooler.Services;
 
 /// <summary>
-/// 单次 AI 打标成功结果。
-/// </summary>
-public sealed record TagResult(
-    IReadOnlyList<string> Tags,
-    int Score,
-    int LatencyMs,
-    string Model);
+    /// 单次 AI 打标成功结果。
+    /// v0.7: Tags 仅含主体标签（SubjectTagVocabulary 内），QualityTags 含质量评价（QualityTagVocabulary 内）。
+    /// AI 返回时分别走两个白名单校验；QualityTags 缺失/全不在白名单时为空数组。
+    /// </summary>
+    public sealed record TagResult(
+        IReadOnlyList<string> Tags,
+        IReadOnlyList<string> QualityTags,
+        int Score,
+        int LatencyMs,
+        string Model);
 
 /// <summary>
 /// 单次 AI 打标失败。IsFatal=true 触发整批终止（如 HTTP 401 Key 失效）；false 仅跳过单文件。
@@ -340,7 +343,7 @@ public sealed class AITagger : IAITagger
             }
 
             sw.Stop();
-            return (new TagResult(parsed!.Tags, parsed.Score, (int)sw.ElapsedMilliseconds, config.Model), null);
+            return (new TagResult(parsed!.Tags, parsed.QualityTags, parsed.Score, (int)sw.ElapsedMilliseconds, config.Model), null);
         }
     }
 
@@ -475,7 +478,8 @@ public sealed class AITagger : IAITagger
     }
 
     /// <summary>
-    /// 解析 AI 返回的 JSON 文本。剥 markdown 包裹 + 白名单过滤 + score clamp。
+    /// 解析 AI 返回的 JSON 文本。剥 markdown 包裹 + 双白名单过滤 + score clamp。
+    /// v0.7: tags 走 SubjectTagVocabulary 校验，quality_tags 走 QualityTagVocabulary 校验。
     /// 成功返回 (TagResult?, null)，失败返回 (null, error)。
     /// </summary>
     private static (TagResult? Result, string? Error) ParseAndValidate(string raw)
@@ -499,7 +503,7 @@ public sealed class AITagger : IAITagger
             return (null, $"JSON 解析失败：{ex.Message}");
         }
 
-        // 3. 提取 tags
+        // 3. 提取 tags → SubjectTagVocabulary 过滤 → Distinct → Take(7)
         var rawTags = new List<string>();
         if (root.TryGetProperty("tags", out var tagsEl) && tagsEl.ValueKind == JsonValueKind.Array)
         {
@@ -510,9 +514,8 @@ public sealed class AITagger : IAITagger
             }
         }
 
-        // 4. 白名单过滤
         var validTags = rawTags
-            .Where(t => ChineseTagVocabulary.Contains(t))
+            .Where(t => SubjectTagVocabulary.Contains(t))
             .Distinct()
             .Take(7)
             .ToList();
@@ -528,6 +531,30 @@ public sealed class AITagger : IAITagger
             Trace.WriteLine($"[AITagger] filtered {dropped.Count} out-of-whitelist tags. dropped=[{string.Join(",", dropped)}]");
         }
 
+        // 4. 提取 quality_tags → QualityTagVocabulary 过滤 → Distinct → Take(5)
+        // 字段缺失 / 不在白名单 → []（兜底，不是错误）
+        var rawQualityTags = new List<string>();
+        if (root.TryGetProperty("quality_tags", out var qtEl) && qtEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var tagEl in qtEl.EnumerateArray())
+            {
+                var tag = tagEl.GetString()?.Trim();
+                if (!string.IsNullOrEmpty(tag)) rawQualityTags.Add(tag);
+            }
+        }
+
+        var validQualityTags = rawQualityTags
+            .Where(t => QualityTagVocabulary.Contains(t))
+            .Distinct()
+            .Take(5)
+            .ToList();
+
+        if (rawQualityTags.Count > 0 && validQualityTags.Count < rawQualityTags.Count)
+        {
+            var dropped = rawQualityTags.Except(validQualityTags).ToList();
+            Trace.WriteLine($"[AITagger] filtered {dropped.Count} out-of-whitelist quality_tags. dropped=[{string.Join(",", dropped)}]");
+        }
+
         // 5. 提取 score + clamp
         int score = 0;
         if (root.TryGetProperty("score", out var scoreEl) && scoreEl.ValueKind == JsonValueKind.Number)
@@ -535,7 +562,7 @@ public sealed class AITagger : IAITagger
             score = scoreEl.TryGetInt32(out var s) ? Math.Clamp(s, 0, 100) : 0;
         }
 
-        return (new TagResult(validTags, score, 0, ""), null);
+        return (new TagResult(validTags, validQualityTags, score, 0, ""), null);
     }
 
     private static string Truncate(string? s, int max)
@@ -544,68 +571,90 @@ public sealed class AITagger : IAITagger
         return s.Length <= max ? s : s.Substring(0, max) + "…";
     }
 
-    /// <summary>
-    /// 中文标签白名单（56 个）。调整时同步更新 doc/11-ai-tagging.md 附录 A + prompt。
+/// <summary>
+    /// v0.7 主体标签白名单（18 个，spec doc/13-tag-quality-split.md §2.1）。
+    /// 用户决策：只允许返回「真正的星体名称」，且砍掉冗余特定名。
+    ///
+    /// 砍掉规则（以此类推）：
+    /// - 月亮 phases/views：娥眉月/满月/月面特写 → 月亮
+    /// - 银河：银心 → 银河
+    /// - Messier 别名：M42/M31/M45 → 猎户座大星云/仙女座星系/昴星团
+    /// - 子类归大类：暗星云 → 星云；超新星遗迹 → 星云；国际空间站 → 卫星
+    /// - 上版还砍了：现象 (6，事件不是星体) + 构图/手法 (10，技法) + 特殊 (2，兜底标记)
     /// </summary>
-    public static readonly IReadOnlyList<string> ChineseTagVocabulary = new[]
+    public static readonly IReadOnlyList<string> SubjectTagVocabulary = new[]
     {
-        // 深空天体 (5)
-        "星云", "星系", "星团", "超新星遗迹", "暗星云",
+        // 深空天体 (3)
+        "星云", "星系", "星团",
 
-        // 太阳系 (8)
-        "行星", "月亮", "太阳", "彗星", "小行星", "流星", "卫星", "国际空间站",
+        // 太阳系 (7)
+        "行星", "月亮", "太阳", "彗星", "小行星", "流星", "卫星",
 
-        // 命名天体 (15)
-        "猎户座大星云", "M42", "仙女座星系", "M31", "昴星团", "M45",
-        "银河", "银心", "土星", "木星", "火星", "金星",
-        "娥眉月", "满月", "月面特写",
-
-        // 现象 (6)
-        "极光", "日食", "月食", "凌日", "月掩星", "合相",
-
-        // 构图 / 拍摄手法 (10)
-        "广角", "窄带", "行星摄影", "深空摄影", "星座", "长焦",
-        "赤道仪跟踪", "行星叠加", "月面拼接", "全景",
-
-        // 质量问题 (10)
-        "拖线", "失焦", "噪点", "过曝", "欠曝", "色差",
-        "大气抖动", "视宁度差", "镜头眩光", "杂光",
-
-        // 特殊 (2)
-        "非天文", "未分类",
+        // 命名天体 (8)
+        "猎户座大星云", "仙女座星系", "昴星团", "银河",
+        "土星", "木星", "火星", "金星",
     };
 
     /// <summary>
-    /// 中文图片 prompt（含白名单拼入）。视频 prompt D.2 加。
+    /// v0.7 质量评价白名单（10 个，spec doc/13-tag-quality-split.md §2.2）。
+    /// 用于 AI `quality_tags` 字段 + 后续 Search/Filter。**不参与左栏标签聚合**。
+    /// </summary>
+    public static readonly IReadOnlyList<string> QualityTagVocabulary = new[]
+    {
+        "拖线", "失焦", "噪点", "过曝", "欠曝", "色差",
+        "大气抖动", "视宁度差", "镜头眩光", "杂光",
+    };
+
+    /// <summary>
+    /// v0.6 兼容：旧中文标签白名单（Subject + Quality 拼接）。保留供外部平滑过渡，
+    /// 内部逻辑全部走 SubjectTagVocabulary / QualityTagVocabulary 拆分常量。
+    /// </summary>
+    [Obsolete("v0.7 拆分为 SubjectTagVocabulary + QualityTagVocabulary；新代码请使用拆分常量")]
+    public static readonly IReadOnlyList<string> ChineseTagVocabulary =
+        SubjectTagVocabulary.Concat(QualityTagVocabulary).ToList();
+
+    /// <summary>
+    /// 中文图片 prompt（v0.7：tags 只允许返回星体名称 + 双白名单 + 双输出数组 + 评分）。
+    /// 用户决策：tags 严格只含星体（28 个）；现象/构图/特殊全部砍掉。
     /// </summary>
     internal static string BuildImagePrompt()
     {
-        var vocab = string.Join("、", ChineseTagVocabulary.Where(t => t != "非天文" && t != "未分类"));
+        var subjectVocab = string.Join("、", SubjectTagVocabulary);
+        var qualityVocab = string.Join("、", QualityTagVocabulary);
         return $$"""
 你是一位天文摄影专家，正在分析一张天文照片。
 
-【标签白名单】（只允许使用下列词汇）：
-{{vocab}}、非天文、未分类
+【主体标签白名单】（只允许使用下列「星体名称」描述照片中的天体）：
+{{subjectVocab}}
+
+【质量评价白名单】（只允许使用下列词汇描述画质问题，无问题则返回空数组）：
+{{qualityVocab}}
 
 【输出规则】
-- 选 3-7 个最相关的标签（按相关性排序，最相关的在前）
+- 选 3-7 个最相关的主体标签（按相关性排序，最相关的在前）；只能从上面的星体白名单里选
+- 选 0-5 个存在的质量问题（无问题时返回空数组）；只能从质量白名单里选
 - 评分 0-100 整数：
   · 90-100 作品级（可投稿 / 印刷出版）
   · 75-89  优秀（轻微瑕疵）
   · 60-74  良好（有可见问题但仍可用）
   · 40-59  一般（明显缺陷）
   · 0-39   较差（建议丢弃）
-- 非天文内容（普通风景、测试图、色卡）→ tags:["非天文"]，score:0
+- 非天文内容（普通风景、测试图、色卡）→ tags:[]，quality_tags:[质量问题]，score:0
 
-【示例】（仅供格式参考，不要照抄内容）：
-图：猎户座大星云 HOO 合成作品
-输出：{"tags": ["星云", "猎户座大星云", "广角"], "score": 82}
+【示例】：
+图：猎户座大星云 HOO 合成作品，暗部有轻微噪点
+输出：{"tags":["星云","猎户座大星云"],"quality_tags":["噪点"],"score":82}
+
+图：对焦精准、曝光完美的月亮作品
+输出：{"tags":["月亮"],"quality_tags":[],"score":95}
+
+图：普通风景照（非天文）
+输出：{"tags":[],"quality_tags":["过曝"],"score":0}
 
 ---
-
 现在分析这张图，按规则输出。
 只输出 JSON，禁止 markdown / 解释文字：
-{"tags": ["标签1", "标签2"], "score": 分数}
+{"tags":["星体1","星体2"],"quality_tags":["质量1"],"score":分数}
 """;
     }
 }
