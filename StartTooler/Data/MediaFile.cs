@@ -97,6 +97,14 @@ public partial class MediaFile : ObservableObject
     private List<string> _tags = new();
 
     /// <summary>
+    /// v0.7: AI 质量评价标签列表（如 "欠曝" "噪点"）。DB 列 quality_tags，JSON 序列化。
+    /// 与 Tags（主体标签）分开存储，左栏聚合时不参与（只走 Tags）。
+    /// UI 通过 HasQualityTags 联动显示质量徽章条（暖红调）。
+    /// </summary>
+    [ObservableProperty]
+    private List<string> _qualityTags = new();
+
+    /// <summary>
     /// AI 评分 0-100，null 表示未打标。DB 列 score INTEGER NULL。
     /// UI 通过 HasScore 联动显示评分角标。
     /// </summary>
@@ -125,6 +133,9 @@ public partial class MediaFile : ObservableObject
 
     /// <summary>photo tile 标签条 IsVisible 绑定。Tags 为空列表或 null 时隐藏。</summary>
     public bool HasTags => Tags is { Count: > 0 };
+
+    /// <summary>v0.7: photo tile 质量标签条 IsVisible 绑定。QualityTags 为空列表或 null 时隐藏。</summary>
+    public bool HasQualityTags => QualityTags is { Count: > 0 };
 
     public DateTime? ShotAtDateTime => ShotAt.HasValue
         ? DateTimeOffset.FromUnixTimeMilliseconds(ShotAt.Value).DateTime
