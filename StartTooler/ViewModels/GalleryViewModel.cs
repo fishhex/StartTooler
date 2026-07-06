@@ -846,11 +846,13 @@ public partial class GalleryViewModel : ObservableObject
                     else if (result != null)
                     {
                         file.Tags = result.Tags.ToList();
+                        file.QualityTags = result.QualityTags.ToList();
                         file.Score = result.Score;
                         file.TagError = null;
                         await _mediaRepo.UpdateTagAsync(
                             file.Id,
                             result.Tags,
+                            result.QualityTags,
                             result.Score,
                             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                             null,
