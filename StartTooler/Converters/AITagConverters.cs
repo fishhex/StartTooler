@@ -58,39 +58,97 @@ public class ScoreToDisplayConverter : IValueConverter
 }
 
 /// <summary>
-/// List&lt;string&gt; Tags → string（用于标签小角标条截断显示）
-///   null/empty → ""
-///   ≤3 个 → " · " join
-///   &gt;3 个 → 前 2 个 + " +N"  （N = 剩余数量）
-///   ConverterParameter="Full" → 全部 join 不截断（tooltip 用）
-/// </summary>
-public class TagsToShortTextConverter : IValueConverter
-{
-    private const string Separator = " · ";
-
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    /// List&lt;string&gt; Tags → string（用于标签小角标条截断显示）
+    ///   null/empty → ""
+    ///   ≤3 个 → " · " join
+    ///   &gt;3 个 → 前 2 个 + " +N"  （N = 剩余数量）
+    ///   ConverterParameter="Full" → 全部 join 不截断（tooltip 用）
+    /// </summary>
+    public class TagsToShortTextConverter : IValueConverter
     {
-        if (value is List<string> tags && tags.Count > 0)
+        private const string Separator = " · ";
+
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
-            // 完整列表（tooltip 用），通过 ConverterParameter="Full" 触发
-            if (parameter is string s && string.Equals(s, "Full", StringComparison.OrdinalIgnoreCase))
+            if (value is List<string> tags && tags.Count > 0)
             {
-                return string.Join(Separator, tags);
+                // 完整列表（tooltip 用），通过 ConverterParameter="Full" 触发
+                if (parameter is string s && string.Equals(s, "Full", StringComparison.OrdinalIgnoreCase))
+                {
+                    return string.Join(Separator, tags);
+                }
+                // 角标截断显示（默认）
+                if (tags.Count <= 3)
+                {
+                    return string.Join(Separator, tags);
+                }
+                var firstTwo = string.Join(Separator, tags.Take(2));
+                var rest = tags.Count - 2;
+                return $"{firstTwo} +{rest}";
             }
-            // 角标截断显示（默认）
-            if (tags.Count <= 3)
-            {
-                return string.Join(Separator, tags);
-            }
-            var firstTwo = string.Join(Separator, tags.Take(2));
-            var rest = tags.Count - 2;
-            return $"{firstTwo} +{rest}";
+            return string.Empty;
         }
-        return string.Empty;
+
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
     }
 
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    /// <summary>
+    /// v0.7 List&lt;string&gt; QualityTags → string（质量标签条截断显示，逻辑同 TagsToShortTextConverter）
+    ///   null/empty → ""
+    ///   ≤3 个 → " · " join
+    ///   &gt;3 个 → 前 2 个 + " +N"
+    ///   ConverterParameter="Full" → 全部 join 不截断（tooltip 用）
+    /// </summary>
+    public class QualityTagsToShortTextConverter : IValueConverter
     {
-        throw new NotSupportedException();
+        private const string Separator = " · ";
+
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            if (value is List<string> tags && tags.Count > 0)
+            {
+                if (parameter is string s && string.Equals(s, "Full", StringComparison.OrdinalIgnoreCase))
+                {
+                    return string.Join(Separator, tags);
+                }
+                if (tags.Count <= 3)
+                {
+                    return string.Join(Separator, tags);
+                }
+                var firstTwo = string.Join(Separator, tags.Take(2));
+                var rest = tags.Count - 2;
+                return $"{firstTwo} +{rest}";
+            }
+            return string.Empty;
+        }
+
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
     }
-}
+
+    /// <summary>
+    /// v0.7 List&lt;string&gt; QualityTags → string（tooltip 完整列表 join，固定逻辑）
+    /// </summary>
+    public class QualityTagsToTooltipConverter : IValueConverter
+    {
+        private const string Separator = " · ";
+
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            if (value is List<string> tags && tags.Count > 0)
+            {
+                return string.Join(Separator, tags);
+            }
+            return string.Empty;
+        }
+
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
+    }

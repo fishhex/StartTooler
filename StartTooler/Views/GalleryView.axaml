@@ -25,6 +25,9 @@
         <converters:TagsToShortTextConverter x:Key="TagsToShortText"/>
         <!-- v0.6.1: 标签分类 Converter（空标签 → 未分类） -->
         <converters:EmptyTagToUntitledConverter x:Key="EmptyTagToUntitled"/>
+        <!-- v0.7: 质量标签 Converter（暖红调 quality 标签条截断/完整列表） -->
+        <converters:QualityTagsToShortTextConverter x:Key="QualityTagsToShortText"/>
+        <converters:QualityTagsToTooltipConverter x:Key="QualityTagsToTooltip"/>
     </UserControl.Resources>
 
     <!-- v2.3: 工具栏已移至 MainWindow 全局工具栏 -->
@@ -447,6 +450,23 @@
                                                             <TextBlock Text="{Binding Tags, Converter={StaticResource TagsToShortText}}"
                                                                        FontSize="10"
                                                                        Foreground="#E6FFFFFF"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       MaxLines="1"/>
+                                                        </Border>
+
+                                                        <!-- v0.7: 质量评价标签条 (底部居中, subject 标签条上方; 暖红底暖橙字, 视觉区分) -->
+                                                        <Border IsVisible="{Binding HasQualityTags}"
+                                                                HorizontalAlignment="Center"
+                                                                VerticalAlignment="Bottom"
+                                                                Margin="0,0,0,24"
+                                                                Padding="6,2"
+                                                                MaxWidth="140"
+                                                                Background="#CC3A1F1A"
+                                                                CornerRadius="8"
+                                                                ToolTip.Tip="{Binding QualityTags, Converter={StaticResource QualityTagsToTooltip}}">
+                                                            <TextBlock Text="{Binding QualityTags, Converter={StaticResource QualityTagsToShortText}}"
+                                                                       FontSize="10"
+                                                                       Foreground="#FFCC8888"
                                                                        TextTrimming="CharacterEllipsis"
                                                                        MaxLines="1"/>
                                                         </Border>
