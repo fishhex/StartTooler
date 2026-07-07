@@ -8,13 +8,26 @@ using Avalonia.Media;
 namespace StartTooler.Helpers;
 
 /// <summary>
-/// 集中式对话框构造器。所有 dialog 走这里 → 统一走 Themes/Styles.axaml 里的
-/// Window.dialog-window / TextBlock.dialog-* / Button.dialog-* 样式类。
+    /// 集中式对话框构造器。所有 dialog 走这里 → 统一走 Themes/Styles.axaml 里的
+    /// Window.dialog-window / TextBlock.dialog-* / Button.dialog-* 样式类。
 ///
 /// 不要再在 ViewModel 里直接 new Window 拼 dialog 了，新增对话框都走这里。
 /// </summary>
 public static class DialogHelper
 {
+    /// <summary>
+    /// 三选项对话框结果。v0.8 垃圾筒场景用（spec doc/14-delete-and-trash.md §7.3）：
+    ///   - CleanSingle: Primary="从云端也删除" / Secondary="仅删除本地" / Tertiary="取消"
+    ///   - BatchCleanAll: 同上
+    /// 用户关闭弹窗（点 X 或 Esc）→ Cancelled。
+    /// </summary>
+    public enum DialogChoice
+    {
+        Cancelled,
+        Primary,
+        Secondary,
+        Tertiary,
+    }
     /// <summary>
     /// 通用确认对话框。返回 true = 用户点了 primary 按钮，false = 点了 secondary 或关闭。
     ///
@@ -176,5 +189,107 @@ public static class DialogHelper
         dialog.Content = root;
 
         await dialog.ShowDialog(owner);
+    }
+
+    /// <summary>
+    /// 三选项对话框（v0.8 垃圾筒彻底删除用）。
+    ///
+    /// 三个按钮横向排列（primary 在最右强调），返回用户点击的按钮枚举。
+    /// 用户关闭弹窗（点 X / Esc）→ DialogChoice.Cancelled。
+    ///
+    /// 按钮排列：tertiary（左） / secondary（中） / primary（右，destructive 操作时配 State.Danger 风格）。
+    /// </summary>
+    public static async Task<DialogChoice> ShowChoiceAsync(
+        Window owner,
+        string title,
+        string message,
+        string primaryButtonText,
+        string secondaryButtonText,
+        string tertiaryButtonText)
+    {
+        var choice = DialogChoice.Cancelled;
+
+        var dialog = new Window
+        {
+            Title = title,
+            Width = 420,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Classes = { "dialog-window" }
+        };
+
+        var root = new StackPanel
+        {
+            Margin = new Thickness(28, 24, 28, 20),
+            Spacing = 12
+        };
+
+        root.Children.Add(new TextBlock
+        {
+            Text = title,
+            Classes = { "dialog-title" }
+        });
+
+        if (!string.IsNullOrEmpty(message))
+        {
+            root.Children.Add(new TextBlock
+            {
+                Text = message,
+                Classes = { "dialog-message" }
+            });
+        }
+
+        var buttonRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 12,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+
+        // tertiary: 左，最弱动作（取消 / 暂不）
+        var tertiary = new Button
+        {
+            Content = tertiaryButtonText,
+            Classes = { "dialog-secondary" }
+        };
+        tertiary.Click += (_, _) =>
+        {
+            choice = DialogChoice.Tertiary;
+            dialog.Close();
+        };
+        buttonRow.Children.Add(tertiary);
+
+        // secondary: 中，备选动作
+        var secondary = new Button
+        {
+            Content = secondaryButtonText,
+            Classes = { "dialog-secondary" }
+        };
+        secondary.Click += (_, _) =>
+        {
+            choice = DialogChoice.Secondary;
+            dialog.Close();
+        };
+        buttonRow.Children.Add(secondary);
+
+        // primary: 右，主推动作（destructive 也走这里，由调用方按需覆盖样式）
+        var primary = new Button
+        {
+            Content = primaryButtonText,
+            Classes = { "dialog-primary" }
+        };
+        primary.Click += (_, _) =>
+        {
+            choice = DialogChoice.Primary;
+            dialog.Close();
+        };
+        buttonRow.Children.Add(primary);
+
+        root.Children.Add(buttonRow);
+        dialog.Content = root;
+
+        await dialog.ShowDialog(owner);
+        return choice;
     }
 }
