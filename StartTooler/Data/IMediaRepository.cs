@@ -36,8 +36,42 @@ public interface IMediaRepository
     /// 按标签筛选文件 + 按 SortMode 排序。
     /// 用 LIKE '%"标签"%' 匹配 JSON 数组里的标签项（假设标签名不含双引号）。
     /// v0.6.1 加 SortMode 参数：切「评分↓」时 tag 视图也按评分排序。
+    /// v0.8 加 deleted_at IS NULL 过滤：已移入垃圾筒的文件不出现在 Gallery。
     /// </summary>
     Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath, string tag, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default);
+
+    // === v0.8 删除与垃圾筒方法（spec doc/14-delete-and-trash.md §2.3） ===
+
+    /// <summary>
+    /// 软删除：标记 deleted_at = now（unix ms），不删本地文件、不删云端。
+    /// Gallery 查询自动 WHERE deleted_at IS NULL 过滤掉，软删除后立即从 UI 消失。
+    /// </summary>
+    Task SoftDeleteAsync(long fileId, long deletedAt, CancellationToken ct = default);
+
+    /// <summary>
+    /// 恢复：deleted_at = NULL，文件回到 Gallery。
+    /// 不修改 local_exists——若用户在垃圾筒期间手动删了本地文件，恢复后显示为「云端有、本地无」。
+    /// </summary>
+    Task RestoreAsync(long fileId, CancellationToken ct = default);
+
+    /// <summary>
+    /// 彻底删除：DELETE FROM media_files WHERE id = @id AND deleted_at IS NOT NULL。
+    /// 调用方需自行清理关联的 upload_jobs（Repository 之间不依赖，靠 TrashViewModel 组合调用）。
+    /// 本地文件 / OSS 对象的删除也在调用方处理（顺序：先云端 → 再本地 → 再 DB，失败时回滚看 TrashViewModel）。
+    /// </summary>
+    Task PermanentDeleteAsync(long fileId, CancellationToken ct = default);
+
+    /// <summary>
+    /// 获取某项目下所有已移入垃圾筒的文件，按 deleted_at DESC 排序（最新删除在前）。
+    /// TrashViewModel 加载垃圾筒列表用。
+    /// </summary>
+    Task<IReadOnlyList<MediaFile>> GetDeletedAsync(string projectPath, CancellationToken ct = default);
+
+    /// <summary>
+    /// 释放本地空间时更新 local_exists 标记。
+    /// 实际 File.Delete 由 GalleryViewModel.FreeUpSpace 负责，DB 状态同步走这里。
+    /// </summary>
+    Task UpdateLocalExistsAsync(long fileId, bool exists, CancellationToken ct = default);
 }
 
 public class ScanResult

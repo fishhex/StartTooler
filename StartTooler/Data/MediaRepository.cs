@@ -105,6 +105,12 @@ public class MediaRepository : IMediaRepository
             connection, "media_files", "quality_tags",
             "TEXT NOT NULL DEFAULT '[]'");
 
+        // v0.8: 软删除时间戳（spec doc/14-delete-and-trash.md §2.1）
+        // NULL = 正常文件；NOT NULL = 已移入垃圾筒（值为 unix ms 时间戳）
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "deleted_at",
+            "INTEGER");
+
         // 评分排序的 B-tree 索引。tags 索引对未来 SQLite JSON1 查询有用，
         // 当前 LIKE '%"标签"%' 仍走全表扫（B-tree 不加速前缀模糊）。
         using (var idxCmd = new SqliteCommand(@"
@@ -178,7 +184,9 @@ public class MediaRepository : IMediaRepository
                 date(shot_at / 1000, 'unixepoch', 'localtime') as date,
                 COUNT(*) as count
             FROM media_files
-            WHERE project_path = @projectPath AND shot_at IS NOT NULL
+            WHERE project_path = @projectPath
+              AND shot_at IS NOT NULL
+              AND deleted_at IS NULL
             GROUP BY date(shot_at / 1000, 'unixepoch', 'localtime')
             ORDER BY date DESC";
 
@@ -234,11 +242,13 @@ public class MediaRepository : IMediaRepository
                 thumbnail_path, remote_url, uploaded_at, scanned_at,
                 created_at, updated_at,
                 tags, score, tagged_at, tag_error,
-                quality_tags
+                quality_tags,
+                deleted_at
             FROM media_files
             WHERE project_path = @projectPath
               AND shot_at >= @startTime
               AND shot_at < @endTime
+              AND deleted_at IS NULL
             {orderBy}
             LIMIT 1000";
 
@@ -538,7 +548,8 @@ public class MediaRepository : IMediaRepository
             SELECT tags FROM media_files
             WHERE project_path = @projectPath
               AND tags IS NOT NULL
-              AND tags != '[]'";
+              AND tags != '[]'
+              AND deleted_at IS NULL";
 
         await using var cmd = new SqliteCommand(sql, connection);
         cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
@@ -588,10 +599,12 @@ public class MediaRepository : IMediaRepository
                 thumbnail_path, remote_url, uploaded_at, scanned_at,
                 created_at, updated_at,
                 tags, score, tagged_at, tag_error,
-                quality_tags
+                quality_tags,
+                deleted_at
             FROM media_files
             WHERE project_path = @projectPath
               AND tags LIKE @tagPattern
+              AND deleted_at IS NULL
             {orderBy}
             LIMIT 1000";
 
@@ -608,11 +621,124 @@ public class MediaRepository : IMediaRepository
         return results;
     }
 
-    // === Row 映射 helpers（GetByDateAsync / GetByTagAsync 共用） ===
+    // === v0.8 软删除 / 恢复 / 永久删除 / 垃圾筒 / 释放本地空间 ===
+    // （spec doc/14-delete-and-trash.md §2.3）
+
+    public async Task SoftDeleteAsync(long fileId, long deletedAt, CancellationToken ct = default)
+    {
+        Trace.WriteLine($"[MediaRepository] SoftDeleteAsync: id={fileId}, deletedAt={deletedAt}");
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        // 只标记 deleted_at，不动 local_exists —— 用户仍可能想"释放本地空间"
+        // 或"恢复"回来。local_exists 反映真实磁盘状态，独立于 deleted_at 语义。
+        var sql = "UPDATE media_files SET deleted_at = @deletedAt, updated_at = @updatedAt WHERE id = @id";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@deletedAt", deletedAt);
+        cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
+        cmd.Parameters.AddWithValue("@id", fileId);
+
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    public async Task RestoreAsync(long fileId, CancellationToken ct = default)
+    {
+        Trace.WriteLine($"[MediaRepository] RestoreAsync: id={fileId}");
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        // deleted_at = NULL → 文件重新出现在 Gallery 查询中。
+        // 不修改 local_exists —— 用户在垃圾筒期间可能手动删了本地文件，
+        // 恢复后显示为「云端有、本地无」，与正常状态一致。
+        var sql = "UPDATE media_files SET deleted_at = NULL, updated_at = @updatedAt WHERE id = @id";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
+        cmd.Parameters.AddWithValue("@id", fileId);
+
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    public async Task PermanentDeleteAsync(long fileId, CancellationToken ct = default)
+    {
+        Trace.WriteLine($"[MediaRepository] PermanentDeleteAsync: id={fileId}");
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        // 限定 deleted_at IS NOT NULL —— 防止误删未走软删除流程的文件。
+        // 关联的 upload_jobs 由 TrashViewModel 在调用前清理（Repository 之间不依赖）。
+        var sql = "DELETE FROM media_files WHERE id = @id AND deleted_at IS NOT NULL";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@id", fileId);
+
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<MediaFile>> GetDeletedAsync(string projectPath, CancellationToken ct = default)
+    {
+        Trace.WriteLine($"[MediaRepository] GetDeletedAsync: projectPath={projectPath}");
+
+        var results = new List<MediaFile>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+
+        // 按 deleted_at DESC 排序（最新删除在前）。
+        // 这里不加 WHERE deleted_at IS NULL —— 垃圾筒列表就是要看已删除的。
+        // SELECT 列序与 ReadMediaFileRow 一致（含 deleted_at）。
+        var sql = @"
+            SELECT
+                id, project_path, relative_path, file_name, media_type,
+                file_size, last_modified, shot_at, is_uploaded, local_exists,
+                thumbnail_path, remote_url, uploaded_at, scanned_at,
+                created_at, updated_at,
+                tags, score, tagged_at, tag_error,
+                quality_tags,
+                deleted_at
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC
+            LIMIT 5000";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            results.Add(ReadMediaFileRow(reader));
+        }
+
+        Trace.WriteLine($"[MediaRepository] GetDeletedAsync: 返回 {results.Count} 个已删除文件");
+        return results;
+    }
+
+    public async Task UpdateLocalExistsAsync(long fileId, bool exists, CancellationToken ct = default)
+    {
+        Trace.WriteLine($"[MediaRepository] UpdateLocalExistsAsync: id={fileId}, exists={exists}");
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var sql = "UPDATE media_files SET local_exists = @exists, updated_at = @updatedAt WHERE id = @id";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@exists", exists ? 1 : 0);
+        cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
+        cmd.Parameters.AddWithValue("@id", fileId);
+
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    // === Row 映射 helpers（GetByDateAsync / GetByTagAsync / GetDeletedAsync 共用） ===
 
     /// <summary>
-    /// SELECT 列序：16 基础列 + 5 AI 列（tags/score/tagged_at/tag_error/quality_tags），共 21 列。
-    /// SELECT 模板见 GetByDateAsync / GetByTagAsync 的 sql 字符串。
+    /// SELECT 列序：16 基础列 + 5 AI 列（tags/score/tagged_at/tag_error/quality_tags）+ 1 删除列（deleted_at），共 22 列。
+    /// SELECT 模板见 GetByDateAsync / GetByTagAsync / GetDeletedAsync 的 sql 字符串。
     /// </summary>
     private static MediaFile ReadMediaFileRow(SqliteDataReader reader)
     {
@@ -639,6 +765,7 @@ public class MediaRepository : IMediaRepository
             TaggedAt = reader.IsDBNull(18) ? null : reader.GetInt64(18),
             TagError = reader.IsDBNull(19) ? null : reader.GetString(19),
             QualityTags = ParseTags(reader.IsDBNull(20) ? null : reader.GetString(20)),
+            DeletedAt = reader.IsDBNull(21) ? null : reader.GetInt64(21),
         };
     }
 
