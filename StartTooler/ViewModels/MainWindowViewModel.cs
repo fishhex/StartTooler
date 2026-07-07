@@ -79,8 +79,9 @@ public partial class MainWindowViewModel : ObservableObject
 
         // v0.8: 垃圾筒 VM（spec doc/14-delete-and-trash.md §7.1）
         // 复用 mediaRepo / uploadJobRepo / ossFactory / configService；onOssNotConfigured 复用 MainWindow 的弹窗。
+        // v0.8.1: 新增 thumbnailService 用于下载后重生成缩略图（spec §7.4）。
         TrashViewModel = new TrashViewModel(
-            mediaRepository, uploadJobRepo, ossFactory, configService,
+            mediaRepository, uploadJobRepo, ossFactory, configService, thumbnailService,
             onOssNotConfigured: ShowOssNotConfiguredDialogAsync);
 
         CurrentView = GalleryViewModel;

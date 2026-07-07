@@ -34,6 +34,7 @@ public partial class TrashViewModel : ObservableObject
     private readonly IUploadJobRepository _uploadJobRepo;
     private readonly IOssStorageFactory _ossFactory;
     private readonly IConfigService _configService;
+    private readonly IThumbnailService _thumbnailService;  // v0.8.1 新增：下载后重生成缩略图
     private readonly Func<Task<bool>>? _onOssNotConfigured;
     private CancellationTokenSource? _cts;
 
@@ -56,12 +57,14 @@ public partial class TrashViewModel : ObservableObject
         IUploadJobRepository uploadJobRepo,
         IOssStorageFactory ossFactory,
         IConfigService configService,
+        IThumbnailService thumbnailService,
         Func<Task<bool>>? onOssNotConfigured = null)
     {
         _mediaRepo = mediaRepo;
         _uploadJobRepo = uploadJobRepo;
         _ossFactory = ossFactory;
         _configService = configService;
+        _thumbnailService = thumbnailService;
         _onOssNotConfigured = onOssNotConfigured;
     }
 
@@ -142,7 +145,7 @@ public partial class TrashViewModel : ObservableObject
         }
     }
 
-    // === 下载云端文件到本地（垃圾筒内不自动恢复） ===
+    // === 下载云端文件到本地（垃圾筒内不自动恢复，spec doc/14-delete-and-trash.md §7.4） ===
 
     [RelayCommand]
     private async Task Download(MediaFile? file)
@@ -172,7 +175,6 @@ public partial class TrashViewModel : ObservableObject
         try
         {
             var ossCfg = await _configService.GetAsync<OssConfig>(ConfigKeys.Oss) ?? new OssConfig();
-            var projectCfg = await _configService.GetAsync<ProjectConfig>(ConfigKeys.Project) ?? new ProjectConfig();
             var objectKey = AliyunOssStorage.BuildObjectKey(ossCfg.PathPrefix, file.RelativePath);
             var localPath = Path.Combine(file.ProjectPath, file.RelativePath);
 
@@ -187,8 +189,28 @@ public partial class TrashViewModel : ObservableObject
 
             file.LocalExists = true;
             await _mediaRepo.UpdateLocalExistsAsync(file.Id, true);
+
+            // v0.8.1 新增：下载后重新生成缩略图，修复「表里有 ThumbnailPath 但文件不存在」的死路径
+            try
+            {
+                var newThumb = await _thumbnailService.GenerateThumbnailAsync(localPath, file.ProjectPath);
+                if (!string.IsNullOrEmpty(newThumb))
+                {
+                    file.ThumbnailPath = newThumb;
+                }
+            }
+            catch
+            {
+                // 缩略图生成失败不影响主流程，UI 用占位符兜底
+            }
+
             ShowToast($"已下载 {file.FileName}");
             Trace.WriteLine($"[Trash] Download: 完成 id={file.Id}, localPath={localPath}");
+        }
+        catch (OssException ex)
+        {
+            Trace.WriteLine($"[Trash] Download: OSS 错误 id={file.Id}: {ex.Message}");
+            ShowToast($"下载失败: {ex.Message}");
         }
         catch (Exception ex)
         {
