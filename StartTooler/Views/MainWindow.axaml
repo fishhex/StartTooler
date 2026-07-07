@@ -156,6 +156,22 @@
                             IsEnabled="{Binding GalleryViewModel.IsBatchActionEnabled}"
                             IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"/>
 
+                    <!-- v0.8.1 新增：批量下载（spec doc/14-delete-and-trash.md §7.3 / §7.5） -->
+                    <Button Classes="toolbar-button"
+                            Content="批量下载"
+                            Command="{Binding GalleryViewModel.BatchDownloadCommand}"
+                            IsEnabled="{Binding GalleryViewModel.IsBatchActionEnabled}"
+                            IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"
+                            ToolTip.Tip="从云端拉回到本地"/>
+
+                    <!-- v0.8.1 新增：批量释放本地空间（spec §6.2 / §7.5） -->
+                    <Button Classes="toolbar-button"
+                            Content="释放本地空间"
+                            Command="{Binding GalleryViewModel.BatchFreeUpSpaceCommand}"
+                            IsEnabled="{Binding GalleryViewModel.IsBatchActionEnabled}"
+                            IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"
+                            ToolTip.Tip="删除本地文件，云端保留"/>
+
                     <Button Classes="toolbar-button-danger"
                             Content="删除"
                             Command="{Binding GalleryViewModel.BatchDeleteCommand}"

@@ -216,7 +216,7 @@
                                         Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).ToggleSelectionCommand}"
                                         CommandParameter="{Binding}"
                                         DoubleTapped="OnPhotoTileDoubleTapped">
-                                    <!-- v0.6: 右键菜单 AI 打标 / v0.8: 加「删除」「释放本地空间」 -->
+                                    <!-- v0.6: 右键菜单 AI 打标 / v0.8: 加「删除」「释放本地空间」/ v0.8.1: 加「下载到本地」 -->
                                     <!-- 多选模式下右键不弹菜单（避免与多选冲突）：每个 MenuItem 单独控制 IsVisible -->
                                     <Button.ContextFlyout>
                                         <MenuFlyout>
@@ -237,6 +237,18 @@
                                                         <Binding Path="$parent[ItemsControl].((vm:GalleryViewModel)DataContext).IsMultiSelectMode" Converter="{x:Static BoolConverters.Not}"/>
                                                         <Binding Path="IsUploaded"/>
                                                         <Binding Path="LocalExists"/>
+                                                    </MultiBinding>
+                                                </MenuItem.IsVisible>
+                                            </MenuItem>
+                                            <!-- v0.8.1 新增：「下载到本地」仅云端已备份的文件可用 + 非多选模式 -->
+                                            <!-- LocalExists 在命令内二次判断（spec §5.3） -->
+                                            <MenuItem Header="下载到本地"
+                                                      Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).DownloadSingleCommand}"
+                                                      CommandParameter="{Binding}">
+                                                <MenuItem.IsVisible>
+                                                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                        <Binding Path="$parent[ItemsControl].((vm:GalleryViewModel)DataContext).IsMultiSelectMode" Converter="{x:Static BoolConverters.Not}"/>
+                                                        <Binding Path="IsUploaded"/>
                                                     </MultiBinding>
                                                 </MenuItem.IsVisible>
                                             </MenuItem>

@@ -32,6 +32,7 @@ public partial class GalleryViewModel : ObservableObject
     private CancellationTokenSource? _cts;
     private CancellationTokenSource? _uploadCts;
     private CancellationTokenSource? _tagCts;  // v0.6 新增，独立于 _cts，切日期/刷新不取消打标
+    private CancellationTokenSource? _downloadCts;  // v0.8.1 新增，批量下载取消源
 
     // === 数据源 ===
     public ObservableCollection<TimelineEntry> DateGroups { get; } = new();
@@ -1306,54 +1307,22 @@ public partial class GalleryViewModel : ObservableObject
 
         if (!yes) return;
 
-        // 3. OSS 配置检查
-        var storage = _ossFactory.TryCreate();
-        if (storage == null)
-        {
-            await PromptOssNotConfiguredAsync();
-            return;
-        }
-
-        // 4. 下载
-        var ossCfg = await GetOssConfigSnapshotAsync();
-        var objectKey = AliyunOssStorage.BuildObjectKey(ossCfg.PathPrefix, file.RelativePath);
-
         ShowToast($"正在下载 {file.FileName}…");
 
+        // 3. 走共享下载核心；下载完自动打开（保留 v0.8 之前的双击下载后即开行为）
         try
         {
-            await storage.DownloadAsync(objectKey, localPath);
-
-            // 下载成功：更新本地状态（LocalExists/ThumbnailPath 都是 ObservableProperty，
-            // 直接赋值就会触发 XAML 重绑）
-            file.LocalExists = true;
-
-            // 视频缩略图常常和本地视频一起被删 / 缓存清掉。下载完后顺手重新生成，
-            // 避免「表里有 ThumbnailPath 字符串但文件不存在」导致卡片显示空 Image。
-            try
+            var success = await DownloadToLocalCoreAsync(file);
+            if (success)
             {
-                var newThumb = await _thumbnailService.GenerateThumbnailAsync(
-                    localPath, file.ProjectPath);
-                if (!string.IsNullOrEmpty(newThumb))
+                try
                 {
-                    file.ThumbnailPath = newThumb;
+                    _systemShell.OpenWithDefaultApp(localPath);
                 }
-            }
-            catch
-            {
-                // 缩略图生成失败不影响主流程，UI 会用占位符兜底
-            }
-
-            ShowToast($"已下载：{file.FileName}");
-
-            // 5. 下载完自动打开
-            try
-            {
-                _systemShell.OpenWithDefaultApp(localPath);
-            }
-            catch (Exception ex)
-            {
-                ShowToast($"下载成功，但打开失败：{ex.Message}");
+                catch (Exception ex)
+                {
+                    ShowToast($"下载成功，但打开失败：{ex.Message}");
+                }
             }
         }
         catch (OperationCanceledException)
@@ -1364,6 +1333,205 @@ public partial class GalleryViewModel : ObservableObject
         {
             ShowToast($"下载失败：{ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// 共享下载核心（spec doc/14-delete-and-trash.md §7.2）。
+    /// 被 OpenFileAsync / DownloadSingle / BatchDownload 共用。
+    /// 步骤：
+    ///   1. 本地已存在 → 跳过 + 修正 local_exists
+    ///   2. OSS 未配置 → 弹引导对话框
+    ///   3. 拉取 OSS 对象到 localPath
+    ///   4. 更新 LocalExists = true + DB
+    ///   5. 重新生成缩略图（吞错，不阻塞主流程）
+    /// </summary>
+    private async Task<bool> DownloadToLocalCoreAsync(MediaFile file, CancellationToken ct = default)
+    {
+        if (file == null) return false;
+
+        var localPath = Path.Combine(file.ProjectPath, file.RelativePath);
+
+        // 1. 本地已存在 → 直接对齐 local_exists
+        if (File.Exists(localPath))
+        {
+            if (!file.LocalExists)
+            {
+                file.LocalExists = true;
+                await _mediaRepo.UpdateLocalExistsAsync(file.Id, true, ct);
+            }
+            return true;
+        }
+
+        // 2. OSS 配置检查
+        var storage = _ossFactory.TryCreate();
+        if (storage == null)
+        {
+            await PromptOssNotConfiguredAsync();
+            return false;
+        }
+
+        // 3. 构建 objectKey + 下载
+        var ossCfg = await GetOssConfigSnapshotAsync();
+        var objectKey = AliyunOssStorage.BuildObjectKey(ossCfg.PathPrefix, file.RelativePath);
+
+        // 确保目标目录存在（OSS 下载自身不创建）
+        var dir = Path.GetDirectoryName(localPath);
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        await storage.DownloadAsync(objectKey, localPath, ct);
+
+        // 4. 更新本地状态 + DB
+        file.LocalExists = true;
+        await _mediaRepo.UpdateLocalExistsAsync(file.Id, true, ct);
+
+        // 5. 重新生成缩略图（修复「路径有效但文件不存在」的死链）
+        try
+        {
+            var newThumb = await _thumbnailService.GenerateThumbnailAsync(localPath, file.ProjectPath, ct);
+            if (!string.IsNullOrEmpty(newThumb))
+            {
+                file.ThumbnailPath = newThumb;
+            }
+        }
+        catch
+        {
+            // 缩略图失败不影响主流程，UI 用占位图标兜底
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// 单文件下载（右键菜单「下载到本地」，spec §7.3）。
+    /// 条件：file.IsUploaded（云端有）+ !file.LocalExists（本地没有）。
+    /// </summary>
+    [RelayCommand]
+    private async Task DownloadSingle(MediaFile? file)
+    {
+        if (file == null) return;
+        if (!file.IsUploaded) return;            // 云端没有
+        if (file.LocalExists)
+        {
+            ShowToast("本地已存在");
+            return;
+        }
+
+        Trace.WriteLine($"[Gallery] DownloadSingle: file={file.FileName} (id={file.Id})");
+        ShowToast($"正在下载 {file.FileName}…");
+
+        try
+        {
+            var success = await DownloadToLocalCoreAsync(file);
+            if (success)
+            {
+                ShowToast($"已下载：{file.FileName}");
+                Trace.WriteLine($"[Gallery] DownloadSingle: 完成 id={file.Id}");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            ShowToast($"已取消下载：{file.FileName}");
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[Gallery] DownloadSingle: 失败 id={file.Id}: {ex.Message}");
+            ShowToast($"下载失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 批量下载（多选工具栏「批量下载」，spec §7.3）。
+    /// 条件：f.IsUploaded && !f.LocalExists。
+    /// 走 toast 渐进通知（"下载中 3/10…"），不做进度条（spec §7.6）。
+    /// </summary>
+    [RelayCommand]
+    private void BatchDownload()
+    {
+        if (!IsBatchActionEnabled) return;
+        _ = BatchDownloadCoreAsync();
+    }
+
+    private async Task BatchDownloadCoreAsync()
+    {
+        var candidates = SelectedFiles.Where(f => f.IsUploaded && !f.LocalExists).ToList();
+        var total = candidates.Count;
+        Trace.WriteLine($"[Gallery] BatchDownload: 选中 {SelectedFiles.Count} 个, 可下载 {total} 个");
+
+        if (total == 0)
+        {
+            ExitMultiSelect();
+            ShowToast("所选文件均已在本地");
+            return;
+        }
+
+        var window = DialogHelper.GetMainWindow();
+        if (window == null) return;
+
+        var confirmed = await DialogHelper.ShowConfirmAsync(
+            window,
+            title: "批量下载",
+            message: $"将从云端下载 {total} 个文件，继续？",
+            primaryButtonText: "下载",
+            secondaryButtonText: "取消");
+
+        if (!confirmed) return;
+
+        ExitMultiSelect();
+
+        _downloadCts?.Dispose();
+        _downloadCts = new CancellationTokenSource();
+        var ct = _downloadCts.Token;
+
+        var completed = 0;
+        var failed = 0;
+        var cancelled = 0;
+
+        try
+        {
+            foreach (var file in candidates)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    ShowToast($"下载中 {completed + failed + 1}/{total}：{file.FileName}");
+                    var success = await DownloadToLocalCoreAsync(file, ct);
+                    if (success)
+                    {
+                        completed++;
+                        Trace.WriteLine($"[Gallery] BatchDownload: 完成 {completed}/{total} id={file.Id}");
+                    }
+                    else
+                    {
+                        failed++;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    cancelled++;
+                    Trace.WriteLine($"[Gallery] BatchDownload: 取消 id={file.Id}");
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    Trace.WriteLine($"[Gallery] BatchDownload: 失败 id={file.Id}: {ex.Message}");
+                }
+            }
+        }
+        finally
+        {
+            _downloadCts?.Dispose();
+            _downloadCts = null;
+        }
+
+        var summary = $"下载完成：{completed}/{total} 成功";
+        if (failed > 0) summary += $"，{failed} 失败";
+        if (cancelled > 0) summary += $"，{cancelled} 取消";
+        ShowToast(summary);
+        Trace.WriteLine($"[Gallery] BatchDownload: 总结 completed={completed}, failed={failed}, cancelled={cancelled}");
     }
 
     private static string FormatSize(long bytes)
