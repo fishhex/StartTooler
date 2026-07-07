@@ -64,13 +64,19 @@
                 BorderBrush="{DynamicResource Bg.Divider}"
                 BorderThickness="0,0,0,1">
             <DockPanel>
-                <!-- 最右：返回按钮（设置页） -->
+                <!-- 最右：返回按钮（设置页 / 垃圾筒页） -->
                 <Button Classes="secondary-button"
                         DockPanel.Dock="Right"
                         Margin="0,0,16,0"
                         Content="返回"
-                        Command="{Binding NavigateToMediaCommand}"
-                        IsVisible="{Binding IsSettingsPageVisible}"/>
+                        Command="{Binding NavigateToMediaCommand}">
+                    <Button.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                            <Binding Path="IsSettingsPageVisible"/>
+                            <Binding Path="IsTrashActive"/>
+                        </MultiBinding>
+                    </Button.IsVisible>
+                </Button>
 
                 <!-- 次右：保存按钮（设置页） -->
                 <Button Classes="secondary-button"
@@ -225,6 +231,10 @@
                 </DataTemplate>
                 <DataTemplate DataType="{x:Type vm:UploadServerViewModel}">
                     <views:UploadServerView DataContext="{Binding}"/>
+                </DataTemplate>
+                <!-- v0.8: 垃圾筒页（spec §9.3） -->
+                <DataTemplate DataType="{x:Type vm:TrashViewModel}">
+                    <views:TrashView DataContext="{Binding}"/>
                 </DataTemplate>
             </ContentControl.DataTemplates>
         </ContentControl>

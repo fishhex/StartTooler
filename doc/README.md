@@ -20,6 +20,7 @@
 | `08-public-relay.md` | 公网代理：C# 端 PublicRelayService + Go relay |
 | `09-ui-commons.md` | UI 通用件：Components / Controls / Converters / Themes / 通知 / 对话框 |
 | `10-trap-book.md` | 已知陷阱与决策记录（ADR 风格） |
+| `14-delete-and-trash.md` | 删除、垃圾筒与释放本地空间：软删除 / TrashViewModel / 彻底删除 / OSS 删除 |
 
 ---
 

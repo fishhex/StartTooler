@@ -7,7 +7,7 @@
              x:Class="StartTooler.Controls.NavRail"
              x:DataType="vm:MainWindowViewModel">
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,*">
         <!-- 媒体按钮 (C15 NavItem) -->
         <Button Grid.Row="0"
                 x:Name="MediaButton"
@@ -46,8 +46,27 @@
                        VerticalAlignment="Center"/>
         </Button>
 
-        <!-- 设置按钮 (C15 NavItem) -->
+        <!-- v0.8: 垃圾筒按钮（紧贴上传，spec §9.2） -->
         <Button Grid.Row="2"
+                x:Name="TrashButton"
+                Height="48"
+                Classes="nav-item"
+                Classes.active="{Binding IsTrashActive}"
+                Command="{Binding NavigateToTrashCommand}"
+                VerticalAlignment="Center"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Padding="0">
+            <TextBlock Text="垃圾筒"
+                       FontSize="11"
+                       LineHeight="14"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"/>
+        </Button>
+
+        <!-- 设置按钮 (C15 NavItem) -->
+        <Button Grid.Row="3"
                 x:Name="SettingsButton"
                 Height="48"
                 Classes="nav-item"

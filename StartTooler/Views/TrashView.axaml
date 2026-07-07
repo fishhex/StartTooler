@@ -1,0 +1,296 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://github.com/avaloniaui"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StartTooler.ViewModels"
+             xmlns:data="using:StartTooler.Data"
+             xmlns:converters="using:StartTooler.Converters"
+             mc:Ignorable="d"
+             x:Class="StartTooler.Views.TrashView"
+             x:DataType="vm:TrashViewModel">
+
+    <UserControl.Resources>
+        <converters:FilePathToBitmapConverter x:Key="FilePathToBitmap"/>
+        <converters:FilePathToVisibilityConverter x:Key="FilePathToVis"/>
+    </UserControl.Resources>
+
+    <Grid RowDefinitions="Auto,*" Background="{DynamicResource Bg.Surface}">
+        <!-- 顶部工具栏 -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource Bg.Surface}"
+                BorderBrush="{DynamicResource Bg.Divider}"
+                BorderThickness="0,0,0,1"
+                Padding="24,16">
+            <DockPanel>
+                <TextBlock Text="垃圾筒"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text.Primary}"
+                           VerticalAlignment="Center"
+                           DockPanel.Dock="Left"/>
+
+                <Button DockPanel.Dock="Right"
+                        Classes="toolbar-button-danger"
+                        Content="清空垃圾筒"
+                        Command="{Binding BatchCleanAllCommand}"
+                        IsEnabled="{Binding IsEmpty, Converter={x:Static BoolConverters.Not}}">
+                    <Button.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                            <Binding Path="HasCloudFiles"/>
+                            <Binding Path="HasLocalFiles"/>
+                        </MultiBinding>
+                    </Button.IsVisible>
+                </Button>
+
+                <!-- 加载中 / 总数指示 -->
+                <TextBlock Text="{Binding IsLoading, Converter={x:Static ObjectConverters.IsNotNull}, StringFormat='加载中...'}"
+                           FontSize="12"
+                           Foreground="{DynamicResource Text.Secondary}"
+                           VerticalAlignment="Center"
+                           Margin="16,0,0,0"
+                           IsVisible="{Binding IsLoading}"/>
+            </DockPanel>
+        </Border>
+
+        <!-- 主体内容 -->
+        <ScrollViewer Grid.Row="1">
+            <Panel Margin="24,16">
+
+                <!-- 加载中骨架 -->
+                <TextBlock Text="加载中..."
+                           FontSize="13"
+                           Foreground="{DynamicResource Text.Secondary}"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           IsVisible="{Binding IsLoading}"/>
+
+                <!-- 空态 -->
+                <StackPanel IsVisible="{Binding IsEmpty}"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="16">
+                    <Path Data="{DynamicResource Icon.Constellation}"
+                          Stretch="Uniform"
+                          Width="64" Height="64"
+                          Stroke="{DynamicResource Text.Disabled}"
+                          StrokeThickness="1"
+                          Fill="Transparent"
+                          Opacity="0.4"
+                          HorizontalAlignment="Center"/>
+                    <TextBlock Text="垃圾筒是空的"
+                               FontSize="15"
+                               FontWeight="600"
+                               Foreground="{DynamicResource Text.Primary}"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="已删除的文件会出现在这里"
+                               FontSize="12"
+                               Foreground="{DynamicResource Text.Secondary}"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- 有内容：两段布局 -->
+                <StackPanel IsVisible="{Binding IsEmpty, Converter={x:Static BoolConverters.Not}}"
+                            Spacing="24">
+
+                    <!-- 已在云端 -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{Binding CloudFiles.Count, StringFormat='已在云端 ({0})'}"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}"/>
+                        <ItemsControl ItemsSource="{Binding CloudFiles}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" ItemWidth="160" ItemHeight="160"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="data:MediaFile">
+                                    <Border Margin="8"
+                                            Width="160" Height="160"
+                                            Background="{DynamicResource Bg.SurfaceElevated}"
+                                            CornerRadius="{DynamicResource Radius.Large}"
+                                            ClipToBounds="True">
+                                        <Grid>
+                                            <!-- 缩略图 -->
+                                            <Image Source="{Binding ThumbnailPath, Converter={StaticResource FilePathToBitmap}}"
+                                                   Stretch="UniformToFill"
+                                                   IsVisible="{Binding ThumbnailPath, Converter={StaticResource FilePathToVis}}"/>
+
+                                            <!-- 占位图标（本地缺失时） -->
+                                            <Path Data="{DynamicResource Icon.Constellation}"
+                                                  Stretch="Uniform"
+                                                  Width="48" Height="48"
+                                                  Stroke="{DynamicResource Text.Disabled}"
+                                                  StrokeThickness="1"
+                                                  Fill="Transparent"
+                                                  Opacity="0.4"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  IsVisible="{Binding ThumbnailPath, Converter={StaticResource FilePathToVis}, ConverterParameter=Invert}"/>
+
+                                            <!-- 顶部文件名覆盖 -->
+                                            <Border VerticalAlignment="Top"
+                                                    Background="#CC0A0E1A"
+                                                    Padding="6,4">
+                                                <TextBlock Text="{Binding FileName}"
+                                                           FontSize="11"
+                                                           Foreground="#E6FFFFFF"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxLines="1"/>
+                                            </Border>
+
+                                            <!-- 右上角云端徽章（青蓝色） -->
+                                            <Border HorizontalAlignment="Right"
+                                                    VerticalAlignment="Top"
+                                                    Margin="6,28,10,6"
+                                                    Width="22" Height="22"
+                                                    Background="#CCFFFFFF"
+                                                    CornerRadius="11"
+                                                    IsVisible="{Binding IsUploaded}">
+                                                <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
+                                                      Stretch="Uniform"
+                                                      Width="12" Height="12"
+                                                      Fill="#4DD0E1"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                            </Border>
+
+                                            <!-- 左下角本地缺失徽章（橙色） -->
+                                            <Border HorizontalAlignment="Left"
+                                                    VerticalAlignment="Bottom"
+                                                    Margin="6,6,10,6"
+                                                    Width="22" Height="22"
+                                                    Background="#CCFFFFFF"
+                                                    CornerRadius="11"
+                                                    IsVisible="{Binding LocalExists, Converter={x:Static BoolConverters.Not}}">
+                                                <TextBlock Text="!"
+                                                           FontSize="13"
+                                                           FontWeight="Bold"
+                                                           Foreground="#FFA726"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"/>
+                                            </Border>
+
+                                            <!-- 底部操作区 -->
+                                            <Border VerticalAlignment="Bottom"
+                                                    Background="#CC0A0E1A"
+                                                    Padding="6,4">
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="4"
+                                                            HorizontalAlignment="Center">
+                                                    <Button Classes="trash-action"
+                                                            Content="恢复"
+                                                            Command="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).RestoreCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <!-- 云端文件且本地缺失：额外「下载」按钮 -->
+                                                    <Button Classes="trash-action"
+                                                            Content="下载"
+                                                            Command="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).DownloadCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            IsVisible="{Binding LocalExists, Converter={x:Static BoolConverters.Not}}"/>
+                                                    <Button Classes="trash-action-danger"
+                                                            Content="清理"
+                                                            Command="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).CleanSingleCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- 仅本地 -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{Binding LocalFiles.Count, StringFormat='仅本地 ({0})'}"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}"/>
+                        <ItemsControl ItemsSource="{Binding LocalFiles}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" ItemWidth="160" ItemHeight="160"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="data:MediaFile">
+                                    <Border Margin="8"
+                                            Width="160" Height="160"
+                                            Background="{DynamicResource Bg.SurfaceElevated}"
+                                            CornerRadius="{DynamicResource Radius.Large}"
+                                            ClipToBounds="True">
+                                        <Grid>
+                                            <Image Source="{Binding ThumbnailPath, Converter={StaticResource FilePathToBitmap}}"
+                                                   Stretch="UniformToFill"
+                                                   IsVisible="{Binding ThumbnailPath, Converter={StaticResource FilePathToVis}}"/>
+
+                                            <Path Data="{DynamicResource Icon.Constellation}"
+                                                  Stretch="Uniform"
+                                                  Width="48" Height="48"
+                                                  Stroke="{DynamicResource Text.Disabled}"
+                                                  StrokeThickness="1"
+                                                  Fill="Transparent"
+                                                  Opacity="0.4"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  IsVisible="{Binding ThumbnailPath, Converter={StaticResource FilePathToVis}, ConverterParameter=Invert}"/>
+
+                                            <!-- 顶部文件名 -->
+                                            <Border VerticalAlignment="Top"
+                                                    Background="#CC0A0E1A"
+                                                    Padding="6,4">
+                                                <TextBlock Text="{Binding FileName}"
+                                                           FontSize="11"
+                                                           Foreground="#E6FFFFFF"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxLines="1"/>
+                                            </Border>
+
+                                            <!-- 右上角无徽章（未上传） -->
+
+                                            <!-- 底部操作区（仅恢复 + 清理，无下载） -->
+                                            <Border VerticalAlignment="Bottom"
+                                                    Background="#CC0A0E1A"
+                                                    Padding="6,4">
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="4"
+                                                            HorizontalAlignment="Center">
+                                                    <Button Classes="trash-action"
+                                                            Content="恢复"
+                                                            Command="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).RestoreCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                    <Button Classes="trash-action-danger"
+                                                            Content="清理"
+                                                            Command="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).CleanSingleCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                </StackPanel>
+
+            </Panel>
+        </ScrollViewer>
+
+        <!-- 底部 toast（与 Gallery 统一风格） -->
+        <Border Grid.Row="1"
+                IsVisible="{Binding ToastMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="0,0,0,24"
+                Padding="16,10"
+                Background="#CC0A0E1A"
+                CornerRadius="8">
+            <TextBlock Text="{Binding ToastMessage}"
+                       FontSize="13"
+                       Foreground="#E6FFFFFF"/>
+        </Border>
+    </Grid>
+</UserControl>

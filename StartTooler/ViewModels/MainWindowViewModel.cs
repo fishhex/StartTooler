@@ -17,7 +17,8 @@ public enum ViewPage
 {
     Gallery,
     Settings,
-    UploadServer
+    UploadServer,
+    Trash,  // v0.8: 垃圾筒（spec doc/14-delete-and-trash.md §9.1）
 }
 
 public partial class MainWindowViewModel : ObservableObject
@@ -25,6 +26,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private GalleryViewModel galleryViewModel;
     [ObservableProperty] private SettingsViewModel settingsViewModel;
     [ObservableProperty] private UploadServerViewModel uploadServerViewModel;
+    [ObservableProperty] private TrashViewModel trashViewModel;  // v0.8
     [ObservableProperty] private object currentView;
     [ObservableProperty] private string title = "星助";
     [ObservableProperty] private bool isSettingsPage;
@@ -37,6 +39,8 @@ public partial class MainWindowViewModel : ObservableObject
     public bool IsSettingsActive => CurrentPage == ViewPage.Settings;
 
     public bool IsUploadServerActive => CurrentPage == ViewPage.UploadServer;
+
+    public bool IsTrashActive => CurrentPage == ViewPage.Trash;  // v0.8
 
     public bool IsGalleryPage => CurrentPage == ViewPage.Gallery;
 
@@ -72,6 +76,13 @@ public partial class MainWindowViewModel : ObservableObject
         UploadServerViewModel = new UploadServerViewModel(
             GalleryViewModel,
             new PublicRelayViewModel(configService, new PublicRelayService(), new FilePickerService(), GalleryViewModel));
+
+        // v0.8: 垃圾筒 VM（spec doc/14-delete-and-trash.md §7.1）
+        // 复用 mediaRepo / uploadJobRepo / ossFactory / configService；onOssNotConfigured 复用 MainWindow 的弹窗。
+        TrashViewModel = new TrashViewModel(
+            mediaRepository, uploadJobRepo, ossFactory, configService,
+            onOssNotConfigured: ShowOssNotConfiguredDialogAsync);
+
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;
         CurrentPage = ViewPage.Gallery;
@@ -190,6 +201,28 @@ public partial class MainWindowViewModel : ObservableObject
         CurrentPage = ViewPage.UploadServer;
     }
 
+    /// <summary>
+    /// v0.8: 跳到垃圾筒页（spec §9.1 NavigateToTrash）。
+    /// 加载当前项目的垃圾筒数据；Gallery 查询删文件后这里能看到。
+    /// </summary>
+    [RelayCommand]
+    private async Task NavigateToTrash()
+    {
+        CurrentView = TrashViewModel;
+        IsSettingsPage = false;
+        CurrentPage = ViewPage.Trash;
+
+        var projectPath = GalleryViewModel?.ProjectPath ?? string.Empty;
+        try
+        {
+            await TrashViewModel.LoadAsync(projectPath);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[MainWindow] NavigateToTrash 加载失败: {ex.Message}");
+        }
+    }
+
     [RelayCommand]
     private void NavigateToMedia()
     {
@@ -248,5 +281,6 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsGalleryPage));
         OnPropertyChanged(nameof(IsSettingsPageVisible));
         OnPropertyChanged(nameof(IsUploadServerActive));
+        OnPropertyChanged(nameof(IsTrashActive));
     }
 }
