@@ -1,6 +1,6 @@
-# 14 — 删除、垃圾筒与释放本地空间
+# 14 — 删除、垃圾筒、释放本地空间与下载到本地
 
-> 本规范覆盖三个独立概念：**软删除**（→垃圾筒）、**彻底删除**（从垃圾筒）和**释放本地空间**（Gallery 侧独立操作）。待实装。
+> 本规范覆盖四个独立操作：**软删除**（→垃圾筒）、**彻底删除**（从垃圾筒）、**释放本地空间**（Gallery 侧）和**下载到本地**（Gallery / 垃圾筒）。待实装。
 
 ---
 
@@ -11,8 +11,9 @@
 | **软删除** | Gallery → 删除按钮 | 不删文件 | `UPDATE deleted_at = now` | ✅ 可恢复 |
 | **彻底删除** | 垃圾筒 → 清理 | 删本地 / 云上 | `DELETE FROM media_files` | ❌ 不可恢复 |
 | **释放本地空间** | Gallery → 工具栏 / 右键 | 仅删本地文件 | `UPDATE local_exists = 0` | ✅ 可重新下载 |
+| **下载到本地** | Gallery / 垃圾筒 → 右键 / 按钮 | 从 OSS 拉取文件到本地 | `UPDATE local_exists = 1` | — （不涉及删除） |
 
-三者互不交叉：释放本地空间不过垃圾筒，软删除不释放磁盘，彻底删除是唯一会动 OSS 的路径。
+四者互不交叉：释放本地空间不过垃圾筒；软删除不释放磁盘；彻底删除是唯一会动 OSS 的路径；下载到本地是纯拉取操作。
 
 ---
 
@@ -149,7 +150,11 @@ DeleteSingle(file)
 <MenuItem Header="释放本地空间"
           Command="{Binding ... FreeUpSpaceCommand}"
           CommandParameter="{Binding}"
-          IsVisible="{Binding IsUploaded}"/>  <!-- 仅云端已备份的文件可用 -->
+          IsVisible="{Binding IsUploaded}"/>  <!-- 仅 IsUploaded 控制：LocalExists 在命令内二次判断 -->
+<MenuItem Header="下载到本地"
+          Command="{Binding ... DownloadSingleCommand}"
+          CommandParameter="{Binding}"
+          IsVisible="{Binding IsUploaded}"/>  <!-- 仅 IsUploaded 控制：LocalExists 在命令内二次判断 -->
 ```
 
 ---
@@ -192,9 +197,217 @@ BatchFreeUpSpace()
 
 ---
 
-## 7. 垃圾筒（TrashViewModel）
+## 7. 下载到本地
 
-### 7.1 页面状态
+### 7.1 概念
+
+“下载到本地”是一个与「打开文件」解耦的独立操作——用户可以在不打开文件的情况下，将云端文件拉回本地磁盘。适用于 Gallery 和垃圾筒两个场景。
+
+| 场景 | 触发条件 | 入口 |
+|------|---------|------|
+| Gallery | `IsUploaded && !LocalExists` | 右键菜单「下载到本地」、双击自动触发（兼容现有行为） |
+| 垃圾筒 | `IsUploaded && !LocalExists` | 卡片底部「下载」按钮 |
+
+下载完成后 Gallery 中该文件恢复正常预览（`local_exists=1` → 缩略图再生），垃圾筒中该文件**不自动恢复**（仍在垃圾筒，用户需单独点「恢复」）。
+
+### 7.2 提取共享下载核心逻辑
+
+当前 `OpenFileAsync`（`GalleryViewModel.cs:1271`）的实现内联了下载逻辑。需将下载核心抽为 `GalleryViewModel` 的 private 方法，供 Gallery 内部复用；垃圾筒侧由 `TrashViewModel` 独立实现（两者共享依赖注入的 `IOssStorageFactory` / `IConfigService` / `IThumbnailService`）。
+
+```csharp
+// GalleryViewModel.cs 新增 private helper
+private async Task<bool> DownloadToLocalCoreAsync(MediaFile file, CancellationToken ct = default)
+{
+    // 1. 本地已存在 → 跳过
+    var localPath = Path.Combine(file.ProjectPath, file.RelativePath);
+    if (File.Exists(localPath))
+    {
+        file.LocalExists = true;
+        await _mediaRepo.UpdateLocalExistsAsync(file.Id, true, ct);
+        return true;
+    }
+
+    // 2. OSS 配置检查
+    var storage = _ossFactory.TryCreate();
+    if (storage == null)
+    {
+        await PromptOssNotConfiguredAsync();
+        return false;
+    }
+
+    // 3. 构建 objectKey + 下载
+    var ossCfg = await GetOssConfigSnapshotAsync();
+    var objectKey = AliyunOssStorage.BuildObjectKey(ossCfg.PathPrefix, file.RelativePath);
+
+    await storage.DownloadAsync(objectKey, localPath, ct);
+
+    file.LocalExists = true;
+    await _mediaRepo.UpdateLocalExistsAsync(file.Id, true, ct);
+
+    // 4. 重新生成缩略图（修复死路径）
+    try
+    {
+        var newThumb = await _thumbnailService.GenerateThumbnailAsync(localPath, file.ProjectPath, ct);
+        if (!string.IsNullOrEmpty(newThumb)) file.ThumbnailPath = newThumb;
+    }
+    catch { /* 缩略图失败不影响主流程 */ }
+
+    return true;
+}
+```
+
+### 7.3 Gallery 侧命令
+
+#### OpenFileAsync 重构
+
+```
+OpenFileAsync(file)
+  ├─ if file.LocalExists && File.Exists(localPath):
+  │     _systemShell.OpenWithDefaultApp(localPath)
+  │     return
+  ├─ 弹确认框 "从云端下载？"
+  ├─ if no → return
+  ├─ success = await DownloadToLocalCoreAsync(file)
+  └─ if success → _systemShell.OpenWithDefaultApp(localPath)
+```
+
+行为不变——双击仍自动打开。但下载逻辑走共享方法。
+
+#### DownloadSingle（右键「下载到本地」）
+
+```
+[RelayCommand]
+DownloadSingle(MediaFile? file)
+  ├─ if file == null → return
+  ├─ if !file.IsUploaded → return   // 云端没有
+  ├─ if file.LocalExists → ShowToast("本地已存在") → return
+  ├─ ShowToast($"正在下载 {file.FileName}…")
+  ├─ success = await DownloadToLocalCoreAsync(file)
+  └─ if success → ShowToast($"已下载：{file.FileName}")
+```
+
+右键菜单新增第三项：
+
+```xml
+<MenuItem Header="下载到本地"
+          Command="{Binding ... DownloadSingleCommand}"
+          CommandParameter="{Binding}"
+          IsVisible="{Binding IsUploaded}"/>  <!-- 仅云端有备份的文件可用 -->
+```
+
+#### BatchDownload（多选批量下载）
+
+```
+[RelayCommand]
+BatchDownload()
+  ├─ if !IsBatchActionEnabled → return
+  ├─ candidates = SelectedFiles.Where(f => f.IsUploaded && !f.LocalExists).ToList()
+  ├─ if candidates.Count == 0:
+  │     ShowToast("所选文件均已在本地") → ExitMultiSelect() → return
+  ├─ 弹确认框 "将从云端下载 N 个文件，继续？"
+  ├─ if no → return
+  ├─ using _downloadCts = new CancellationTokenSource()
+  ├─ foreach file in candidates:
+  │     try:
+  │         success = await DownloadToLocalCoreAsync(file, ct)
+  │         if success: completed++
+  │         else: failed++
+  │     catch OperationCanceledException: cancelled++; break
+  │     catch: failed++
+  ├─ ExitMultiSelect()
+  └─ summary = $"下载完成：{completed}/{total} 成功"
+      if failed > 0: summary += $"，{failed} 失败"
+      ShowToast(summary)
+```
+
+多选工具栏新增「批量下载」按钮（多选模式下，仅在存在云端文件时可见）。
+
+### 7.4 垃圾筒侧下载
+
+`TrashViewModel` 中的下载逻辑与 Gallery 侧结构相同，但依赖通过构造注入：
+
+```csharp
+// TrashViewModel.cs
+private async Task<bool> DownloadToLocalAsync(MediaFile file, CancellationToken ct = default)
+{
+    var localPath = Path.Combine(file.ProjectPath, file.RelativePath);
+    if (File.Exists(localPath))
+    {
+        file.LocalExists = true;
+        await _mediaRepo.UpdateLocalExistsAsync(file.Id, true, ct);
+        return true;
+    }
+
+    var storage = _ossFactory.TryCreate();
+    if (storage == null)
+    {
+        var went = _onOssNotConfigured != null && await _onOssNotConfigured();
+        if (!went) ShowToast("OSS 未配置，无法下载");
+        return false;
+    }
+
+    var ossCfg = await _configService.GetAsync<OssConfig>(ConfigKeys.Oss) ?? new OssConfig();
+    var objectKey = AliyunOssStorage.BuildObjectKey(ossCfg.PathPrefix, file.RelativePath);
+
+    ShowToast($"正在下载 {file.FileName}…");
+    await storage.DownloadAsync(objectKey, localPath, ct);
+
+    file.LocalExists = true;
+    await _mediaRepo.UpdateLocalExistsAsync(file.Id, true, ct);
+
+    try
+    {
+        var thumb = await _thumbnailService.GenerateThumbnailAsync(localPath, file.ProjectPath, ct);
+        if (!string.IsNullOrEmpty(thumb)) file.ThumbnailPath = thumb;
+    }
+    catch { }
+
+    ShowToast($"已下载 {file.FileName}（仍在垃圾筒）");
+    return true;
+}
+```
+
+垃圾筒不自动恢复——用户下载后可单独点「恢复」按钮将文件移回 Gallery。
+
+### 7.5 多选工具栏变更
+
+遵循现有 pattern：按钮常驻显示，由 `IsBatchActionEnabled` 控制 `IsEnabled`（不需要动态显隐逻辑）：
+
+```
+多选模式工具栏：
+  [取消多选] [全选] [反选] [批量上传] [批量下载] [批量释放空间] [开始AI] [删除]
+```
+
+各按钮的 `IsEnabled` 条件：
+
+| 按钮 | IsEnabled 条件 |
+|------|---------------|
+| 批量上传 | `IsMultiSelectMode && SelectedCount > 0 && !IsUploading && !IsTagging` |
+| 批量下载 | 同上 + `SelectedFiles.Any(f => f.IsUploaded && !f.LocalExists)` |
+| 批量释放空间 | 同上 + `SelectedFiles.Any(f => f.IsUploaded && f.LocalExists)` |
+| 删除 | `IsMultiSelectMode && SelectedCount > 0 && !IsUploading && !IsTagging` |
+
+> 注：已有 `IsBatchActionEnabled` = `IsMultiSelectMode && SelectedFiles.Count > 0 && !IsUploading && !IsTagging`，批量下载/释放空间可复用该属性的通知链，内部做二次判断——选中的全是未上传文件时下载按钮自动 disabled。
+
+### 7.6 下载进度
+
+文件级下载（非分片），单文件进度无中间状态——用 toast 通知开始/完成。批量下载时用 `ToastMessage` 渐进更新（"下载中 3/10…"）。
+
+### 7.7 注意事项
+
+| 问题 | 决策 |
+|------|------|
+| 本地已有同名文件 | `DownloadToLocalCoreAsync` 第一步检查 `File.Exists` → 跳过并标记 `local_exists=1` |
+| 下载中被取消 | `OperationCanceledException` → 清理可能创建的半截文件（与 `AliyunOssStorage.DownloadAsync` 现有一致） |
+| OSS 上文件已被删除 | SDK `GetObject` 抛 `OssException` → catch 后 ShowToast "云端文件不存在" |
+| 磁盘空间不足 | `IOException` 在 `CopyTo(fileStream)` 阶段抛出 → catch 后 `File.Delete(localPath)` 清理 |
+| 下载后缩略图生成失败 | 静默吞错，UI 用占位图标兜底（与现有行为一致） |
+
+---
+
+## 8. 垃圾筒（TrashViewModel）
+
+### 8.1 页面状态
 
 ```csharp
 public partial class TrashViewModel : ObservableObject
@@ -222,7 +435,7 @@ public partial class TrashViewModel : ObservableObject
 }
 ```
 
-### 7.2 数据加载
+### 8.2 数据加载
 
 ```
 LoadAsync(projectPath)
@@ -237,7 +450,7 @@ LoadAsync(projectPath)
   └─ IsLoading = false
 ```
 
-### 7.3 操作命令
+### 8.3 操作命令
 
 #### Restore（恢复）
 
@@ -250,21 +463,7 @@ RestoreAsync(file)
 
 #### Download（下载云上文件）
 
-仅对 `file.IsUploaded && !file.LocalExists` 的云端文件有效：
-
-```
-DownloadAsync(file)
-  ├─ ossCfg = await _configService.GetAsync<OssConfig>
-  ├─ storage = _ossFactory.TryCreate()
-  ├─ objectKey = BuildObjectKey(prefix, file.RelativePath)
-  ├─ localPath = Path.Combine(file.ProjectPath, file.RelativePath)
-  ├─ 确保 localPath 所在目录存在
-  ├─ await storage.DownloadAsync(objectKey, localPath)
-  ├─ file.LocalExists = true
-  └─ ShowToast($"已下载 {file.FileName}")
-```
-
-下载后**不自动恢复**——文件仍在垃圾筒，只是本地多了一份拷贝。用户可随后点「恢复」回到 Gallery。
+仅对 `file.IsUploaded && !file.LocalExists` 的云端文件有效。完整实现见 §7.4「垃圾筒侧下载」——逻辑与 Gallery 侧等价，但依赖通过构造注入，且下载后**不自动恢复**（文件仍在垃圾筒，用户需单独点「恢复」回到 Gallery）。
 
 #### CleanSingle（单文件清理）
 
@@ -335,9 +534,9 @@ BatchCleanAllAsync()
 
 ---
 
-## 8. 垃圾筒 UI（TrashView.axaml）
+## 9. 垃圾筒 UI（TrashView.axaml）
 
-### 8.1 布局
+### 9.1 布局
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -357,7 +556,7 @@ BatchCleanAllAsync()
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 8.2 卡片布局
+### 9.2 卡片布局
 
 每个缩略图卡片（与 Gallery photo-tile 同尺寸 160×120）：
 
@@ -369,7 +568,7 @@ BatchCleanAllAsync()
   - 云端文件且 `!LocalExists` 时：额外「下载」按钮
 - **上传状态同步徽章**：右上角同 Gallery 的云+✓ / 云+↓ / 灰云 徽章逻辑
 
-### 8.3 空态
+### 9.3 空态
 
 ```
 ┌─────────────────────────────────────────┐
@@ -382,9 +581,9 @@ BatchCleanAllAsync()
 
 ---
 
-## 9. 导航集成
+## 10. 导航集成
 
-### 9.1 MainWindowViewModel 变更
+### 10.1 MainWindowViewModel 变更
 
 ```csharp
 // ViewPage 枚举新增
@@ -418,7 +617,7 @@ public partial class MainWindowViewModel
 }
 ```
 
-### 9.2 NavRail 变更
+### 10.2 NavRail 变更
 
 `Controls/NavRail.axaml`：在「上传」和「设置」之间插入垃圾筒按钮，使用已存在的 `Icon.Trash` 图标：
 
@@ -438,7 +637,7 @@ public partial class MainWindowViewModel
 </Button>
 ```
 
-### 9.3 MainWindow.axaml DataTemplate
+### 10.3 MainWindow.axaml DataTemplate
 
 `ContentControl.DataTemplates` 中新增：
 
@@ -450,7 +649,7 @@ public partial class MainWindowViewModel
 
 ---
 
-## 10. 模块边界
+## 11. 模块边界
 
 ```
 MainWindowViewModel (顶层)
@@ -473,7 +672,7 @@ MainWindowViewModel (顶层)
 
 ---
 
-## 11. 错误处理
+## 12. 错误处理
 
 | 场景 | 处理 |
 |------|------|
@@ -488,7 +687,7 @@ MainWindowViewModel (顶层)
 
 ---
 
-## 12. 文件变更清单
+## 13. 文件变更清单
 
 | 文件 | 变更类型 | 核心内容 |
 |------|---------|---------|
@@ -498,18 +697,18 @@ MainWindowViewModel (顶层)
 | `Services/IOssStorage.cs` | 修改 | +`DeleteObjectAsync` |
 | `Services/AliyunOssStorage.cs` | 修改 | 实现 `DeleteObjectAsync` |
 | `Models/Models.cs` | 修改 | 不变（垃圾筒 UI 模型在 TrashViewModel 内直接使用 MediaFile） |
-| `ViewModels/GalleryViewModel.cs` | 修改 | 实现 `BatchDelete` / `DeleteSingle` / `FreeUpSpace` / `BatchFreeUpSpace` |
+| `ViewModels/GalleryViewModel.cs` | 修改 | 实现 `BatchDelete` / `DeleteSingle` / `FreeUpSpace` / `BatchFreeUpSpace` / `DownloadSingle` / `BatchDownload` + `DownloadToLocalCoreAsync` |
 | `ViewModels/MainWindowViewModel.cs` | 修改 | +`Trash` 页导航；注入 `TrashViewModel` |
-| `ViewModels/TrashViewModel.cs` | **新建** | 完整垃圾筒 VM |
+| `ViewModels/TrashViewModel.cs` | **新建** | 完整垃圾筒 VM（含下载、恢复、清理） |
 | `Views/TrashView.axaml` | **新建** | 垃圾筒 UI 页面 |
 | `Views/TrashView.axaml.cs` | **新建** | Code-behind（事件处理） |
-| `Views/GalleryView.axaml` | 修改 | 右键菜单扩展「删除」「释放本地空间」 |
-| `Views/MainWindow.axaml` | 修改 | +`TrashView` DataTemplate |
+| `Views/GalleryView.axaml` | 修改 | 右键菜单扩展「删除」「释放本地空间」「下载到本地」 |
+| `Views/MainWindow.axaml` | 修改 | +`TrashView` DataTemplate；工具栏新增「批量下载」「释放本地空间」按钮 |
 | `Controls/NavRail.axaml` | 修改 | +垃圾筒导航入口 |
 
 ---
 
-## 13. 与现有功能的交叉影响
+## 14. 与现有功能的交叉影响
 
 | 受影响模块 | 影响 | 处理 |
 |-----------|------|------|
@@ -522,7 +721,7 @@ MainWindowViewModel (顶层)
 
 ---
 
-## 14. 已知陷阱
+## 15. 已知陷阱
 
 - **`deleted_at` 与 `local_exists` 的语义独立**：即使文件已软删除，`local_exists` 仍反映真实磁盘状态——垃圾筒需要它决定是否显示占位图或提供下载按钮。
 - **恢复时 `local_exists` 不自动修复**：如果用户在垃圾筒期间手动删了本地文件，恢复后该文件 Gallery 中显示为 `local_exists = 0`——与正常「云端有、本地无」状态一致，用户自行决定是否重新下载。
