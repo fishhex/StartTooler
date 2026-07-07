@@ -126,6 +126,16 @@ public partial class MediaFile : ObservableObject
     [ObservableProperty]
     private string? _tagError;
 
+    // === v0.8 软删除字段（spec doc/14-delete-and-trash.md §2.1 / §4） ===
+
+    /// <summary>
+    /// 软删除时间戳（unix ms），NULL = 正常文件，NOT NULL = 已移入垃圾筒。
+    /// DB 列 deleted_at INTEGER NULL。
+    /// Gallery 所有查询 WHERE deleted_at IS NULL 自动隐藏已删除文件。
+    /// </summary>
+    [ObservableProperty]
+    private long? _deletedAt;
+
     // === v0.6 UI 便捷属性（XAML 绑定用） ===
 
     /// <summary>photo tile 评分角标 IsVisible 绑定。Score=null 时隐藏。</summary>
@@ -136,6 +146,9 @@ public partial class MediaFile : ObservableObject
 
     /// <summary>v0.7: photo tile 质量标签条 IsVisible 绑定。QualityTags 为空列表或 null 时隐藏。</summary>
     public bool HasQualityTags => QualityTags is { Count: > 0 };
+
+    /// <summary>v0.8: 软删除时间戳存在 = 已移入垃圾筒。UI 偶尔需要快速判断（暂未直接用，预留）。</summary>
+    public bool HasDeleted => DeletedAt.HasValue;
 
     public DateTime? ShotAtDateTime => ShotAt.HasValue
         ? DateTimeOffset.FromUnixTimeMilliseconds(ShotAt.Value).DateTime
