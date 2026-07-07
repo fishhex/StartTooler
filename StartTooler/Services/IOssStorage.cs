@@ -39,6 +39,13 @@ public interface IOssStorage
     Task DownloadAsync(string objectKey, string localPath, CancellationToken ct = default);
 
     /// <summary>
+    /// 从 OSS 删除单个对象。调用方确认桶内对象存在。
+    /// v0.8 用于垃圾筒彻底删除（spec doc/14-delete-and-trash.md §3.1）。
+    /// 阿里云 SDK 对不存在的 key 不抛异常（幂等），调用方无需额外检查。
+    /// </summary>
+    Task DeleteObjectAsync(string objectKey, CancellationToken ct = default);
+
+    /// <summary>
     /// multipart 阈值。文件 ≥ 这个大小走分片上传，&lt; 走单 PUT。
     /// 默认 5MB，符合阿里云推荐值。
     /// </summary>

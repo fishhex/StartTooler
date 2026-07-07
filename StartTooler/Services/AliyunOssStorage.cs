@@ -277,6 +277,21 @@ public sealed class AliyunOssStorage : IOssStorage, IDisposable
         Debug.WriteLine($"[OSS] AbortMultipart: objectKey={handle.ObjectKey}, uploadId={ShortId(handle.UploadId)}");
     }
 
+    public async Task DeleteObjectAsync(string objectKey, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        // v0.8 垃圾筒彻底删除用（spec doc/14-delete-and-trash.md §3.2）。
+        // 阿里云 SDK DeleteObject 对不存在的 key 不抛异常（幂等），无需额外检查。
+        await Task.Run(() =>
+        {
+            var req = new DeleteObjectRequest(_config.Bucket, objectKey);
+            _client.DeleteObject(req);
+        }, ct);
+
+        Debug.WriteLine($"[OSS] DeleteObject: objectKey={objectKey}");
+    }
+
     /// <summary>ETag / UploadId 太长打日志看花眼，截前 16 字符 + ... 标识。</summary>
     private static string ShortId(string? s)
     {
