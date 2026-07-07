@@ -717,10 +717,329 @@ public partial class GalleryViewModel : ObservableObject
     private void BatchDelete()
     {
         if (!IsBatchActionEnabled) return;
+        _ = BatchDeleteCoreAsync();
+    }
 
-        var count = SelectedFiles.Count;
-        ShowToast($"已请求删除 {count} 个文件（待实现）");
+    /// <summary>
+    /// 软删除核心逻辑（spec doc/14-delete-and-trash.md §5.1 BatchDelete）。
+    /// 拆成 async 单独方法方便 _ = BatchDeleteCoreAsync() 异步触发。
+    ///
+    /// 决策点：删除有 in-progress upload job 的文件时——
+    ///   查 upload_jobs 表，若有 Uploading/Paused 状态 → 弹窗二次确认"取消上传并删除" / "取消"。
+    ///   选前者 → 调 AbortMultipart + DeleteByFileAsync + SoftDeleteAsync（顺序：清 job → 标 deleted）。
+    /// </summary>
+    private async Task BatchDeleteCoreAsync()
+    {
+        var files = SelectedFiles.ToList();
+        var count = files.Count;
+        Trace.WriteLine($"[Gallery] BatchDelete: 用户请求删除 {count} 个文件");
+
+        // 1) 二次确认
+        var window = DialogHelper.GetMainWindow();
+        if (window == null) return;
+
+        var confirmed = await DialogHelper.ShowConfirmAsync(
+            window,
+            title: "移入垃圾筒",
+            message: $"确定将 {count} 个文件移入垃圾筒？\n可在「垃圾筒」页恢复或彻底删除。",
+            primaryButtonText: "移入垃圾筒",
+            secondaryButtonText: "取消");
+
+        if (!confirmed)
+        {
+            Trace.WriteLine($"[Gallery] BatchDelete: 用户取消");
+            return;
+        }
+
+        // 2) 退出多选（要先 ExitMultiSelect 让 SelectedFiles 清空，避免后续 SoftDelete 还在 IsBatchActionEnabled 状态）
         ExitMultiSelect();
+
+        // 3) 检查 in-progress upload job —— 决策点 #1
+        var inProgressCount = await CountInProgressUploadsAsync(files);
+        if (inProgressCount > 0)
+        {
+            var proceed = await DialogHelper.ShowConfirmAsync(
+                window,
+                title: "有未完成的上传",
+                message: $"其中 {inProgressCount} 个文件正在上传。\n删除将一并取消上传并清理续传任务。",
+                primaryButtonText: "取消上传并删除",
+                secondaryButtonText: "取消");
+
+            if (!proceed)
+            {
+                Trace.WriteLine($"[Gallery] BatchDelete: 用户在 upload 检查处取消");
+                return;
+            }
+        }
+
+        // 4) 执行：先 Abort + 清 upload_job（如果存在），再 SoftDelete
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var softDeleted = 0;
+        var failed = 0;
+
+        foreach (var file in files)
+        {
+            try
+            {
+                // 清 upload_job（如果有 in-progress）
+                var job = await _uploadJobRepo.GetByFileAsync(file.ProjectPath, file.RelativePath);
+                if (job != null)
+                {
+                    // 尝试 Abort multipart（不强制成功 — 即使 Abort 失败也要继续 SoftDelete，
+                    // 否则 job 留着下次 resume 时找不到 media_files 行，体验更差）
+                    try
+                    {
+                        var handle = new MultipartHandle
+                        {
+                            ObjectKey = job.ObjectKey,
+                            UploadId = job.UploadId,
+                        };
+                        // IOssStorage 没注入到 Gallery —— Abort 走 OssStorageFactory
+                        var storage = _ossFactory.TryCreate();
+                        if (storage != null)
+                        {
+                            await storage.AbortMultipartAsync(handle);
+                        }
+                    }
+                    catch (Exception abortEx)
+                    {
+                        Trace.WriteLine($"[Gallery] BatchDelete: Abort multipart 失败 (id={file.Id}): {abortEx.Message}");
+                    }
+
+                    await _uploadJobRepo.DeleteByFileAsync(file.ProjectPath, file.RelativePath);
+                }
+
+                await _mediaRepo.SoftDeleteAsync(file.Id, now);
+                softDeleted++;
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[Gallery] BatchDelete: SoftDelete 失败 id={file.Id}: {ex.Message}");
+                failed++;
+            }
+        }
+
+        // 5) 从 CurrentMediaFiles 移除已删除的（不重新查 DB —— 让 UI 立刻响应）
+        foreach (var file in files)
+        {
+            CurrentMediaFiles.Remove(file);
+        }
+
+        var msg = failed == 0
+            ? $"已将 {softDeleted} 个文件移入垃圾筒"
+            : $"已将 {softDeleted} 个文件移入垃圾筒（{failed} 个失败）";
+        ShowToast(msg);
+        Trace.WriteLine($"[Gallery] BatchDelete: 完成 softDeleted={softDeleted}, failed={failed}");
+    }
+
+    /// <summary>
+    /// 统计 files 中有 in-progress upload job 的数量（Uploading 或 Paused 状态）。
+    /// 用于删除前的二次确认。
+    /// </summary>
+    private async Task<int> CountInProgressUploadsAsync(IEnumerable<MediaFile> files)
+    {
+        var count = 0;
+        foreach (var file in files)
+        {
+            // UploadStatus 是 UI 瞬时态，进 Gallery 时反推过；NotUploaded 表示无 job 或已结束
+            if (file.UploadStatus == UploadStatus.Uploading || file.UploadStatus == UploadStatus.Paused)
+            {
+                count++;
+            }
+        }
+        return await Task.FromResult(count);
+    }
+
+    /// <summary>
+    /// 单文件软删除（右键菜单「删除」调用，spec §5.2 DeleteSingle）。
+    /// in-progress upload 检查同 BatchDelete 路径。
+    /// </summary>
+    private async Task DeleteSingleCoreAsync(MediaFile? file)
+    {
+        if (file == null || !file.LocalExists) return;
+
+        var window = DialogHelper.GetMainWindow();
+        if (window == null) return;
+
+        Trace.WriteLine($"[Gallery] DeleteSingle: file={file.FileName} (id={file.Id})");
+
+        var confirmed = await DialogHelper.ShowConfirmAsync(
+            window,
+            title: "移入垃圾筒",
+            message: $"确定将「{file.FileName}」移入垃圾筒？",
+            primaryButtonText: "移入垃圾筒",
+            secondaryButtonText: "取消");
+
+        if (!confirmed) return;
+
+        // in-progress upload 检查
+        if (file.UploadStatus == UploadStatus.Uploading || file.UploadStatus == UploadStatus.Paused)
+        {
+            var proceed = await DialogHelper.ShowConfirmAsync(
+                window,
+                title: "有未完成的上传",
+                message: $"该文件正在上传。\n删除将一并取消上传并清理续传任务。",
+                primaryButtonText: "取消上传并删除",
+                secondaryButtonText: "取消");
+
+            if (!proceed) return;
+        }
+
+        try
+        {
+            var job = await _uploadJobRepo.GetByFileAsync(file.ProjectPath, file.RelativePath);
+            if (job != null)
+            {
+                try
+                {
+                    var storage = _ossFactory.TryCreate();
+                    if (storage != null)
+                    {
+                        await storage.AbortMultipartAsync(new MultipartHandle
+                        {
+                            ObjectKey = job.ObjectKey,
+                            UploadId = job.UploadId,
+                        });
+                    }
+                }
+                catch (Exception abortEx)
+                {
+                    Trace.WriteLine($"[Gallery] DeleteSingle: Abort 失败: {abortEx.Message}");
+                }
+                await _uploadJobRepo.DeleteByFileAsync(file.ProjectPath, file.RelativePath);
+            }
+
+            await _mediaRepo.SoftDeleteAsync(file.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            CurrentMediaFiles.Remove(file);
+            ShowToast($"已将 {file.FileName} 移入垃圾筒");
+            Trace.WriteLine($"[Gallery] DeleteSingle: 完成 id={file.Id}");
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[Gallery] DeleteSingle: 失败 id={file.Id}: {ex.Message}");
+            ShowToast($"删除失败: {ex.Message}");
+        }
+    }
+
+    // === v0.8 释放本地空间（spec §6 Gallery 侧独立操作，不入垃圾筒） ===
+
+    [RelayCommand]
+    private void BatchFreeUpSpace()
+    {
+        if (!IsBatchActionEnabled) return;
+        _ = BatchFreeUpSpaceCoreAsync();
+    }
+
+    /// <summary>
+    /// 批量释放本地空间（spec §6.2）。
+    /// 条件：file.IsUploaded && file.LocalExists（已上传且本地仍在）。
+    /// 不动 DB 行的 deleted_at，不动云端 —— 仅 File.Delete + local_exists = 0。
+    /// </summary>
+    private async Task BatchFreeUpSpaceCoreAsync()
+    {
+        var files = SelectedFiles.Where(f => f.IsUploaded && f.LocalExists).ToList();
+        var skipped = SelectedFiles.Count - files.Count;
+
+        Trace.WriteLine($"[Gallery] BatchFreeUpSpace: 选中 {SelectedFiles.Count} 个, 可释放 {files.Count} 个, 跳过 {skipped}");
+
+        if (files.Count == 0)
+        {
+            ExitMultiSelect();
+            ShowToast(skipped > 0
+                ? $"所选 {skipped} 个文件无需释放（未上传或本地已缺失）"
+                : "未选中文件");
+            return;
+        }
+
+        var window = DialogHelper.GetMainWindow();
+        if (window == null) return;
+
+        var confirmed = await DialogHelper.ShowConfirmAsync(
+            window,
+            title: "释放本地空间",
+            message: $"将删除 {files.Count} 个文件（云端保留）。\n可稍后从垃圾筒 → 下载重新拉回。",
+            primaryButtonText: "释放",
+            secondaryButtonText: "取消");
+
+        if (!confirmed) return;
+
+        ExitMultiSelect();
+
+        var released = 0;
+        var failed = 0;
+        foreach (var file in files)
+        {
+            try
+            {
+                DeleteLocalFile(file);
+                file.LocalExists = false;
+                await _mediaRepo.UpdateLocalExistsAsync(file.Id, false);
+                released++;
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[Gallery] BatchFreeUpSpace: 失败 id={file.Id}: {ex.Message}");
+                failed++;
+            }
+        }
+
+        var msg = failed == 0
+            ? $"已释放 {released} 个文件"
+            : $"已释放 {released} 个文件（{failed} 个失败）";
+        ShowToast(msg);
+        Trace.WriteLine($"[Gallery] BatchFreeUpSpace: 完成 released={released}, failed={failed}");
+    }
+
+    /// <summary>
+    /// 单文件释放本地空间（右键菜单「释放本地空间」调用，spec §6.1）。
+    /// </summary>
+    [RelayCommand]
+    private async Task FreeUpSpaceAsync(MediaFile? file)
+    {
+        if (file == null || !file.IsUploaded || !file.LocalExists) return;
+
+        var window = DialogHelper.GetMainWindow();
+        if (window == null) return;
+
+        Trace.WriteLine($"[Gallery] FreeUpSpace: file={file.FileName} (id={file.Id})");
+
+        var confirmed = await DialogHelper.ShowConfirmAsync(
+            window,
+            title: "释放本地空间",
+            message: $"将删除本地文件「{file.FileName}」\n云端保留，可稍后重新下载。",
+            primaryButtonText: "释放",
+            secondaryButtonText: "取消");
+
+        if (!confirmed) return;
+
+        try
+        {
+            DeleteLocalFile(file);
+            file.LocalExists = false;
+            await _mediaRepo.UpdateLocalExistsAsync(file.Id, false);
+            ShowToast($"已释放 {file.FileName}");
+            Trace.WriteLine($"[Gallery] FreeUpSpace: 完成 id={file.Id}");
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[Gallery] FreeUpSpace: 失败 id={file.Id}: {ex.Message}");
+            ShowToast($"释放失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>删除本地文件，FileNotFound 视为已删（幂等）。</summary>
+    private static void DeleteLocalFile(MediaFile file)
+    {
+        var fullPath = Path.Combine(file.ProjectPath, file.RelativePath);
+        if (!File.Exists(fullPath)) return;
+        try
+        {
+            File.Delete(fullPath);
+        }
+        catch (FileNotFoundException)
+        {
+            // 用户已手动删了，幂等
+        }
     }
 
     // === v0.6 AI 打标命令（spec doc/12-ai-toolbar-buttons.md §3.3.4） ===
@@ -1437,8 +1756,7 @@ public partial class GalleryViewModel : ObservableObject
     [RelayCommand]
     private void DeleteSingle(MediaFile? file)
     {
-        if (file == null) return;
-        ShowToast($"已请求删除 {file.FileName}（待实现）");
+        _ = DeleteSingleCoreAsync(file);
     }
 
     private void ShowToast(string message)

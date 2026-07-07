@@ -216,12 +216,30 @@
                                         Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).ToggleSelectionCommand}"
                                         CommandParameter="{Binding}"
                                         DoubleTapped="OnPhotoTileDoubleTapped">
-                                    <!-- v0.6: 右键菜单 AI 打标 -->
+                                    <!-- v0.6: 右键菜单 AI 打标 / v0.8: 加「删除」「释放本地空间」 -->
+                                    <!-- 多选模式下右键不弹菜单（避免与多选冲突）：每个 MenuItem 单独控制 IsVisible -->
                                     <Button.ContextFlyout>
                                         <MenuFlyout>
                                             <MenuItem Header="AI 打标"
                                                       Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).TagSingleCommand}"
-                                                      CommandParameter="{Binding}"/>
+                                                      CommandParameter="{Binding}"
+                                                      IsVisible="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).IsMultiSelectMode, Converter={x:Static BoolConverters.Not}}"/>
+                                            <MenuItem Header="删除"
+                                                      Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).DeleteSingleCommand}"
+                                                      CommandParameter="{Binding}"
+                                                      IsVisible="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).IsMultiSelectMode, Converter={x:Static BoolConverters.Not}}"/>
+                                            <!-- 「释放本地空间」仅云端已备份 + 本地存在的文件可见 + 非多选模式 -->
+                                            <MenuItem Header="释放本地空间"
+                                                      Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).FreeUpSpaceCommand}"
+                                                      CommandParameter="{Binding}">
+                                                <MenuItem.IsVisible>
+                                                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                        <Binding Path="$parent[ItemsControl].((vm:GalleryViewModel)DataContext).IsMultiSelectMode" Converter="{x:Static BoolConverters.Not}"/>
+                                                        <Binding Path="IsUploaded"/>
+                                                        <Binding Path="LocalExists"/>
+                                                    </MultiBinding>
+                                                </MenuItem.IsVisible>
+                                            </MenuItem>
                                         </MenuFlyout>
                                     </Button.ContextFlyout>
                                     <Button.Template>
