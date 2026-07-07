@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using CommunityToolkit.Mvvm.ComponentModel;
+using StartTooler.Models;
 
 namespace StartTooler.Data;
 
@@ -38,13 +39,22 @@ public partial class MediaFile : ObservableObject
     public long FileSize { get; set; }
     public long LastModified { get; set; }
     public long? ShotAt { get; set; }
-    public bool IsUploaded { get; set; }
+
+    /// <summary>
+    /// 是否已上传到云端。UI 同步徽章（已上传 / 未上传 / 已传但本地缺失）依赖此字段。
+    /// 上传完成 / 释放空间 / 恢复删除 等操作会改它，必须 ObservableProperty 才能让 UI 即时刷新
+    /// （否则只能靠重建 MediaFile 实例或点"刷新"按钮才能更新——旧实现的痛点）。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SyncStatusValue))]
+    private bool _isUploaded;
 
     /// <summary>
     /// 本地文件是否存在（驱动 SyncStatus 徽章和 Image 渲染）。
     /// 由下载完成 / 本地扫描维护。
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SyncStatusValue))]
     private bool _localExists = true;
 
     /// <summary>
@@ -79,6 +89,7 @@ public partial class MediaFile : ObservableObject
     /// UI 用的瞬时上传状态。默认 NotUploaded；进 Gallery 时根据 upload_jobs 反推。
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SyncStatusValue))]
     private UploadStatus _uploadStatus;
 
     /// <summary>
@@ -149,6 +160,33 @@ public partial class MediaFile : ObservableObject
 
     /// <summary>v0.8: 软删除时间戳存在 = 已移入垃圾筒。UI 偶尔需要快速判断（暂未直接用，预留）。</summary>
     public bool HasDeleted => DeletedAt.HasValue;
+
+    /// <summary>
+    /// 派生 SyncStatus，给右上角徽章 binding 用。
+    /// 进度态（Uploading / Failed / Paused）期间返回 null —— 让同步态徽章全部隐藏，
+    /// 由 UploadStatusToVisibilityConverter 系列徽章接管。
+    /// 持久态下从 IsUploaded + LocalExists 派生三种 SyncStatus。
+    ///
+    /// 通过 [NotifyPropertyChangedFor] 挂在 IsUploaded / LocalExists / UploadStatus 上，
+    /// 任一源变了就触发本属性 PropertyChanged，binding 即时刷新。
+    /// 修这个之前用 {Binding .} 绑定整个 MediaFile 实例，Avalonia 不刷新（path="" 不订阅任何属性）。
+    /// </summary>
+    public SyncStatus? SyncStatusValue
+    {
+        get
+        {
+            if (UploadStatus is UploadStatus.Uploading
+                or UploadStatus.Failed
+                or UploadStatus.Paused)
+                return null;
+
+            if (IsUploaded && LocalExists)
+                return SyncStatus.UploadedAndLocal;
+            if (IsUploaded)
+                return SyncStatus.UploadedButMissingLocal;
+            return SyncStatus.NotUploaded;
+        }
+    }
 
     public DateTime? ShotAtDateTime => ShotAt.HasValue
         ? DateTimeOffset.FromUnixTimeMilliseconds(ShotAt.Value).DateTime

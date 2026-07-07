@@ -215,45 +215,13 @@
                                         Margin="8"
                                         Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).ToggleSelectionCommand}"
                                         CommandParameter="{Binding}"
-                                        DoubleTapped="OnPhotoTileDoubleTapped">
-                                    <!-- v0.6: 右键菜单 AI 打标 / v0.8: 加「删除」「释放本地空间」/ v0.8.1: 加「下载到本地」 -->
-                                    <!-- 多选模式下右键不弹菜单（避免与多选冲突）：每个 MenuItem 单独控制 IsVisible -->
-                                    <Button.ContextFlyout>
-                                        <MenuFlyout>
-                                            <MenuItem Header="AI 打标"
-                                                      Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).TagSingleCommand}"
-                                                      CommandParameter="{Binding}"
-                                                      IsVisible="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).IsMultiSelectMode, Converter={x:Static BoolConverters.Not}}"/>
-                                            <MenuItem Header="删除"
-                                                      Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).DeleteSingleCommand}"
-                                                      CommandParameter="{Binding}"
-                                                      IsVisible="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).IsMultiSelectMode, Converter={x:Static BoolConverters.Not}}"/>
-                                            <!-- 「释放本地空间」仅云端已备份 + 本地存在的文件可见 + 非多选模式 -->
-                                            <MenuItem Header="释放本地空间"
-                                                      Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).FreeUpSpaceCommand}"
-                                                      CommandParameter="{Binding}">
-                                                <MenuItem.IsVisible>
-                                                    <MultiBinding Converter="{x:Static BoolConverters.And}">
-                                                        <Binding Path="$parent[ItemsControl].((vm:GalleryViewModel)DataContext).IsMultiSelectMode" Converter="{x:Static BoolConverters.Not}"/>
-                                                        <Binding Path="IsUploaded"/>
-                                                        <Binding Path="LocalExists"/>
-                                                    </MultiBinding>
-                                                </MenuItem.IsVisible>
-                                            </MenuItem>
-                                            <!-- v0.8.1 新增：「下载到本地」仅云端已备份的文件可用 + 非多选模式 -->
-                                            <!-- LocalExists 在命令内二次判断（spec §5.3） -->
-                                            <MenuItem Header="下载到本地"
-                                                      Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).DownloadSingleCommand}"
-                                                      CommandParameter="{Binding}">
-                                                <MenuItem.IsVisible>
-                                                    <MultiBinding Converter="{x:Static BoolConverters.And}">
-                                                        <Binding Path="$parent[ItemsControl].((vm:GalleryViewModel)DataContext).IsMultiSelectMode" Converter="{x:Static BoolConverters.Not}"/>
-                                                        <Binding Path="IsUploaded"/>
-                                                    </MultiBinding>
-                                                </MenuItem.IsVisible>
-                                            </MenuItem>
-                                        </MenuFlyout>
-                                    </Button.ContextFlyout>
+                                        DoubleTapped="OnPhotoTileDoubleTapped"
+                                        PointerPressed="OnPhotoTilePointerPressed">
+                                    <!-- v0.8.1: 右键菜单改为 code-behind 构建（PointerPressed 触发） -->
+                                    <!-- 原因: ContextFlyout 内 MenuItem 在编译 binding 模式下，
+                                         `$parent[ItemsControl].((vm:GalleryViewModel)DataContext).XxxCommand`
+                                         这种链式 cast 在 DataTemplate 编译期无法解析 → Command=null → 灰显。
+                                         改用代码构建 MenuFlyout，直接挂 VM 实例属性，跳过 binding 解析。 -->
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
                                             <Grid>
@@ -315,7 +283,7 @@
                                                         -->
 
                                                         <!-- 同步态: 已上传且本地存在 (青蓝云 + ✓) -->
-                                                        <Border IsVisible="{Binding ., Converter={StaticResource MediaFileToSyncVis}, ConverterParameter=UploadedAndLocal}"
+                                                        <Border IsVisible="{Binding SyncStatusValue, Converter={StaticResource MediaFileToSyncVis}, ConverterParameter=UploadedAndLocal}"
                                                                 HorizontalAlignment="Right"
                                                                 VerticalAlignment="Top"
                                                                 Margin="6,10,10,6"
@@ -340,7 +308,7 @@
                                                         </Border>
 
                                                         <!-- 同步态: 已上传但本地不存在 (橙色云 + ↓) -->
-                                                        <Border IsVisible="{Binding ., Converter={StaticResource MediaFileToSyncVis}, ConverterParameter=UploadedButMissingLocal}"
+                                                        <Border IsVisible="{Binding SyncStatusValue, Converter={StaticResource MediaFileToSyncVis}, ConverterParameter=UploadedButMissingLocal}"
                                                                 HorizontalAlignment="Right"
                                                                 VerticalAlignment="Top"
                                                                 Margin="6,10,10,6"
@@ -365,7 +333,7 @@
                                                         </Border>
 
                                                         <!-- 同步态: 未上传 (灰云 + 斜杠) -->
-                                                        <Border IsVisible="{Binding ., Converter={StaticResource MediaFileToSyncVis}, ConverterParameter=NotUploaded}"
+                                                        <Border IsVisible="{Binding SyncStatusValue, Converter={StaticResource MediaFileToSyncVis}, ConverterParameter=NotUploaded}"
                                                                 HorizontalAlignment="Right"
                                                                 VerticalAlignment="Top"
                                                                 Margin="6,10,10,6"

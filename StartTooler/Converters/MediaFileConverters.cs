@@ -100,31 +100,17 @@ public class UploadStatusToVisibilityConverter : IValueConverter
 
 /// <summary>
 /// 把 MediaFile 派生的 SyncStatus 和 parameter 比，相等返回 true。
-/// 当 UploadStatus 处于 Uploading / Failed / Paused 时**强制返回 false**——这三个是瞬时进度态，
-/// 由原 UploadStatusToVisibilityConverter 系列的徽章负责显示；同步态徽章不与之重叠。
+/// 当 UploadStatus 处于 Uploading / Failed / Paused 时 SyncStatusValue 返回 null → 本 converter 也返回 false，
+/// 让 UploadStatusToVisibilityConverter 系列的进度徽章接管；同步态徽章不与之重叠。
 ///
-/// AXAML 用法：IsVisible="{Binding ., Converter={StaticResource ...}, ConverterParameter=UploadedAndLocal}"
+/// AXAML 用法：IsVisible="{Binding SyncStatusValue, Converter={StaticResource ...}, ConverterParameter=UploadedAndLocal}"
 /// </summary>
 public class MediaFileToSyncVisibilityConverter : IValueConverter
 {
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        if (value is not MediaFile file || parameter is not string p)
+        if (value is not SyncStatus status || parameter is not string p)
             return false;
-
-        // 进度态优先：Uploading / Failed / Paused 时让对应徽章显示
-        if (file.UploadStatus is UploadStatus.Uploading
-            or UploadStatus.Failed
-            or UploadStatus.Paused)
-            return false;
-
-        SyncStatus status;
-        if (file.IsUploaded && file.LocalExists)
-            status = SyncStatus.UploadedAndLocal;
-        else if (file.IsUploaded && !file.LocalExists)
-            status = SyncStatus.UploadedButMissingLocal;
-        else
-            status = SyncStatus.NotUploaded;
 
         return Enum.TryParse<SyncStatus>(p, ignoreCase: true, out var target) && status == target;
     }
