@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.rid }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            rid: osx-arm64
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-latest
+            rid: linux-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Extract version
+        id: version
+        shell: bash
+        run: echo "v=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        run: >
+          dotnet publish StartTooler/StartTooler.csproj
+          -c Release
+          -r ${{ matrix.rid }}
+          --self-contained true
+          -p:PublishSingleFile=true
+          -o publish
+
+      - name: Package macOS
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: bash scripts/package-osx.sh "${{ steps.version.outputs.v }}" publish StartTooler/Assets/orion_nebula_icon.icns
+
+      - name: Package Windows
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.v }}'
+          $archive = "StartTooler-win-x64-v${v}.zip"
+          Compress-Archive -Path publish/* -DestinationPath $archive
+          echo "artifact=${archive}" >> $env:GITHUB_ENV
+
+      - name: Package Linux
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          v='${{ steps.version.outputs.v }}'
+          archive="StartTooler-linux-x64-v${v}.tar.gz"
+          tar -czf "$archive" -C publish .
+          echo "artifact=${archive}" >> "$GITHUB_ENV"
+
+      - name: Record artifact name (macOS)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          v='${{ steps.version.outputs.v }}'
+          echo "artifact=StartTooler-darwin-arm64-v${v}.tar.gz" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.rid }}
+          path: ${{ env.artifact }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: StartTooler ${{ github.ref_name }}
+          files: artifacts/*
+          generate_release_notes: true
