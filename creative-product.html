@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>星助 · 天文摄影师的管家</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a12;
+            --bg-secondary: #12121f;
+            --bg-card: #161625;
+            --bg-elevated: #1e1e30;
+            --accent-blue: #5b8def;
+            --accent-purple: #9d7cd8;
+            --accent-cyan: #7dcfff;
+            --accent-gold: #e0af68;
+            --text-primary: #e8e8f0;
+            --text-secondary: #9090a8;
+            --text-muted: #5c5c72;
+            --border-subtle: rgba(255,255,255,0.08);
+            --glow-blue: rgba(91,141,239,0.3);
+            --glow-purple: rgba(157,124,216,0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.8;
+            overflow-x: hidden;
+        }
+
+        /* Star field background */
+        .stars {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            animation: twinkle 3s ease-in-out infinite;
+        }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 4rem 2rem;
+            position: relative;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, var(--glow-purple) 0%, transparent 70%);
+            opacity: 0.4;
+            pointer-events: none;
+        }
+
+        .logo-container {
+            margin-bottom: 2rem;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+
+        .logo-icon {
+            width: 120px;
+            height: 120px;
+            position: relative;
+        }
+
+        .logo-ring {
+            position: absolute;
+            border: 2px solid var(--accent-purple);
+            border-radius: 50%;
+            animation: spin 20s linear infinite;
+        }
+
+        .logo-ring:nth-child(1) {
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            border-color: var(--accent-blue);
+            opacity: 0.6;
+        }
+
+        .logo-ring:nth-child(2) {
+            width: 85%;
+            height: 85%;
+            top: 7.5%;
+            left: 7.5%;
+            border-color: var(--accent-purple);
+            animation-direction: reverse;
+            animation-duration: 15s;
+        }
+
+        .logo-ring:nth-child(3) {
+            width: 70%;
+            height: 70%;
+            top: 15%;
+            left: 15%;
+            border-color: var(--accent-cyan);
+            animation-duration: 10s;
+            opacity: 0.8;
+        }
+
+        .logo-core {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 30px;
+            height: 30px;
+            background: radial-gradient(circle, var(--accent-gold) 0%, var(--accent-purple) 100%);
+            border-radius: 50%;
+            box-shadow: 0 0 40px var(--glow-purple), 0 0 60px var(--glow-blue);
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .hero h1 {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 4rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-cyan) 50%, var(--accent-purple) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero .subtitle {
+            font-size: 1.5rem;
+            color: var(--text-secondary);
+            margin-bottom: 3rem;
+            font-weight: 300;
+        }
+
+        .hero .tagline {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            max-width: 600px;
+        }
+
+        .scroll-hint {
+            position: absolute;
+            bottom: 3rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            animation: bounce 2s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(10px); }
+        }
+
+        .scroll-arrow {
+            width: 24px;
+            height: 24px;
+            border-right: 2px solid var(--text-muted);
+            border-bottom: 2px solid var(--text-muted);
+            transform: rotate(45deg);
+        }
+
+        /* Section styles */
+        section {
+            padding: 6rem 0;
+        }
+
+        .section-title {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .section-title::before {
+            content: '';
+            width: 4px;
+            height: 2.5rem;
+            background: linear-gradient(180deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 2px;
+        }
+
+        .section-subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            margin-bottom: 3rem;
+            padding-left: 1.5rem;
+        }
+
+        /* Problem Section */
+        .problem-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .problem-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+            padding: 2rem;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.4s ease;
+        }
+
+        .problem-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .problem-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent-purple);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+
+        .problem-card:hover::before {
+            opacity: 1;
+        }
+
+        .problem-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .problem-card h3 {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: var(--accent-cyan);
+        }
+
+        .problem-card p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        /* Features Section */
+        .features-section {
+            background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 50%, var(--bg-primary) 100%);
+        }
+
+        .feature-tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 3rem;
+            flex-wrap: wrap;
+        }
+
+        .feature-tab {
+            padding: 0.75rem 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .feature-tab:hover {
+            border-color: var(--accent-blue);
+            color: var(--text-primary);
+        }
+
+        .feature-tab.active {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border-color: transparent;
+            color: white;
+            font-weight: 500;
+        }
+
+        .feature-content {
+            display: none;
+        }
+
+        .feature-content.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .feature-showcase {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            align-items: center;
+        }
+
+        .feature-text h3 {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 1.75rem;
+            margin-bottom: 1.5rem;
+            color: var(--accent-gold);
+        }
+
+        .feature-list {
+            list-style: none;
+        }
+
+        .feature-list li {
+            padding: 0.75rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .feature-list li::before {
+            content: '◆';
+            position: absolute;
+            left: 0;
+            color: var(--accent-purple);
+            font-size: 0.7rem;
+        }
+
+        .feature-visual {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 2rem;
+            border: 1px solid var(--border-subtle);
+            position: relative;
+        }
+
+        .visual-header {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .visual-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .visual-dot:nth-child(1) { background: #ff5f57; }
+        .visual-dot:nth-child(2) { background: #ffbd2e; }
+        .visual-dot:nth-child(3) { background: #28ca41; }
+
+        .mock-screenshot {
+            background: var(--bg-elevated);
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .mock-line {
+            padding: 0.25rem 0;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .mock-icon {
+            width: 16px;
+            height: 16px;
+            background: var(--accent-blue);
+            border-radius: 4px;
+            opacity: 0.6;
+        }
+
+        .mock-icon.video {
+            background: var(--accent-purple);
+        }
+
+        .mock-icon.ai {
+            background: var(--accent-cyan);
+        }
+
+        /* Tech Stack */
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .tech-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 1.5rem 1rem;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .tech-item:hover {
+            border-color: var(--accent-blue);
+            transform: translateY(-3px);
+        }
+
+        .tech-icon {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .tech-name {
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .tech-desc {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        /* Value Section */
+        .value-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+        }
+
+        .value-card {
+            background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-elevated) 100%);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 2.5rem 2rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .value-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, var(--accent-blue), transparent);
+        }
+
+        .value-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1.5rem;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+        }
+
+        .value-card h3 {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .value-card p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        /* Roadmap */
+        .roadmap {
+            position: relative;
+            padding-left: 3rem;
+        }
+
+        .roadmap::before {
+            content: '';
+            position: absolute;
+            left: 7px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(180deg, var(--accent-blue), var(--accent-purple), var(--accent-gold));
+        }
+
+        .roadmap-item {
+            position: relative;
+            padding-bottom: 3rem;
+        }
+
+        .roadmap-item::before {
+            content: '';
+            position: absolute;
+            left: -3rem;
+            top: 0;
+            width: 16px;
+            height: 16px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            border: 3px solid var(--bg-primary);
+        }
+
+        .roadmap-item.completed::before {
+            background: var(--accent-cyan);
+            box-shadow: 0 0 20px var(--glow-blue);
+        }
+
+        .roadmap-item.current::before {
+            background: var(--accent-purple);
+            box-shadow: 0 0 20px var(--glow-purple);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+
+        .roadmap-date {
+            font-size: 0.85rem;
+            color: var(--accent-blue);
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .roadmap-title {
+            font-size: 1.25rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .roadmap-desc {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            text-align: center;
+            padding: 8rem 0;
+            position: relative;
+        }
+
+        .cta-section::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, var(--glow-blue) 0%, transparent 70%);
+            opacity: 0.3;
+        }
+
+        .cta-title {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 3rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .cta-text {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            max-width: 600px;
+            margin: 0 auto 3rem;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 1.5rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 1rem 2.5rem;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            color: white;
+            border: none;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px var(--glow-purple);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-primary);
+            border: 1px solid var(--border-subtle);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent-blue);
+            background: rgba(91,141,239,0.1);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 3rem 0;
+            border-top: 1px solid var(--border-subtle);
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        footer a {
+            color: var(--accent-cyan);
+            text-decoration: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            .section-title {
+                font-size: 2rem;
+            }
+
+            .feature-showcase {
+                grid-template-columns: 1fr;
+            }
+
+            .value-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .roadmap {
+                padding-left: 2rem;
+            }
+        }
+
+        /* Scroll animations */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.8s ease;
+        }
+
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="stars" id="stars"></div>
+
+    <section class="hero">
+        <div class="logo-container">
+            <div class="logo-icon">
+                <div class="logo-ring"></div>
+                <div class="logo-ring"></div>
+                <div class="logo-ring"></div>
+                <div class="logo-core"></div>
+            </div>
+        </div>
+        <h1>星助</h1>
+        <p class="subtitle">天文摄影师的管家</p>
+        <p class="tagline">局域网 / 公网手机上传 + OSS 云端备份<br>一站式星空后期工作流</p>
+        <div class="scroll-hint">
+            <span>向下滚动</span>
+            <div class="scroll-arrow"></div>
+        </div>
+    </section>
+
+    <section class="container">
+        <h2 class="section-title reveal">痛点发现</h2>
+        <p class="section-subtitle reveal">天文摄影师在日常工作中面临的实际困扰</p>
+
+        <div class="problem-grid">
+            <div class="problem-card reveal">
+                <div class="problem-icon">📁</div>
+                <h3>管理混乱</h3>
+                <p>面对成百上千张星空照片，手动整理费时费力。现有文件管理器缺乏针对天文摄影的专项管理能力，命名不规范导致素材难以追溯。</p>
+            </div>
+            <div class="problem-card reveal">
+                <div class="problem-icon">📱</div>
+                <h3>传输困难</h3>
+                <p>手机拍摄的照片传电脑依赖数据线或微信/QQ，效率低下且画质压缩。出差在外想查看已拍摄的天文照片极为不便。</p>
+            </div>
+            <div class="problem-card reveal">
+                <div class="problem-icon">☁️</div>
+                <h3>备份缺失</h3>
+                <p>云盘同步速度慢，缺乏本地与云端状态一致性管理。珍贵的原创素材缺乏可靠的云端备份方案。</p>
+            </div>
+            <div class="problem-card reveal">
+                <div class="problem-icon">🏷️</div>
+                <h3>标注繁琐</h3>
+                <p>天文照片数量庞大，人工打标签工作量大。没有针对天文摄影场景的智能标注能力，难以快速定位特定天体或场景。</p>
+            </div>
+            <div class="problem-card reveal">
+                <div class="problem-icon">🔧</div>
+                <h3>工具分散</h3>
+                <p>天文照片后期处理需要在多款专业软件之间切换，流程割裂。从拍摄到后期的完整工作流缺乏整合。</p>
+            </div>
+            <div class="problem-card reveal">
+                <div class="problem-icon">🌙</div>
+                <h3>场景特殊</h3>
+                <p>野外拍摄环境要求软件具备低蓝光、护眼等特性。现有工具未考虑天文摄影师的特殊使用场景需求。</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="features-section">
+        <div class="container">
+            <h2 class="section-title reveal">核心功能</h2>
+            <p class="section-subtitle reveal">一站式解决天文摄影全流程痛点</p>
+
+            <div class="feature-tabs reveal">
+                <button class="feature-tab active" data-tab="media">媒体时间轴</button>
+                <button class="feature-tab" data-tab="upload">上传服务</button>
+                <button class="feature-tab" data-tab="oss">OSS 备份</button>
+                <button class="feature-tab" data-tab="ai">AI 标注</button>
+                <button class="feature-tab" data-tab="process">图片处理</button>
+            </div>
+
+            <div class="feature-content active" id="media">
+                <div class="feature-showcase">
+                    <div class="feature-text">
+                        <h3>智能媒体时间轴</h3>
+                        <ul class="feature-list">
+                            <li>按拍摄日期自动归档，轻松追溯每张照片的来源</li>
+                            <li>图片缩略图 + 视频首帧预览，一目了然</li>
+                            <li>支持多种天文照片格式 RAW / TIFF / FITS</li>
+                            <li>强大的筛选和搜索功能，快速定位目标素材</li>
+                        </ul>
+                    </div>
+                    <div class="feature-visual">
+                        <div class="visual-header">
+                            <div class="visual-dot"></div>
+                            <div class="visual-dot"></div>
+                            <div class="visual-dot"></div>
+                        </div>
+                        <div class="mock-screenshot">
+                            <div class="mock-line"><div class="mock-icon"></div>2026-07-05_M31_Andromeda.tif</div>
+                            <div class="mock-line"><div class="mock-icon"></div>2026-07-05_NGC7000_Aquarius.tif</div>
+                            <div class="mock-line"><div class="mock-icon"></div>2026-07-04_M42_Orion.tif</div>
+                            <div class="mock-line"><div class="mock-icon video"></div>2026-07-04_StarTrail.mp4</div>
+                            <div class="mock-line"><div class="mock-icon"></div>2026-07-03_M45_Pleiades.tif</div>
+                            <div class="mock-line"><div class="mock-icon"></div>2026-07-03_IC1396_Cepheus.tif</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="feature-content" id="upload">
+                <div class="feature-showcase">
+                    <div class="feature-text">
+                        <h3>多样化上传方式</h3>
+                        <ul class="feature-list">
+                            <li>一键启动局域网 HTTP 服务器，手机扫码即传</li>
+                            <li>支持公网远程上传，异地协作不再是难题</li>
+                            <li>生成二维码，手机无需安装任何 APP</li>
+                            <li>文件直接存入当前项目目录，自动归类</li>
+                        </ul>
+                    </div>
+                    <div class="feature-visual">
+                        <div class="visual-header">
+                            <div class="visual-dot"></div>
+                            <div class="visual-dot"></div>
+                            <div class="visual-dot"></div>
+                        </div>
+                        <div class="mock-screenshot" style="text-align: center;">
+                            <div style="font-size: 6rem; margin: 2rem 0;">📱</div>
+                            <div style="border: 3px dashed var(--accent-purple); border-radius: 12px; padding: 1.5rem; margin-top: 1rem;">
+                                <div style="font-size: 1.2rem; color: var(--accent-cyan);">扫描二维码上传</div>
+                                <div style="font-family: monospace; margin-top: 0.5rem;">192.168.1.100:8080</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="feature-content" id="oss">
+                <div class="feature-showcase">
+                    <div class="feature-text">
+                        <h3>OSS 云端备份</h3>
+                        <ul class="feature-list">
+                            <li>支持阿里云 OSS 私有桶，安全可靠</li>
+                            <li>单文件 PUT 与分片上传自动切换</li>
+                            <li>断点续传能力，网络不稳定也能完整上传</li>
+                            <li>支持从 OSS 下载、删除，同步管理远端文件</li>
+                        </ul>
+                    </div>
+                    <div class="feature-visual">
+                        <div class="visual-header">
+                            <div class="visual-dot"></div>
+                            <div class="visual-dot"></div>
+                            <div class="visual-dot"></div>
+                        </div>
+                        <div class="mock-screenshot">
+                            <div style="display: flex; justify-content: space-around; margin-bottom: 1rem;">
+                                <div style="text-align: center;">
+                                    <div style="font-size: 2rem;">💻</div>
+                                    <div style="font-size: 0.8rem;">本地</div>
+                                </div>
+                                <div style="display: flex; align-items: center; color: var(--accent-cyan);">→</div>
+                                <div style="text-align: center;">
+                                    <div style="font-size: 2rem;">☁️</div>
+                                    <div style="font-size: 0.8rem;">OSS</div>
+                                </div>
+                            </div>
+                            <div style="border-top: 1px solid var(--border-subtle); padding-top: 1rem; text-align: center; color: var(--accent-gold);">
+                                已备份: 1,284 张照片 | 156.8 GB
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="feature-content" id="ai">
+                <div class="feature-showcase">
+                    <div class="feature-text">
+                        <h3>AI 智能标注</h3>
+                        <ul class="feature-list">
+                            <li>多厂商 LLM 支持 (Claude / GPT / Gemini / DeepSeek...)</li>
+                            <li>自动识别照片主体内容，生成标签</li>
+                            <li>智能质量评分，一键筛选优质素材</li>
+                            <li>支持自定义 OpenAI / Anthropic 兼容端点</li>
+                        </ul>
+                    </div>
+                    <div class="feature-visual">
+                        <div class="visual-header">
+                            <div class="visual-dot"></div>
+                            <div class="visual-dot"></div>
+                            <div class="visual-dot"></div>
+                        </div>
+                        <div class="mock-screenshot">
+                            <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                                <div class="mock-icon ai" style="width: 60px; height: 60px; border-radius: 8px;"></div>
+                                <div>
+                                    <div style="font-weight: 500;">M31_Andromeda.tif</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted);">质量评分: 92/100</div>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                <span style="background: var(--accent-purple); padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem;">仙女座星系</span>
+                                <span style="background: var(--accent-blue); padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem;">深空天体</span>
+                                <span style="background: var(--accent-cyan); padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem;">曝光良好</span>
+                                <span style="background: var(--accent-gold); padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem;">推荐后期</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="feature-content" id="process">
+                <div class="feature-showcase">
+                    <div class="feature-text">
+                        <h3>Aquila 图片处理</h3>
+                        <ul class="feature-list">
+                            <li>集成 Aquila ImageMagick 强大图像处理能力</li>
+                            <li>天文照片叠加、对齐、降噪处理</li>
+                            <li>HDR 合成、多通道合并</li>
+                            <li>与现有媒体库无缝集成，处理流程一气呵成</li>
+                        </ul>
+                    </div>
+                    <div class="feature-visual">
+                        <div class="visual-header">
+                            <div class="visual-dot"></div>
+                            <div class="visual-dot"></div>
+                            <div class="visual-dot"></div>
+                        </div>
+                        <div class="mock-screenshot">
+                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-bottom: 1rem;">
+                                <div style="aspect-ratio: 1; background: var(--accent-purple); opacity: 0.3; border-radius: 4px;"></div>
+                                <div style="aspect-ratio: 1; background: var(--accent-purple); opacity: 0.5; border-radius: 4px;"></div>
+                                <div style="aspect-ratio: 1; background: var(--accent-purple); opacity: 0.7; border-radius: 4px;"></div>
+                            </div>
+                            <div style="text-align: center; color: var(--accent-gold);">↓</div>
+                            <div style="width: 80px; height: 80px; margin: 1rem auto; background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple)); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                ✓
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="container">
+        <h2 class="section-title reveal">技术架构</h2>
+        <p class="section-subtitle reveal">稳定可靠的技术选型，跨平台支持</p>
+
+        <div class="tech-grid reveal">
+            <div class="tech-item">
+                <div class="tech-icon">⚡</div>
+                <div class="tech-name">.NET 9.0</div>
+                <div class="tech-desc">高性能运行时</div>
+            </div>
+            <div class="tech-item">
+                <div class="tech-icon">🖥️</div>
+                <div class="tech-name">Avalonia 11.3</div>
+                <div class="tech-desc">跨平台 UI 框架</div>
+            </div>
+            <div class="tech-item">
+                <div class="tech-icon">🗄️</div>
+                <div class="tech-name">SQLite</div>
+                <div class="tech-desc">本地数据库</div>
+            </div>
+            <div class="tech-item">
+                <div class="tech-icon">🎨</div>
+                <div class="tech-name">SkiaSharp</div>
+                <div class="tech-desc">图像渲染</div>
+            </div>
+            <div class="tech-item">
+                <div class="tech-icon">☁️</div>
+                <div class="tech-name">Aliyun OSS</div>
+                <div class="tech-desc">云端存储</div>
+            </div>
+            <div class="tech-item">
+                <div class="tech-icon">🤖</div>
+                <div class="tech-name">Multi-LLM</div>
+                <div class="tech-desc">AI 标注引擎</div>
+            </div>
+            <div class="tech-item">
+                <div class="tech-icon">🎬</div>
+                <div class="tech-name">FFmpeg</div>
+                <div class="tech-desc">视频处理</div>
+            </div>
+            <div class="tech-item">
+                <div class="tech-icon">🔄</div>
+                <div class="tech-name">Go Relay</div>
+                <div class="tech-desc">公网中转服务</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="container">
+        <h2 class="section-title reveal">价值与意义</h2>
+        <p class="section-subtitle reveal">为天文摄影社区带来切实的改变</p>
+
+        <div class="value-grid reveal">
+            <div class="value-card">
+                <div class="value-icon">⚡</div>
+                <h3>效率提升</h3>
+                <p>一键启动局域网上传服务，手机扫码即传。AI 自动标注大幅降低人工整理成本。从拍摄到后期的完整工作流一气呵成。</p>
+            </div>
+            <div class="value-card">
+                <div class="value-icon">💎</div>
+                <h3>体验升级</h3>
+                <p>专为天文摄影师设计的双主题（深空暗色 + 红光夜视），适配野外拍摄环境。跨平台支持，macOS / Windows / Linux 均可使用。</p>
+            </div>
+            <div class="value-card">
+                <div class="value-icon">🌌</div>
+                <h3>社会价值</h3>
+                <p>降低天文摄影的入门门槛，推动天文科普内容的数字化管理。通过 OSS 私有云备份，保护天文爱好者珍贵的原创素材。</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="container">
+        <h2 class="section-title reveal">发展路线</h2>
+        <p class="section-subtitle reveal">持续迭代，不断完善</p>
+
+        <div class="roadmap reveal">
+            <div class="roadmap-item completed">
+                <div class="roadmap-date">已完成</div>
+                <div class="roadmap-title">基础媒体管理</div>
+                <div class="roadmap-desc">媒体时间轴、AI 标注、OSS 云备份、局域网上传</div>
+            </div>
+            <div class="roadmap-item current">
+                <div class="roadmap-date">进行中</div>
+                <div class="roadmap-title">公网远程上传</div>
+                <div class="roadmap-desc">Go 中转服务、VPS 部署、SSH-SCP 拉取</div>
+            </div>
+            <div class="roadmap-item">
+                <div class="roadmap-date">规划中</div>
+                <div class="roadmap-title">Aquila 图片处理</div>
+                <div class="roadmap-desc">天文照片叠加、对齐、降噪、HDR 合成</div>
+            </div>
+            <div class="roadmap-item">
+                <div class="roadmap-date">规划中</div>
+                <div class="roadmap-title">插件生态</div>
+                <div class="roadmap-desc">开放插件 API，支持第三方扩展</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="cta-section">
+        <div class="container">
+            <h2 class="cta-title reveal">让星空摄影更简单</h2>
+            <p class="cta-text reveal">星助 — 为天文摄影师打造的一站式工作流工具，让创作更专注，让回忆更安全。</p>
+            <div class="cta-buttons reveal">
+                <a href="https://github.com/fishhex/StartTooler" class="btn btn-primary">
+                    🌟 GitHub
+                </a>
+                <a href="#" class="btn btn-secondary">
+                    📖 文档
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>星助 · StartTooler | MIT License | © 2026 fishhex</p>
+            <p style="margin-top: 0.5rem;">
+                <a href="https://github.com/fishhex/StartTooler">GitHub</a> ·
+                基于 <a href="https://avaloniaui.net/">Avalonia UI</a> + <a href="https://dotnet.microsoft.com/">.NET 9</a>
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        // Generate stars
+        const starsContainer = document.getElementById('stars');
+        for (let i = 0; i < 200; i++) {
+            const star = document.createElement('div');
+            star.className = 'star';
+            star.style.left = Math.random() * 100 + '%';
+            star.style.top = Math.random() * 100 + '%';
+            star.style.width = Math.random() * 3 + 1 + 'px';
+            star.style.height = star.style.width;
+            star.style.animationDelay = Math.random() * 3 + 's';
+            starsContainer.appendChild(star);
+        }
+
+        // Feature tabs
+        const tabs = document.querySelectorAll('.feature-tab');
+        const contents = document.querySelectorAll('.feature-content');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const targetId = tab.dataset.tab;
+
+                tabs.forEach(t => t.classList.remove('active'));
+                contents.forEach(c => c.classList.remove('active'));
+
+                tab.classList.add('active');
+                document.getElementById(targetId).classList.add('active');
+            });
+        });
+
+        // Scroll reveal
+        const revealElements = document.querySelectorAll('.reveal');
+
+        const revealOnScroll = () => {
+            revealElements.forEach(el => {
+                const rect = el.getBoundingClientRect();
+                const windowHeight = window.innerHeight;
+
+                if (rect.top < windowHeight * 0.85) {
+                    el.classList.add('visible');
+                }
+            });
+        };
+
+        window.addEventListener('scroll', revealOnScroll);
+        revealOnScroll(); // Initial check
+    </script>
+</body>
+</html>
