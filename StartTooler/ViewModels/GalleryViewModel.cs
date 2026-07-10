@@ -13,6 +13,7 @@ using StartTooler.Data;
 using StartTooler.Helpers;
 using StartTooler.Models;
 using StartTooler.Services;
+using StartTooler.Views;
 
 namespace StartTooler.ViewModels;
 
@@ -1266,6 +1267,34 @@ public partial class GalleryViewModel : ObservableObject
         {
             ShowToast($"打开失败：{ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// v0.11: 双击 photo/video tile 打开灯箱预览窗口（图片 + 视频缩略图）。
+    /// 视频文件在灯箱里只显示缩略图 + ▶ overlay，用户需播放时点底栏「打开外部」
+    /// 或按 Space 键（spec §5）。
+    /// 非模态：允许多个灯箱同时开，Gallery 切日期不影响当前灯箱。
+    /// </summary>
+    [RelayCommand]
+    private void Preview(MediaFile? file)
+    {
+        if (file == null) return;
+
+        // 拿当前列表的快照（图片 + 视频混合）+ 当前文件索引（spec §6.1）
+        var files = CurrentMediaFiles.ToList();
+        var index = files.IndexOf(file);
+        if (index < 0)
+        {
+            Trace.WriteLine($"[Gallery] Preview: file not found in CurrentMediaFiles: {file.FileName}");
+            return;
+        }
+
+        Trace.WriteLine($"[Gallery] Preview: opening lightbox for {file.FileName} (index={index}/{files.Count - 1}, type={file.MediaType})");
+
+        var lightboxVm = new LightboxViewModel(files, index, _systemShell);
+        var window = new LightboxWindow { DataContext = lightboxVm };
+        // 非模态 Show()：不阻塞 Gallery，用户可在灯箱和 Gallery 间切换
+        window.Show();
     }
 
     [RelayCommand]

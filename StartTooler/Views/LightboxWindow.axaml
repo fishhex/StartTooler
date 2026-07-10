@@ -1,0 +1,335 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:StartTooler.ViewModels"
+        xmlns:services="using:StartTooler.Services"
+        xmlns:conv="using:StartTooler.Converters"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="800"
+        x:Class="StartTooler.Views.LightboxWindow"
+        x:DataType="vm:LightboxViewModel"
+        Title="{Binding Title}"
+        WindowState="Maximized"
+        WindowStartupLocation="CenterScreen"
+        SystemDecorations="Full"
+        ShowInTaskbar="True"
+        Background="{DynamicResource Bg.Outer}"
+        KeyDown="OnKeyDown">
+
+    <!--
+      v0.11 灯箱预览窗口（spec doc/0.11/01-lightbox-preview.md）
+      布局：
+        Row 0: 图片 ScrollViewer + 右侧信息面板
+        Row 1: 底部控制栏（翻页 / 缩放 / 在 Finder 中显示 / 外链打开）
+      全屏外观：WindowState=Maximized + SystemDecorations=Full（保留标题栏；Esc 在 code-behind 关闭）
+      窗口标题用 Title 属性（绑定 VM 的 Title），同时也是 macOS 标题栏 Dock 名称
+      视频文件不进灯箱（spec §8）—— 双击视频走系统默认播放器
+    -->
+
+    <Grid RowDefinitions="*,Auto">
+
+        <!-- ============================================ Row 0: 图片 + 信息面板 ============================================ -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,320">
+
+            <!-- 图片内容区（图片模式 + 视频模式分支） -->
+            <Panel Grid.Column="0" Background="#000000">
+
+                <!-- 图片模式：ScrollViewer + 原图 + 缩放（spec §4.3 图片模式） -->
+                <Panel IsVisible="{Binding IsImage}">
+                    <ScrollViewer x:Name="ImageScrollViewer"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Auto"
+                                  Background="#000000"
+                                  PointerWheelChanged="OnImagePointerWheelChanged"
+                                  DoubleTapped="OnImageDoubleTapped">
+
+                        <!--
+                          Image 容器：原图尺寸（ImageWidth × ImageHeight）由 VM 异步探测填入；
+                          ScaleTransform 把 Scale 属性套在 Image 上，RenderTransformOrigin=中心，
+                          这样缩放围绕图片中心展开。Stretch=Uniform 让 Scale=1 时填满 ScrollViewer。
+                        -->
+                        <Panel HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Width="{Binding ImageWidth, FallbackValue=0}"
+                               Height="{Binding ImageHeight, FallbackValue=0}"
+                               MinWidth="100" MinHeight="100">
+                            <Image Source="{Binding CurrentFile, Converter={x:Static conv:LightboxConverters.MediaFileToOriginalBitmap}}"
+                                   Stretch="Uniform"
+                                   RenderTransformOrigin="0.5,0.5">
+                                <Image.RenderTransform>
+                                    <ScaleTransform ScaleX="{Binding Scale}"
+                                                    ScaleY="{Binding Scale}" />
+                                </Image.RenderTransform>
+                            </Image>
+                        </Panel>
+                    </ScrollViewer>
+                </Panel>
+
+                <!-- 视频模式：缩略图 + 居中 ▶ overlay（spec §4.3 视频模式 / §8.1） -->
+                <Panel IsVisible="{Binding IsVideo}">
+                    <!-- 缩略图本体（已生成好的 MediaFile.ThumbnailPath；MinWidth 避免太小看不清） -->
+                    <Image Source="{Binding CurrentFile.ThumbnailPath, Converter={x:Static conv:LightboxConverters.FilePathToBitmap}}"
+                           Stretch="Uniform"
+                           MinWidth="400" MinHeight="300"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+
+                    <!-- 居中 ▶ overlay + 提示（IsHitTestVisible=False 让点击穿透到底栏「打开外部」） -->
+                    <Border HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Background="#CC0A0E1A"
+                            CornerRadius="48"
+                            Padding="40"
+                            IsHitTestVisible="False">
+                        <StackPanel Spacing="12" HorizontalAlignment="Center">
+                            <PathIcon Data="{StaticResource Icon.Play}"
+                                      Width="64" Height="64"
+                                      Foreground="#E6FFFFFF"
+                                      HorizontalAlignment="Center" />
+                            <TextBlock Text="视频文件 · 点击底栏「打开外部」播放"
+                                       FontSize="13"
+                                       Foreground="#E6FFFFFF"
+                                       HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </Panel>
+
+                <!-- 上一张 / 下一张 浮动按钮（透明叠加，左侧 64px / 右侧 64px 区域可点） -->
+                <Button HorizontalAlignment="Left"
+                        VerticalAlignment="Stretch"
+                        Width="64"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        IsVisible="{Binding CanGoPrev}"
+                        Command="{Binding GoPrevCommand}"
+                        ToolTip.Tip="上一张 (←)"
+                        Opacity="0.6">
+                    <PathIcon Data="{StaticResource Icon.ChevronLeft}"
+                              Width="32" Height="32"
+                              Foreground="{DynamicResource Text.Primary}" />
+                </Button>
+                <Button HorizontalAlignment="Right"
+                        VerticalAlignment="Stretch"
+                        Width="64"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        IsVisible="{Binding CanGoNext}"
+                        Command="{Binding GoNextCommand}"
+                        ToolTip.Tip="下一张 (→)"
+                        Opacity="0.6">
+                    <PathIcon Data="{StaticResource Icon.ChevronRight}"
+                              Width="32" Height="32"
+                              Foreground="{DynamicResource Text.Primary}" />
+                </Button>
+
+                <!-- 顶部右上角：关闭按钮（系统标题栏可见时多余，但全屏模式下仍必要） -->
+                <Button HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Margin="0,12,12,0"
+                        Width="36" Height="36"
+                        Background="#80000000"
+                        BorderThickness="0"
+                        CornerRadius="18"
+                        Command="{Binding CloseCommand}"
+                        ToolTip.Tip="关闭 (Esc)">
+                    <PathIcon Data="{StaticResource Icon.X}"
+                              Width="18" Height="18"
+                              Foreground="{DynamicResource Text.Primary}" />
+                </Button>
+            </Panel>
+
+            <!-- 右侧信息面板 -->
+            <Border Grid.Column="1"
+                    Background="{DynamicResource Bg.Surface}"
+                    BorderBrush="{DynamicResource Bg.Divider}"
+                    BorderThickness="1,0,0,0"
+                    Padding="20,24"
+                    IsVisible="True">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="16">
+
+                        <!-- 文件名 -->
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="文件名" Classes="InfoLabel" />
+                            <TextBlock Text="{Binding CurrentFile.FileName}"
+                                       Classes="InfoValue"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <!-- 拍摄时间 -->
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="拍摄时间" Classes="InfoLabel" />
+                            <TextBlock Text="{Binding CurrentFile.ShotAtDateTime, Converter={x:Static conv:LightboxConverters.NullableDateTimeToDisplay}}"
+                                       Classes="InfoValue" />
+                        </StackPanel>
+
+                        <!-- 文件大小 -->
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="文件大小" Classes="InfoLabel" />
+                            <TextBlock Text="{Binding CurrentFile.FileSize, Converter={x:Static conv:LightboxConverters.LongToFileSize}}"
+                                       Classes="InfoValue" />
+                        </StackPanel>
+
+                        <!-- 原图尺寸（来自 ImageDimensionProbe）—— 仅图片模式 -->
+                        <StackPanel Spacing="4" IsVisible="{Binding IsImage}">
+                            <TextBlock Text="尺寸" Classes="InfoLabel" />
+                            <TextBlock Classes="InfoValue">
+                                <Run Text="{Binding ImageWidth, Mode=OneWay}" />
+                                <Run Text=" × " />
+                                <Run Text="{Binding ImageHeight, Mode=OneWay}" />
+                            </TextBlock>
+                        </StackPanel>
+
+                        <!-- 视频模式：「类型」标识 -->
+                        <StackPanel Spacing="4" IsVisible="{Binding IsVideo}">
+                            <TextBlock Text="类型" Classes="InfoLabel" />
+                            <TextBlock Text="视频"
+                                       Classes="InfoValue" />
+                        </StackPanel>
+
+                        <!-- 同步状态 -->
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="同步状态" Classes="InfoLabel" />
+                            <TextBlock Text="{Binding CurrentFile.SyncStatusValue, Converter={x:Static conv:LightboxConverters.SyncStatusToDisplay}}"
+                                       Classes="InfoValue" />
+                        </StackPanel>
+
+                        <!-- AI 标签 -->
+                        <StackPanel Spacing="4"
+                                    IsVisible="{Binding CurrentFile.HasTags}">
+                            <TextBlock Text="AI 标签" Classes="InfoLabel" />
+                            <ItemsControl ItemsSource="{Binding CurrentFile.Tags}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{DynamicResource Bg.SurfaceElevated}"
+                                                CornerRadius="4"
+                                                Padding="6,2"
+                                                Margin="0,2,4,2">
+                                            <TextBlock Text="{Binding}"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource Text.Primary}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <!-- AI 评分 -->
+                        <StackPanel Spacing="4"
+                                    IsVisible="{Binding CurrentFile.HasScore}">
+                            <TextBlock Text="AI 评分" Classes="InfoLabel" />
+                            <TextBlock Classes="InfoValue">
+                                <Run Text="{Binding CurrentFile.Score}" />
+                                <Run Text=" / 100" />
+                            </TextBlock>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- ============================================ Row 1: 底部控制栏 ============================================ -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource Bg.Surface}"
+                BorderBrush="{DynamicResource Bg.Divider}"
+                BorderThickness="0,1,0,0"
+                Padding="20,12">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+
+                <!-- 左：翻页 -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                    <Button Classes="LightboxToolButton"
+                            Command="{Binding GoPrevCommand}"
+                            IsEnabled="{Binding CanGoPrev}"
+                            ToolTip.Tip="上一张 (←)">
+                        <PathIcon Data="{StaticResource Icon.ChevronLeft}" Width="16" Height="16" />
+                    </Button>
+
+                    <Button Classes="LightboxToolButton"
+                            Command="{Binding GoNextCommand}"
+                            IsEnabled="{Binding CanGoNext}"
+                            ToolTip.Tip="下一张 (→)">
+                        <PathIcon Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16" />
+                    </Button>
+                </StackPanel>
+
+                <!-- 中：缩放滑块（仅图片模式，视频模式缩略图不缩放避免糊，spec §3.3） -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" Margin="32,0" VerticalAlignment="Center"
+                            IsVisible="{Binding IsImage}">
+                    <Button Classes="LightboxToolButton"
+                            Command="{Binding ZoomOutCommand}"
+                            ToolTip.Tip="缩小 (-)">
+                        <PathIcon Data="{StaticResource Icon.ZoomOut}" Width="16" Height="16" />
+                    </Button>
+                    <Slider Minimum="0.25" Maximum="5.0"
+                            Value="{Binding Scale, Mode=TwoWay}"
+                            Width="240"
+                            TickFrequency="0.25"
+                            IsSnapToTickEnabled="False"
+                            ToolTip.Tip="缩放 (滚轮 / 0 重置)" />
+                    <Button Classes="LightboxToolButton"
+                            Command="{Binding ZoomInCommand}"
+                            ToolTip.Tip="放大 (+)">
+                        <PathIcon Data="{StaticResource Icon.ZoomIn}" Width="16" Height="16" />
+                    </Button>
+                    <TextBlock Text="{Binding Scale, StringFormat={}{0:P0}}"
+                               VerticalAlignment="Center"
+                               MinWidth="56"
+                               Foreground="{DynamicResource Text.Secondary}"
+                               FontSize="12" />
+                </StackPanel>
+
+                <!-- 右：在 Finder 中显示 + 用默认应用打开 -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                    <Button Classes="LightboxToolButton"
+                            Command="{Binding RevealInFolderCommand}"
+                            ToolTip.Tip="在文件夹中显示">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <PathIcon Data="{StaticResource Icon.FolderOpen}" Width="14" Height="14" />
+                            <TextBlock Text="文件夹" FontSize="12" />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="LightboxToolButton"
+                            Command="{Binding OpenExternallyCommand}"
+                            ToolTip.Tip="用系统默认应用打开">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <PathIcon Data="{StaticResource Icon.ExternalLink}" Width="14" Height="14" />
+                            <TextBlock Text="打开外部" FontSize="12" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+
+    <!-- 局部样式：信息面板文字 + 工具按钮 -->
+    <Window.Styles>
+        <Style Selector="TextBlock.InfoLabel">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource Text.Tertiary}" />
+        </Style>
+        <Style Selector="TextBlock.InfoValue">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{DynamicResource Text.Primary}" />
+        </Style>
+
+        <Style Selector="Button.LightboxToolButton">
+            <Setter Property="Background" Value="{DynamicResource Bg.SurfaceElevated}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text.Primary}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Bg.Divider}" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="MinWidth" Value="36" />
+            <Setter Property="MinHeight" Value="32" />
+        </Style>
+        <Style Selector="Button.LightboxToolButton:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Bg.Hover}" />
+        </Style>
+    </Window.Styles>
+</Window>
