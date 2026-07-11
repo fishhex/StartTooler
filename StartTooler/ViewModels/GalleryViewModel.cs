@@ -39,6 +39,12 @@ public partial class GalleryViewModel : ObservableObject
     public ObservableCollection<TimelineEntry> DateGroups { get; } = new();
     public ObservableCollection<MediaFile> CurrentMediaFiles { get; } = new();
 
+    // === v0.12 标签变更 debouncer（spec doc/15-manual-tag-edit.md §6.4）===
+    // 500ms 内连续多次 tag 变化合并成 1 次 LoadTagGroupsAsync 调用，避免连续编辑刷 N 次左栏。
+    private readonly StartTooler.Helpers.TagChangeDebouncer _tagChangeDebouncer = new(500);
+    // 跟踪已订阅 PropertyChanged 的 file，CurrentMediaFiles.Clear() / Reset 时统一解绑。
+    private readonly HashSet<MediaFile> _tagSubscribedFiles = new();
+
     // === 选中态（日期） ===
     [ObservableProperty] private TimelineEntry? _selectedDate;
 
@@ -197,6 +203,59 @@ public partial class GalleryViewModel : ObservableObject
         // CurrentMediaFiles 内容变化（全选/反选命令的可用性主要依赖它）
         SelectAllCommand.NotifyCanExecuteChanged();
         InvertSelectionCommand.NotifyCanExecuteChanged();
+
+        // v0.12: 订阅新增 file 的 PropertyChanged，监听 Tags 变化触发左栏 TagGroups 刷新。
+        // OldItems / Reset 时必须解绑，否则 MediaFile 引用泄漏（spec §6.4 内存风险）。
+        if (e.NewItems != null)
+        {
+            foreach (var item in e.NewItems)
+            {
+                if (item is MediaFile mf)
+                {
+                    if (_tagSubscribedFiles.Add(mf))
+                    {
+                        mf.PropertyChanged += OnMediaFilePropertyChanged;
+                    }
+                }
+            }
+        }
+        if (e.OldItems != null)
+        {
+            foreach (var item in e.OldItems)
+            {
+                if (item is MediaFile mf)
+                {
+                    if (_tagSubscribedFiles.Remove(mf))
+                    {
+                        mf.PropertyChanged -= OnMediaFilePropertyChanged;
+                    }
+                }
+            }
+        }
+        if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset)
+        {
+            // ObservableCollection.Clear() 触发 Reset 但 OldItems 为 null——
+            // 用 _tagSubscribedFiles HashSet 跟踪所有已订阅的 file，统一解绑。
+            // Clear() 通常在切日期/切 tag 时调用，紧接着 CurrentMediaFiles 会被新数据填满，
+            // 新 file 在 NewItems 阶段重新订阅。中间窗口没有任何订阅，无事件丢失。
+            foreach (var mf in _tagSubscribedFiles)
+            {
+                mf.PropertyChanged -= OnMediaFilePropertyChanged;
+            }
+            _tagSubscribedFiles.Clear();
+            Trace.WriteLine($"[Gallery] OnCurrentMediaFilesChanged Reset: cleared {_tagSubscribedFiles.Count} subscriptions");
+        }
+    }
+
+    /// <summary>
+    /// v0.12: 监听 MediaFile.Tags 变化 → 触发 debouncer → 500ms 后刷新左栏 TagGroups（spec §6.4）。
+    /// 注意：IsSelected / UploadStatus / TagError 变化不应该触发（会过度刷新左栏）。
+    /// </summary>
+    private void OnMediaFilePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(Data.MediaFile.Tags)) return;
+        if (sender is not MediaFile mf) return;
+        OnFileTagsChanged(mf);
     }
 
     private void OnSelectedFilesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -1291,10 +1350,85 @@ public partial class GalleryViewModel : ObservableObject
 
         Trace.WriteLine($"[Gallery] Preview: opening lightbox for {file.FileName} (index={index}/{files.Count - 1}, type={file.MediaType})");
 
-        var lightboxVm = new LightboxViewModel(files, index, _systemShell);
+        var lightboxVm = new LightboxViewModel(files, index, _systemShell, _mediaRepo, this);
         var window = new LightboxWindow { DataContext = lightboxVm };
         // 非模态 Show()：不阻塞 Gallery，用户可在灯箱和 Gallery 间切换
         window.Show();
+    }
+
+    /// <summary>
+    /// v0.12 手动编辑标签（spec doc/15-manual-tag-edit.md §4）：右键 photo tile → 调模态弹窗。
+    /// CanExecute = CanEditTagsSingle：文件非空、未软删除、AI 没在打标。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanEditTagsSingle))]
+    private async Task EditTagsSingleAsync(MediaFile? file)
+    {
+        if (file == null || file.DeletedAt != null) return;
+        if (IsTagging) return;
+        if (_mediaRepo == null) return;
+
+        Trace.WriteLine($"[Gallery] EditTagsSingle: file={file.FileName}, currentTags={file.Tags?.Count ?? 0}");
+
+        var dialogVm = new EditTagsDialogViewModel(file, _mediaRepo, this);
+        var dialog = new EditTagsDialog(dialogVm);
+        var owner = GetMainWindow();
+        // owner = null 时 Avalonia 11 自动 fallback 到 CenterScreen
+        await dialog.ShowDialog(owner!);
+
+        if (dialogVm.SavedTags != null)
+        {
+            ShowToast($"已更新 {file.FileName} 的标签");
+            Trace.WriteLine($"[Gallery] EditTagsSingle: saved, fileId={file.Id}, newTags={dialogVm.SavedTags.Count}");
+        }
+        else
+        {
+            Trace.WriteLine($"[Gallery] EditTagsSingle: cancelled or failed, fileId={file.Id}");
+        }
+    }
+
+    private bool CanEditTagsSingle(MediaFile? file) =>
+        file != null && file.DeletedAt == null && !IsTagging;
+
+    /// <summary>
+    /// v0.12 边界锁状态查询（spec §7）：供右键菜单 / 工具栏按钮 IsEnabled 用。
+    /// 与 CanEditTagsSingle 同语义，加 public 包装让 code-behind 右键菜单构建能用。
+    /// 原因：[RelayCommand] 生成的 private CanExecute 方法不能直接外部访问。
+    /// </summary>
+    public bool CanEditTagsSingleForMenu(MediaFile? file) => CanEditTagsSingle(file);
+
+    /// <summary>
+    /// v0.12 批量编辑标签（spec doc/15-manual-tag-edit.md §5 / §7）：多选模式下工具栏按钮触发。
+    /// CanExecute = IsBatchActionEnabled（已包含多选 + 非打标 + 非上传）。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(IsBatchActionEnabled))]
+    private async Task EditTagsBatchAsync()
+    {
+        if (SelectedFiles.Count == 0) return;
+        if (_mediaRepo == null) return;
+
+        var files = SelectedFiles.ToList();
+        Trace.WriteLine($"[Gallery] EditTagsBatch: files={files.Count}");
+
+        var dialogVm = new EditTagsBatchDialogViewModel(files, _mediaRepo, this);
+        var dialog = new EditTagsBatchDialog(dialogVm);
+        var owner = GetMainWindow();
+        await dialog.ShowDialog(owner!);
+
+        Trace.WriteLine($"[Gallery] EditTagsBatch: applied={dialogVm.Applied}, fileCount={files.Count}");
+    }
+
+    /// <summary>
+    /// 取主窗口（Avalonia 11 ApplicationLifetime）作为 dialog owner。
+    /// null 时 dialog 自动 CenterScreen fallback。
+    /// </summary>
+    private static Avalonia.Controls.Window? GetMainWindow()
+    {
+        if (Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            return desktop.MainWindow;
+        }
+        return null;
     }
 
     [RelayCommand]
@@ -1960,6 +2094,30 @@ public partial class GalleryViewModel : ObservableObject
     {
         ToastMessage = message;
         _ = Task.Delay(3000).ContinueWith(_ => ToastMessage = null);
+    }
+
+    /// <summary>
+    /// v0.12 手动编辑标签（spec doc/15-manual-tag-edit.md §6.2）：供 LightboxVM 等同进程 ViewModel
+    /// 弹出 toast。内部复用 ShowToast（ToastMessage + 3s 自动清空）。
+    /// 改 public 是因为 LightboxVM 在编辑失败时需要提示用户。
+    /// </summary>
+    public void ShowToastPublic(string message) => ShowToast(message);
+
+    /// <summary>
+    /// v0.12 手动编辑标签：文件主体 tag 变化时通知 GalleryVM 触发左栏 TagGroups 刷新。
+    /// 走 500ms TagChangeDebouncer（spec §6.4）—— 连续编辑 N 张文件时合并成 1 次 DB 查询。
+    /// 触发源：MediaFile.PropertyChanged("Tags")，见 OnMediaFilePropertyChanged。
+    /// 也被 LightboxViewModel.SaveEditTagsAsync / EditTagsDialog / EditTagsBatch 直接调用。
+    /// </summary>
+    public void OnFileTagsChanged(MediaFile file)
+    {
+        if (file == null) return;
+        Trace.WriteLine($"[Gallery] OnFileTagsChanged: file={file.FileName}, newTags={file.Tags?.Count ?? 0}");
+        _tagChangeDebouncer.Trigger(async ct =>
+        {
+            Trace.WriteLine($"[Gallery] TagChangeDebouncer fired: reloading TagGroups");
+            await LoadTagGroupsAsync(ct);
+        });
     }
 
     /// <summary>

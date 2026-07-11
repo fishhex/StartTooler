@@ -13,6 +13,7 @@ namespace StartTooler.Views;
 ///   2. 鼠标滚轮缩放
 ///   3. 双击图片切换缩放（spec §3.3）
 ///   4. 窗口 Closed 事件兜底 Dispose（VM 的 Close 命令不触发 Closed，需要二次保险）
+///   5. v0.12 标签输入框 KeyDown：回车提交新 tag（spec §3.3 OnTagInputKeyDown）
 ///
 /// 视频文件不进灯箱 —— 双击走系统默认播放器（spec §8）。
 /// </summary>
@@ -109,5 +110,61 @@ public partial class LightboxWindow : Window
         if (DataContext is not LightboxViewModel vm) return;
         vm.ZoomToggle();
         e.Handled = true;
+    }
+
+    // ============================================================
+    //  v0.12 标签编辑（spec doc/15-manual-tag-edit.md §3.3 OnTagInputKeyDown）
+    // ============================================================
+
+    /// <summary>
+    /// 标签输入框 KeyDown：
+    ///   - Enter / Return：调 AddTagCommand 添加新 tag
+    ///   - Esc：调 CancelEditTagsCommand 退出编辑态
+    /// XAML 绑 TagInputBox.KeyDown = OnTagInputKeyDown。
+    /// 实际上 TagChipEditor UserControl 自己处理回车提交（spec §4），这里保留作为防御性 hook。
+    /// </summary>
+    private void OnTagInputKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (DataContext is not LightboxViewModel vm) return;
+        if (!vm.IsEditingTags) return;
+
+        switch (e.Key)
+        {
+            case Key.Enter:    // Key.Enter = Key.Return = 6 in Avalonia 11 枚举
+                if (vm.AddTagCommand.CanExecute(null))
+                {
+                    vm.AddTagCommand.Execute(null);
+                }
+                e.Handled = true;
+                break;
+
+            case Key.Escape:
+                if (vm.CancelEditTagsCommand.CanExecute(null))
+                {
+                    vm.CancelEditTagsCommand.Execute(null);
+                }
+                e.Handled = true;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 编辑态 chip 点击删除（spec §3.3）：
+    ///   整个 chip 是 Button，Click 事件 → 从 Button.Tag 拿 tag 字符串 → 调 RemoveTagCommand。
+    /// 避开 DataTemplate 编译 binding 模式下的 $parent[Window] 链式 cast 整个返回 null 坑
+    /// （v0.8.1 spec 警告，GalleryView 右键菜单踩过）。
+    /// 注意：现在 TagChipEditor UserControl 自己处理这个事件（TagChipEditor.axaml.cs 的 OnChipClick），
+    /// 这里保留作为防御性 hook（如果 XAML 误用 LightboxWindow 直接放 chip 仍可走这里）。
+    /// </summary>
+    private void OnEditingChipClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not LightboxViewModel vm) return;
+        if (sender is not Control c) return;
+        if (c.Tag is not string tag || string.IsNullOrEmpty(tag)) return;
+
+        if (vm.RemoveTagCommand.CanExecute(tag))
+        {
+            vm.RemoveTagCommand.Execute(tag);
+        }
     }
 }

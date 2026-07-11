@@ -192,6 +192,21 @@
                         </StackPanel>
                     </Button>
 
+                    <!-- v0.12: 编辑标签按钮（多选模式下显示，IsBatchActionEnabled 包含 !IsTagging） -->
+                    <Button Classes="toolbar-button"
+                            Command="{Binding GalleryViewModel.EditTagsBatchCommand}"
+                            IsEnabled="{Binding GalleryViewModel.IsBatchActionEnabled}"
+                            IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"
+                            ToolTip.Tip="编辑选中文件的标签（替换 / 追加 / 删除）">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Path Data="{StaticResource Icon.Pencil}"
+                                  Width="14" Height="14"
+                                  Fill="{DynamicResource Text.Secondary}"
+                                  Stretch="Uniform"/>
+                            <TextBlock Text="编辑标签"/>
+                        </StackPanel>
+                    </Button>
+
                     <!-- 上传中：取消按钮 + 进度文本 -->
                     <Button Classes="toolbar-button-danger"
                             Content="取消上传"

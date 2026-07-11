@@ -93,4 +93,15 @@
     <!-- 文件夹打开 (FolderOpen) - 24x24，"在文件夹中显示" 用 -->
     <StreamGeometry x:Key="Icon.FolderOpen">M3 6v14a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-7l-2-2H5a2 2 0 00-2 2v1h2V6h5.59l1.41 1.41V7.5L9.59 6H5v0zM21 9H8l-3 11h17l3-9V9z</StreamGeometry>
 
+    <!-- v0.12 手动编辑标签新增图标（spec doc/15-manual-tag-edit.md §3） -->
+
+    <!-- 铅笔 (Pencil) - 24x24，编辑入口按钮用 -->
+    <StreamGeometry x:Key="Icon.Pencil">M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z</StreamGeometry>
+
+    <!-- 对勾 (Check) - 24x24，保存按钮用（与 CheckCircle 区别：纯对勾，无外圈） -->
+    <StreamGeometry x:Key="Icon.Check">M20 6 9 17l-5-5</StreamGeometry>
+
+    <!-- 加号 (Plus) - 24x24，"添加标签" 按钮用 -->
+    <StreamGeometry x:Key="Icon.Plus">M12 5v14m-7-7h14</StreamGeometry>
+
 </ResourceDictionary>

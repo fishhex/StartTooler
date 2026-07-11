@@ -5,6 +5,7 @@
         xmlns:vm="using:StartTooler.ViewModels"
         xmlns:services="using:StartTooler.Services"
         xmlns:conv="using:StartTooler.Converters"
+        xmlns:controls="using:StartTooler.Controls"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="800"
         x:Class="StartTooler.Views.LightboxWindow"
         x:DataType="vm:LightboxViewModel"
@@ -194,11 +195,37 @@
                                        Classes="InfoValue" />
                         </StackPanel>
 
-                        <!-- AI 标签 -->
+                        <!--
+                          v0.12 AI 标签（spec doc/15-manual-tag-edit.md §3）
+                          双 StackPanel 互斥：
+                            - 默认态 (!IsEditingTags)：chip 列表 + ✏️ 按钮 / 无 tag 时「+ 添加标签」按钮
+                            - 编辑态 (IsEditingTags)：chip + × / 输入框 / 保存取消按钮 / AI 覆盖提示
+                        -->
+
+                        <!-- 默认态 -->
                         <StackPanel Spacing="4"
-                                    IsVisible="{Binding CurrentFile.HasTags}">
-                            <TextBlock Text="AI 标签" Classes="InfoLabel" />
-                            <ItemsControl ItemsSource="{Binding CurrentFile.Tags}">
+                                    IsVisible="{Binding !IsEditingTags}">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0"
+                                           Text="AI 标签"
+                                           Classes="InfoLabel"
+                                           VerticalAlignment="Center" />
+                                <Button Grid.Column="1"
+                                        Classes="LightboxToolButton"
+                                        Command="{Binding EnterEditTagsCommand}"
+                                        IsEnabled="{Binding CanEditTags}"
+                                        ToolTip.Tip="{Binding EditTagsBlockReason}"
+                                        Padding="6,2"
+                                        MinHeight="22"
+                                        MinWidth="22">
+                                    <PathIcon Data="{StaticResource Icon.Pencil}"
+                                              Width="11" Height="11" />
+                                </Button>
+                            </Grid>
+
+                            <!-- 已有 tag：chip 列表（保持原视觉不变） -->
+                            <ItemsControl ItemsSource="{Binding CurrentFile.Tags}"
+                                          IsVisible="{Binding CurrentFile.HasTags}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <WrapPanel Orientation="Horizontal" />
@@ -217,6 +244,58 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
+
+                            <!-- 无 tag：显示「+ 添加标签」入口 -->
+                            <Button IsVisible="{Binding !CurrentFile.HasTags}"
+                                    Command="{Binding EnterEditTagsCommand}"
+                                    IsEnabled="{Binding CanEditTags}"
+                                    ToolTip.Tip="{Binding EditTagsBlockReason}"
+                                    HorizontalAlignment="Left"
+                                    Classes="LightboxToolButton"
+                                    Padding="10,4"
+                                    MinHeight="22">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <PathIcon Data="{StaticResource Icon.Plus}" Width="11" Height="11" />
+                                    <TextBlock Text="添加标签" FontSize="11" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+
+                        <!-- 编辑态 -->
+                        <StackPanel Spacing="8"
+                                    IsVisible="{Binding IsEditingTags}">
+                            <Grid ColumnDefinitions="*,Auto,Auto">
+                                <TextBlock Grid.Column="0"
+                                           Text="编辑标签"
+                                           Classes="InfoLabel"
+                                           VerticalAlignment="Center" />
+                                <Button Grid.Column="1"
+                                        Classes="LightboxToolButton"
+                                        Command="{Binding CancelEditTagsCommand}"
+                                        ToolTip.Tip="取消 (Esc)"
+                                        Padding="6,2"
+                                        MinHeight="22"
+                                        MinWidth="22">
+                                    <PathIcon Data="{StaticResource Icon.X}" Width="11" Height="11" />
+                                </Button>
+                                <Button Grid.Column="2"
+                                        Classes="LightboxToolButton"
+                                        Command="{Binding SaveEditTagsCommand}"
+                                        ToolTip.Tip="保存 (回车)"
+                                        Padding="6,2"
+                                        MinHeight="22"
+                                        MinWidth="22"
+                                        Margin="4,0,0,0">
+                                    <PathIcon Data="{StaticResource Icon.Check}" Width="11" Height="11" />
+                                </Button>
+                            </Grid>
+
+                            <!-- v0.12: 通用 tag chip 编辑器（spec doc/15-manual-tag-edit.md §4） -->
+                            <controls:TagChipEditor DataContext="{Binding}" />
+
+                            <TextBlock Text="提示：AI 重新打标将覆盖手动修改"
+                                       FontSize="10"
+                                       Foreground="{DynamicResource Text.Tertiary}" />
                         </StackPanel>
 
                         <!-- AI 评分 -->

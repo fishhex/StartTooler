@@ -1,0 +1,69 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:StartTooler.ViewModels"
+        xmlns:controls="using:StartTooler.Controls"
+        mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="400"
+        x:Class="StartTooler.Views.EditTagsDialog"
+        x:DataType="vm:EditTagsDialogViewModel"
+        Title="编辑标签"
+        WindowStartupLocation="CenterOwner"
+        SystemDecorations="BorderOnly"
+        CanResize="False"
+        SizeToContent="WidthAndHeight"
+        MinWidth="420" MinHeight="320"
+        Background="{DynamicResource Bg.Outer}">
+
+    <!--
+      单张文件编辑标签模态弹窗（spec doc/15-manual-tag-edit.md §4.2）。
+      构造：new EditTagsDialog(file, mediaRepo, galleryVm).ShowDialog(owner?).
+      关闭后调用方读 vm.SavedTags（null = 取消或失败）。
+    -->
+
+    <Border Padding="20" Background="{DynamicResource Bg.Surface}"
+            BorderBrush="{DynamicResource Bg.Divider}" BorderThickness="1" CornerRadius="8">
+        <StackPanel Spacing="16">
+
+            <!-- 顶部：缩略图占位 + 文件名（缩略图加载留给后续 patch） -->
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Border Width="64" Height="48"
+                        Background="{DynamicResource Bg.SurfaceElevated}"
+                        CornerRadius="4">
+                    <TextBlock Text="📷" FontSize="20"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Foreground="{DynamicResource Text.Disabled}" />
+                </Border>
+                <StackPanel VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Text="编辑标签" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Secondary}" />
+                    <TextBlock Text="{Binding FileName}" FontSize="13"
+                               Foreground="{DynamicResource Text.Primary}"
+                               TextTrimming="CharacterEllipsis" MaxWidth="280" />
+                </StackPanel>
+            </StackPanel>
+
+            <!-- 通用 tag chip 编辑器 -->
+            <controls:TagChipEditor DataContext="{Binding}" />
+
+            <!-- 提示 -->
+            <TextBlock Text="提示：AI 重新打标将覆盖手动修改"
+                       FontSize="11"
+                       Foreground="{DynamicResource Text.Tertiary}" />
+
+            <!-- 底部按钮 -->
+            <StackPanel Orientation="Horizontal" Spacing="8"
+                        HorizontalAlignment="Right" Margin="0,8,0,0">
+                <Button Content="取消"
+                        Click="OnCancelClick"
+                        Classes="secondary-button"
+                        Padding="14,8" />
+                <Button Content="保存"
+                        Classes="primary-button"
+                        Command="{Binding SaveCommand}"
+                        IsEnabled="{Binding IsDirty}"
+                        Padding="14,8" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

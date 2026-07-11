@@ -28,6 +28,14 @@ public interface IMediaRepository
     Task UpdateTagAsync(long fileId, IEnumerable<string> tags, IEnumerable<string> qualityTags, int score, long taggedAt, string? tagError, CancellationToken ct = default);
 
     /// <summary>
+    /// 手动编辑主体标签专用（spec doc/15-manual-tag-edit.md §2.2 / §8）：
+    /// 只动 tags / tagged_at / tag_error（清空），保留 score 和 quality_tags 原值。
+    /// 与 UpdateTagAsync 的关键区别：UpdateTagAsync 会把 score 列写 0，对未打标文件（Score=null）会
+    /// 导致 photo tile 误显示「评分 0」角标。手动编辑场景不动 score。
+    /// </summary>
+    Task UpdateTagsOnlyAsync(long fileId, IEnumerable<string> tags, long taggedAt, CancellationToken ct = default);
+
+    /// <summary>
     /// 获取标签分组（标签名 → 文件数），按数量降序。UI 左栏"标签"tab 用（v0.6.1 patch 已接 UI）。
     /// </summary>
     Task<IReadOnlyList<TagGroupItem>> GetTagGroupsAsync(string projectPath, CancellationToken ct = default);

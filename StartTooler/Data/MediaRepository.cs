@@ -534,6 +534,42 @@ public class MediaRepository : IMediaRepository
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
+    /// <summary>
+    /// 手动编辑主体标签专用（spec doc/15-manual-tag-edit.md §2.2 / §8）。
+    /// 关键差异 vs UpdateTagAsync：
+    ///   - 不动 score（UpdateTagAsync 必须传 int score，对 Score=null 的未打标文件会写 0，UI 误显示角标）
+    ///   - 不动 quality_tags（用户拍板：手动编辑只管主体标签）
+    ///   - tag_error 一律清空（手动编辑总是成功路径，调用方传 ct 失败的话靠异常向上传）
+    /// JSON 编码沿用 s_writeTagsOptions（UnsafeRelaxedJsonEscaping），中文原样写避免 LIKE 失效。
+    /// </summary>
+    public async Task UpdateTagsOnlyAsync(long fileId, IEnumerable<string> tags, long taggedAt, CancellationToken ct = default)
+    {
+        var tagsList = tags.ToList();
+        var tagsJson = JsonSerializer.Serialize(tagsList, s_writeTagsOptions);
+
+        Trace.WriteLine($"[MediaRepository] step 1/3 UpdateTagsOnlyAsync: fileId={fileId}, tags={tagsList.Count}, taggedAt={taggedAt}");
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var sql = @"
+            UPDATE media_files
+            SET tags = @tags,
+                tagged_at = @taggedAt,
+                tag_error = NULL,
+                updated_at = @updatedAt
+            WHERE id = @id";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@id", fileId);
+        cmd.Parameters.AddWithValue("@tags", tagsJson);
+        cmd.Parameters.AddWithValue("@taggedAt", taggedAt);
+        cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
+
+        var rows = await cmd.ExecuteNonQueryAsync(ct);
+        Trace.WriteLine($"[MediaRepository] step 2/3 UpdateTagsOnlyAsync done: fileId={fileId}, rowsAffected={rows}");
+    }
+
     public async Task<IReadOnlyList<TagGroupItem>> GetTagGroupsAsync(string projectPath, CancellationToken ct = default)
     {
         var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
