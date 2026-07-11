@@ -1,0 +1,81 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:StartTooler.Controls"
+             x:Class="StartTooler.Controls.TagChipEditor"
+             x:DataType="controls:ITagEditorHost">
+
+    <!--
+      通用 tag chip 编辑器（spec doc/15-manual-tag-edit.md §4）。
+      接受外部 DataContext（实现 ITagEditorHost），编译 binding 模式绑 ITagEditorHost 契约。
+      让 LightboxViewModel / EditTagsDialogViewModel / EditTagsBatchDialogViewModel 都能复用。
+
+      结构：
+        - chip 列表（WrapPanel，chip 整块 Button 点击删除）
+        - 输入框（TextBox + Watermark + MaxLength + 回车提交）
+
+      触发命令：
+        - chip 点击 → DataContext.RemoveTagCommand.Execute(tag)
+        - 输入框回车 → DataContext.AddTagCommand.Execute(null)
+    -->
+
+    <StackPanel Spacing="8">
+
+        <!-- chip 列表：每个 chip 整块 Button，整 chip 任意位置点击删除 -->
+        <ItemsControl ItemsSource="{Binding Tags}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <!--
+                      Tag="{Binding}" 把 chip 文本传给 code-behind，避免 DataTemplate 编译 binding 模式下
+                      写 $parent[UserControl].DataContext.RemoveTagCommand 链式 cast 整个返回 null 的坑
+                      （v0.8.1 spec 警告）。
+                    -->
+                    <Button Classes="EditingChipButton"
+                            Tag="{Binding}"
+                            Click="OnChipClick"
+                            ToolTip.Tip="点击删除">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="{Binding}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Text.Primary}"
+                                       VerticalAlignment="Center" />
+                            <PathIcon Data="{StaticResource Icon.X}"
+                                      Width="8" Height="8"
+                                      VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- 输入框（可选，默认显示） -->
+        <TextBox IsVisible="{Binding ShowInputBox}"
+                 Text="{Binding NewTagInput, Mode=TwoWay}"
+                 KeyDown="OnInputKeyDown"
+                 LostFocus="OnInputLostFocus"
+                 Watermark="{Binding Watermark}"
+                 MaxLength="{Binding MaxTagLength}"
+                 FontSize="12" />
+    </StackPanel>
+
+    <!-- chip 视觉：圆角小条，hover 变红 -->
+    <UserControl.Styles>
+        <Style Selector="Button.EditingChipButton">
+            <Setter Property="Background" Value="{DynamicResource Bg.SurfaceElevated}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text.Primary}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="Margin" Value="0,2,4,2" />
+            <Setter Property="MinHeight" Value="20" />
+        </Style>
+        <Style Selector="Button.EditingChipButton:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#E63946" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+        </Style>
+    </UserControl.Styles>
+</UserControl>
