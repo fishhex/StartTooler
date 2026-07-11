@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace StartTooler.Services;
@@ -60,6 +61,8 @@ public static class AIProviderCatalog
         {
             if (meta.Provider == provider) return meta;
         }
-        return All[0];
+        if (All.Count > 0) return All[0];
+        throw new InvalidOperationException(
+            "AI 厂商列表为空，请检查 Resources/ai-providers.default.toml 是否作为 EmbeddedResource 正确打包。");
     }
 }

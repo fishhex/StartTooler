@@ -19,7 +19,7 @@ public class MediaRepository : IMediaRepository
 
     public MediaRepository()
     {
-        var dbPath = GetDbPath();
+        var dbPath = AppPaths.MediaDbPath;
         _connectionString = $"Data Source={dbPath}";
         EnsureDatabase();
     }
@@ -34,14 +34,6 @@ public class MediaRepository : IMediaRepository
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
-
-    private static string GetDbPath()
-    {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var appFolder = Path.Combine(appData, "StartTooler");
-        Directory.CreateDirectory(appFolder);
-        return Path.Combine(appFolder, "media.db");
-    }
 
     private void EnsureDatabase()
     {
@@ -312,8 +304,9 @@ public class MediaRepository : IMediaRepository
             result.Total = files.Count;
             progress?.Report(new ScanProgress { Total = result.Total, Processed = 0 });
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Trace.WriteLine($"[MediaRepository] ScanDirectoryAsync 文件枚举失败: {ex.Message}");
             result.Total = 0;
         }
 
@@ -396,8 +389,9 @@ public class MediaRepository : IMediaRepository
                     CurrentFile = fileInfo.Name
                 });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Trace.WriteLine($"[MediaRepository] 处理文件失败: {filePath}, {ex.Message}");
                 result.Failed++;
             }
         }

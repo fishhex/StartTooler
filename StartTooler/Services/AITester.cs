@@ -25,6 +25,16 @@ namespace StartTooler.Services;
         private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
         private const string AnthropicVersion = "2023-06-01";
 
+        private static readonly HttpClient s_http = new(new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+            PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1),
+            MaxConnectionsPerServer = 4,
+        })
+        {
+            Timeout = RequestTimeout,
+        };
+
         public sealed record TestResult(
             bool Success,
             string Message,
@@ -79,7 +89,6 @@ namespace StartTooler.Services;
     private static async Task<TestResult> SendAnthropicAsync(string baseUrl, string apiKey, string model, CancellationToken ct)
     {
         var url = baseUrl.TrimEnd('/') + "/v1/messages";
-        using var http = new HttpClient { Timeout = RequestTimeout };
         var sw = Stopwatch.StartNew();
 
         var req = new HttpRequestMessage(HttpMethod.Post, url);
@@ -92,7 +101,7 @@ namespace StartTooler.Services;
             messages = new[] { new { role = "user", content = "say 'ok'" } }
         });
 
-        var resp = await http.SendAsync(req, ct);
+        var resp = await s_http.SendAsync(req, ct);
         sw.Stop();
         var latency = (int)sw.ElapsedMilliseconds;
 
@@ -107,7 +116,6 @@ namespace StartTooler.Services;
     private static async Task<TestResult> SendOpenAIAsync(string baseUrl, string apiKey, string model, CancellationToken ct)
     {
         var url = baseUrl.TrimEnd('/') + "/chat/completions";
-        using var http = new HttpClient { Timeout = RequestTimeout };
         var sw = Stopwatch.StartNew();
 
         var req = new HttpRequestMessage(HttpMethod.Post, url);
@@ -119,7 +127,7 @@ namespace StartTooler.Services;
             messages = new[] { new { role = "user", content = "say 'ok'" } }
         });
 
-        var resp = await http.SendAsync(req, ct);
+        var resp = await s_http.SendAsync(req, ct);
         sw.Stop();
         var latency = (int)sw.ElapsedMilliseconds;
 

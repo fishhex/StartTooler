@@ -23,6 +23,10 @@ public enum ViewPage
 
 public partial class MainWindowViewModel : ObservableObject
 {
+    private readonly ConfigService _configService;
+    private readonly MediaRepository _mediaRepository;
+    private readonly UploadJobRepository _uploadJobRepo;
+
     [ObservableProperty] private GalleryViewModel galleryViewModel;
     [ObservableProperty] private SettingsViewModel settingsViewModel;
     [ObservableProperty] private UploadServerViewModel uploadServerViewModel;
@@ -49,9 +53,10 @@ public partial class MainWindowViewModel : ObservableObject
     public MainWindowViewModel()
     {
         // 创建服务实例
-        var configService = new ConfigService();
-        var mediaRepository = new MediaRepository();
-        var uploadJobRepo = new UploadJobRepository();
+        _configService = new ConfigService();
+        _mediaRepository = new MediaRepository();
+        _uploadJobRepo = new UploadJobRepository();
+
         var thumbnailService = new ThumbnailService();
         var systemShell = new SystemShellService();
         var aiTagger = new AITagger();  // v0.6 新增：AI 打标服务，静态 HttpClient 池化
@@ -61,27 +66,27 @@ public partial class MainWindowViewModel : ObservableObject
         // 改完 OSS 配置后下次上传能拿到新凭据。
         IOssStorageFactory ossFactory = new OssStorageFactory(() =>
         {
-            return configService.GetAsync<OssConfig>(ConfigKeys.Oss)
+            return _configService.GetAsync<OssConfig>(ConfigKeys.Oss)
                 .GetAwaiter().GetResult() ?? new OssConfig();
         });
 
-        SettingsViewModel = new SettingsViewModel(new DirectoryPickerService(), new FilePickerService(), configService);
+        SettingsViewModel = new SettingsViewModel(new DirectoryPickerService(), new FilePickerService(), _configService);
 
         // 创建 ViewModel
         // onOssNotConfigured: Gallery 触发上传时如果 OSS 未配置，由 MainWindow 弹对话框并提供「去设置」入口
         GalleryViewModel = new GalleryViewModel(
-            mediaRepository, thumbnailService, configService, systemShell, ossFactory, uploadJobRepo,
+            _mediaRepository, thumbnailService, _configService, systemShell, ossFactory, _uploadJobRepo,
             aiTagger,
             onOssNotConfigured: ShowOssNotConfiguredDialogAsync);
         UploadServerViewModel = new UploadServerViewModel(
             GalleryViewModel,
-            new PublicRelayViewModel(configService, new PublicRelayService(), new FilePickerService(), GalleryViewModel));
+            new PublicRelayViewModel(_configService, new PublicRelayService(), new FilePickerService(), GalleryViewModel));
 
         // v0.8: 垃圾筒 VM（spec doc/14-delete-and-trash.md §7.1）
         // 复用 mediaRepo / uploadJobRepo / ossFactory / configService；onOssNotConfigured 复用 MainWindow 的弹窗。
         // v0.8.1: 新增 thumbnailService 用于下载后重生成缩略图（spec §7.4）。
         TrashViewModel = new TrashViewModel(
-            mediaRepository, uploadJobRepo, ossFactory, configService, thumbnailService,
+            _mediaRepository, _uploadJobRepo, ossFactory, _configService, thumbnailService,
             onOssNotConfigured: ShowOssNotConfiguredDialogAsync);
 
         CurrentView = GalleryViewModel;
@@ -127,7 +132,7 @@ public partial class MainWindowViewModel : ObservableObject
         var projectPath = GalleryViewModel.ProjectPath;
         if (string.IsNullOrEmpty(projectPath)) return;
 
-        var uploadJobRepo = new UploadJobRepository();
+        var uploadJobRepo = _uploadJobRepo;
         IReadOnlyList<UploadJob> jobs;
         try
         {
@@ -195,7 +200,7 @@ public partial class MainWindowViewModel : ObservableObject
         {
             UploadServerViewModel = new UploadServerViewModel(
                 GalleryViewModel,
-                new PublicRelayViewModel(new ConfigService(), new PublicRelayService(), new FilePickerService(), GalleryViewModel));
+                new PublicRelayViewModel(_configService, new PublicRelayService(), new FilePickerService(), GalleryViewModel));
         }
         CurrentView = UploadServerViewModel;
         IsSettingsPage = false;

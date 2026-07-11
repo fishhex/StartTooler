@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,8 +15,8 @@ public interface IImageCacheService
 
 public class ImageCacheService : IImageCacheService
 {
-    private static readonly ConcurrentDictionary<string, Task<Bitmap?>> _cache = new();
-    private static readonly SemaphoreSlim _semaphore = new(Environment.ProcessorCount * 2);
+    private static readonly ConcurrentDictionary<string, Task<Bitmap?>> s_cache = new();
+    private readonly SemaphoreSlim _semaphore = new(Environment.ProcessorCount * 2);
 
     public async Task<Bitmap?> LoadImageAsync(string? path, CancellationToken ct = default)
     {
@@ -24,38 +25,42 @@ public class ImageCacheService : IImageCacheService
             return null;
         }
 
-        // 检查缓存
-        if (_cache.TryGetValue(path, out var cachedTask))
+        if (s_cache.TryGetValue(path, out var cachedTask))
         {
             return await cachedTask;
         }
 
-        // 限制并发数量
-        await _semaphore.WaitAsync(ct);
+        try
+        {
+            await _semaphore.WaitAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
 
         try
         {
-            // 再次检查缓存（可能其他线程刚添加）
-            if (_cache.TryGetValue(path, out cachedTask))
+            if (s_cache.TryGetValue(path, out cachedTask))
             {
                 return await cachedTask;
             }
 
-            // 异步加载图片
-            var task = Task.Run(async () =>
+            var task = Task.Run(() =>
             {
                 try
                 {
                     using var stream = File.OpenRead(path);
-                    return await Task.FromResult(new Bitmap(stream));
+                    return (Bitmap?)new Bitmap(stream);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Trace.WriteLine($"[ImageCacheService] 加载图片失败: {path}, {ex.Message}");
                     return null;
                 }
             }, ct);
 
-            _cache.TryAdd(path, task);
+            s_cache.TryAdd(path, task);
             return await task;
         }
         finally
@@ -66,13 +71,13 @@ public class ImageCacheService : IImageCacheService
 
     public static void ClearCache()
     {
-        foreach (var kvp in _cache)
+        foreach (var kvp in s_cache)
         {
-            if (kvp.Value.IsCompleted && kvp.Value.Result is Bitmap bitmap)
+            if (kvp.Value.IsCompletedSuccessfully && kvp.Value.Result is Bitmap bitmap)
             {
                 bitmap.Dispose();
             }
         }
-        _cache.Clear();
+        s_cache.Clear();
     }
 }

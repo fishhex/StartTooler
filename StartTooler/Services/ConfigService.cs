@@ -13,15 +13,7 @@ public class ConfigService : IConfigService
 
     public ConfigService()
     {
-        // 数据存放在应用数据目录
-        var appDataPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "StartTooler");
-
-        if (!Directory.Exists(appDataPath))
-            Directory.CreateDirectory(appDataPath);
-
-        _dbPath = Path.Combine(appDataPath, "config.db");
+        _dbPath = AppPaths.ConfigDbPath;
         _connectionString = $"Data Source={_dbPath}";
 
         InitializeDatabase();

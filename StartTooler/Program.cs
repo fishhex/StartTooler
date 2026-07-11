@@ -19,9 +19,10 @@ sealed class Program
             Trace.AutoFlush = true;  // 进程崩溃前不丢日志
             Trace.WriteLine($"[starttooler-debug] pid={Environment.ProcessId} cwd={cwd} log={logPath}");
         }
-        catch
+        catch (Exception ex)
         {
             // cwd 不可写时静默失败（macOS 双击 .app 时 cwd=/ 不可写），不影响主程序启动。
+            Trace.WriteLine($"[starttooler-debug] Trace setup failed: {ex.Message}");
         }
     }
 

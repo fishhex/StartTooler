@@ -20,12 +20,7 @@ public class ThumbnailService : IThumbnailService
 
     public ThumbnailService()
     {
-        _thumbnailDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "StartTooler",
-            "thumbnails");
-
-        Directory.CreateDirectory(_thumbnailDir);
+        _thumbnailDir = AppPaths.ThumbnailDir;
         Trace.WriteLine($"[ThumbnailService] dir={_thumbnailDir}");
     }
 
@@ -205,15 +200,16 @@ public class ThumbnailService : IThumbnailService
 
     private static string GetPathHash(string path)
     {
-        // 使用简单哈希确保文件名合法且唯一
+        // 使用简单哈希确保文件名合法且唯一。
+        // 用 uint 避免 Math.Abs(int.MinValue) 仍返回负数的边界 bug。
         unchecked
         {
-            var hash = 17;
+            uint hash = 17;
             foreach (var c in path)
             {
                 hash = hash * 31 + c;
             }
-            return Math.Abs(hash).ToString("X8");
+            return hash.ToString("X8");
         }
     }
 }

@@ -89,10 +89,7 @@ public static class AIProviderLoader
 
     private static string GetUserConfigPath()
     {
-        var dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "StartTooler");
-        return Path.Combine(dir, UserConfigFileName);
+        return Path.Combine(AppPaths.ConfigDir, UserConfigFileName);
     }
 
     private static IReadOnlyList<AIProviderMeta> MapAndValidate(AIProvidersConfig cfg, string source)
