@@ -10,6 +10,8 @@
         <converters:StringNullOrEmptyToPlaceholderClassConverter x:Key="NullOrEmptyToPlaceholderClass"/>
         <converters:BoolToPasswordCharConverter x:Key="BoolToPasswordChar"/>
         <converters:BoolToApiKeyToggleTextConverter x:Key="BoolToApiKeyToggleText"/>
+        <converters:ErrorToBorderBrushConverter x:Key="ErrorToBorderBrush"/>
+        <converters:IsNotEmptyToBoolConverter x:Key="IsNotEmptyToBool"/>
     </UserControl.Resources>
 
     <Grid RowDefinitions="Auto,Auto,Auto,*">
@@ -48,7 +50,7 @@
         <Border Grid.Row="3" Background="{DynamicResource Bg.Surface}">
          <Panel>
             <!-- 通用 Tab -->
-            <Grid RowDefinitions="Auto,Auto,Auto,Auto,*"
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*"
                   IsVisible="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.General}}">
                 <!-- 项目目录 FormRow -->
                 <Border Grid.Row="0" Padding="40,16" Background="{DynamicResource Bg.Surface}">
@@ -89,14 +91,17 @@
                                           Margin="8,0,0,0"/>
                                 </Grid>
                                 <Button.Flyout>
+                                    <!-- v0.11 §3.1: 动态生成最近目录 MenuItem。
+                                         Code-behind 在 Opened 事件里用 FindControl / 树遍历定位 SelectFlyout 和 RecentItemsContainer。 -->
                                     <MenuFlyout Placement="BottomEdgeAlignedLeft">
                                         <MenuItem Header="浏览..."
                                                   Command="{Binding BrowseDirectoryCommand}"/>
                                         <Separator/>
+                                        <!-- 最近使用分组：仅当有历史时显示，Code-behind 动态往里塞 MenuItem -->
                                         <StackPanel IsVisible="{Binding RecentDirectories.Count}">
                                             <TextBlock Text="最近使用" FontWeight="SemiBold" Foreground="{DynamicResource Text.Secondary}" Padding="8,4"/>
-                                            <MenuItem Header="/Users/hex/Pictures/Test"
-                                                     IsVisible="False"/>
+                                            <!-- 占位 MenuItem，Code-behind 打开 flyout 时会先清空再重填 -->
+                                            <MenuItem Header="(暂无)" IsEnabled="False"/>
                                             <Separator/>
                                         </StackPanel>
                                         <MenuItem Header="清空最近"
@@ -129,131 +134,249 @@
                     </Grid>
                 </Border>
 
-                <!-- FFmpeg 路径 FormRow -->
+                <!-- FFmpeg 路径 FormRow（v0.11 §3.2: 加 LostFocus 校验 + 错误提示） -->
                 <Border Grid.Row="2" Padding="40,16" Background="{DynamicResource Bg.Surface}">
-                    <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="FFmpeg 路径"
+                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Column="0" Grid.RowSpan="2" Text="FFmpeg 路径"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                            <TextBox Text="{Binding FfmpegPath, Mode=TwoWay}"
+                        <Grid Grid.Column="1" ColumnDefinitions="*,Auto" Height="36" Row="0">
+                            <TextBox Grid.Column="0"
+                                     x:Name="FfmpegPathBox"
+                                     Text="{Binding FfmpegPath, Mode=TwoWay}"
                                      FontSize="13"
                                      Watermark="留空走 PATH（如 /Users/you/.local/bin/ffmpeg）"
-                                     Width="360"
-                                     VerticalAlignment="Center"/>
-                            <Button Content="浏览..."
+                                     VerticalAlignment="Center"
+                                     LostFocus="OnFfmpegPathLostFocus"
+                                     Classes.error="{Binding FfmpegPathError, Converter={StaticResource IsNotEmptyToBool}}"
+                                     BorderBrush="{Binding FfmpegPathError, Converter={StaticResource ErrorToBorderBrush}}"/>
+                            <Button Grid.Column="1" Content="浏览..."
                                     Classes="secondary-button"
-                                    Command="{Binding BrowseFFmpegCommand}"/>
-                        </StackPanel>
+                                    Command="{Binding BrowseFFmpegCommand}"
+                                    Margin="12,0,0,0"/>
+                        </Grid>
+                        <TextBlock Grid.Column="1" Grid.Row="1"
+                                   Text="{Binding FfmpegPathError}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource State.Danger}"
+                                   Margin="0,4,0,0"
+                                   IsVisible="{Binding FfmpegPathError, Converter={StaticResource IsNotEmptyToBool}}"/>
                     </Grid>
                 </Border>
 
                 <!-- FFprobe 路径 FormRow -->
                 <Border Grid.Row="3" Padding="40,16" Background="{DynamicResource Bg.Surface}">
-                    <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="FFprobe 路径"
+                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Column="0" Grid.RowSpan="2" Text="FFprobe 路径"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <Grid Grid.Column="1" ColumnDefinitions="*,Auto" Height="36" Row="0">
+                            <TextBox Grid.Column="0"
+                                     x:Name="FfprobePathBox"
+                                     Text="{Binding FfprobePath, Mode=TwoWay}"
+                                     FontSize="13"
+                                     Watermark="留空走 PATH（如 /Users/you/.local/bin/ffprobe）"
+                                     VerticalAlignment="Center"
+                                     LostFocus="OnFfprobePathLostFocus"
+                                     Classes.error="{Binding FfprobePathError, Converter={StaticResource IsNotEmptyToBool}}"
+                                     BorderBrush="{Binding FfprobePathError, Converter={StaticResource ErrorToBorderBrush}}"/>
+                            <Button Grid.Column="1" Content="浏览..."
+                                    Classes="secondary-button"
+                                    Command="{Binding BrowseFFprobeCommand}"
+                                    Margin="12,0,0,0"/>
+                        </Grid>
+                        <TextBlock Grid.Column="1" Grid.Row="1"
+                                   Text="{Binding FfprobePathError}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource State.Danger}"
+                                   Margin="0,4,0,0"
+                                   IsVisible="{Binding FfprobePathError, Converter={StaticResource IsNotEmptyToBool}}"/>
+                    </Grid>
+                </Border>
+
+                <!-- v0.11 §3.4: 导入 / 导出 按钮（独立一行，避免跟其它 FormRow 排版冲突） -->
+                <Border Grid.Row="4" Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*">
+                        <TextBlock Grid.Column="0" Text="配置"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                            <TextBox Text="{Binding FfprobePath, Mode=TwoWay}"
-                                     FontSize="13"
-                                     Watermark="留空走 PATH（如 /Users/you/.local/bin/ffprobe）"
-                                     Width="360"
-                                     VerticalAlignment="Center"/>
-                            <Button Content="浏览..."
-                                    Classes="secondary-button"
-                                    Command="{Binding BrowseFFprobeCommand}"/>
+                            <Button Content="导出配置…" Classes="secondary-button"
+                                    Command="{Binding ExportConfigCommand}"/>
+                            <Button Content="导入配置…" Classes="secondary-button"
+                                    Command="{Binding ImportConfigCommand}"/>
+                            <TextBlock Text="（含密钥，请妥善保存备份文件）"
+                                       FontSize="11" Foreground="{DynamicResource Text.Tertiary}"
+                                       VerticalAlignment="Center"/>
                         </StackPanel>
                     </Grid>
                 </Border>
 
                 <!-- 空区域填充 -->
-                <Border Grid.Row="4" Background="{DynamicResource Bg.Surface}"/>
+                <Border Grid.Row="5" Background="{DynamicResource Bg.Surface}"/>
             </Grid>
 
             <!-- OSS Tab -->
             <StackPanel IsVisible="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.Oss}}">
-                <!-- 供应商（未来扩展入口） -->
+                <!-- v0.11 §4.1: 供应商固定为阿里云 OSS，TextBlock 显示（替换原 IsHitTestVisible=False 的 ComboBox） -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
-                    <Grid ColumnDefinitions="160,*" Height="64">
+                    <Grid ColumnDefinitions="160,*" Height="36">
                         <TextBlock Grid.Column="0" Text="供应商"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
-                        <ComboBox Grid.Column="1"
-                                  Width="200"
-                                  SelectedIndex="{Binding OssProvider, Mode=TwoWay}"
-                                  VerticalAlignment="Center"
-                                  HorizontalAlignment="Left"
-                                  IsHitTestVisible="False">
-                            <ComboBoxItem Content="阿里云 OSS"/>
-                        </ComboBox>
+                        <TextBlock Grid.Column="1" Text="阿里云 OSS"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center" HorizontalAlignment="Left"/>
                     </Grid>
                 </Border>
 
                 <!-- 区域 (endpoint) -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
-                    <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="区域 (endpoint)"
+                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Column="0" Grid.RowSpan="2" Text="区域 (endpoint)"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="1"
+                        <TextBox Grid.Column="1" Grid.Row="0"
                                  Text="{Binding OssRegion, Mode=TwoWay}"
                                  FontSize="13"
                                  Watermark="cn-hangzhou"
                                  VerticalAlignment="Center"
-                                 Width="360" HorizontalAlignment="Left"/>
+                                 Width="360" HorizontalAlignment="Left"
+                                 Classes.error="{Binding OssRegionError, Converter={StaticResource IsNotEmptyToBool}}"
+                                 BorderBrush="{Binding OssRegionError, Converter={StaticResource ErrorToBorderBrush}}"/>
+                        <TextBlock Grid.Column="1" Grid.Row="1"
+                                   Text="{Binding OssRegionError}"
+                                   FontSize="11" Foreground="{DynamicResource State.Danger}"
+                                   Margin="0,4,0,0"
+                                   IsVisible="{Binding OssRegionError, Converter={StaticResource IsNotEmptyToBool}}"/>
                     </Grid>
                 </Border>
 
                 <!-- 桶名 (bucket) -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
-                    <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="桶名(bucket)"
+                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Column="0" Grid.RowSpan="2" Text="桶名(bucket)"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="1"
+                        <TextBox Grid.Column="1" Grid.Row="0"
                                  Text="{Binding OssBucket, Mode=TwoWay}"
                                  FontSize="13"
                                  Watermark="my-photos"
                                  VerticalAlignment="Center"
-                                 Width="360" HorizontalAlignment="Left"/>
+                                 Width="360" HorizontalAlignment="Left"
+                                 Classes.error="{Binding OssBucketError, Converter={StaticResource IsNotEmptyToBool}}"
+                                 BorderBrush="{Binding OssBucketError, Converter={StaticResource ErrorToBorderBrush}}"/>
+                        <TextBlock Grid.Column="1" Grid.Row="1"
+                                   Text="{Binding OssBucketError}"
+                                   FontSize="11" Foreground="{DynamicResource State.Danger}"
+                                   Margin="0,4,0,0"
+                                   IsVisible="{Binding OssBucketError, Converter={StaticResource IsNotEmptyToBool}}"/>
                     </Grid>
                 </Border>
 
-                <!-- 密钥 (access key) -->
+                <!-- 密钥 (access key) — v0.11 §4.3 Secret 加眼睛按钮 -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
-                    <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="密钥 (access key)"
+                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto">
+                        <TextBlock Grid.Column="0" Grid.RowSpan="3" Text="密钥 (access key)"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="1" Grid.Row="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                             <TextBox Text="{Binding OssAccessKey, Mode=TwoWay}"
                                      FontSize="13"
                                      Watermark="AccessKeyId"
                                      Width="280"
-                                     VerticalAlignment="Center"/>
+                                     VerticalAlignment="Center"
+                                     Classes.error="{Binding OssAccessKeyError, Converter={StaticResource IsNotEmptyToBool}}"
+                                     BorderBrush="{Binding OssAccessKeyError, Converter={StaticResource ErrorToBorderBrush}}"/>
                             <TextBox Text="{Binding OssSecretKey, Mode=TwoWay}"
                                      FontSize="13"
-                                     PasswordChar="•"
+                                     PasswordChar="{Binding IsOssSecretKeyVisible, Converter={StaticResource BoolToPasswordChar}}"
                                      Watermark="AccessKeySecret"
                                      Width="280"
-                                     VerticalAlignment="Center"/>
+                                     VerticalAlignment="Center"
+                                     Classes.error="{Binding OssSecretKeyError, Converter={StaticResource IsNotEmptyToBool}}"
+                                     BorderBrush="{Binding OssSecretKeyError, Converter={StaticResource ErrorToBorderBrush}}"/>
+                            <Button Command="{Binding ToggleOssSecretKeyVisibilityCommand}"
+                                    Padding="10,6"
+                                    FontSize="12"
+                                    VerticalAlignment="Center"
+                                    ToolTip.Tip="切换 AccessKeySecret 明文/隐藏"
+                                    Classes="secondary-button">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <Path Data="{DynamicResource Icon.Eye}"
+                                          Stretch="Uniform"
+                                          Width="14" Height="14"
+                                          Fill="{DynamicResource Text.Secondary}"
+                                          IsVisible="{Binding !IsOssSecretKeyVisible}"/>
+                                    <Path Data="{DynamicResource Icon.EyeOff}"
+                                          Stretch="Uniform"
+                                          Width="14" Height="14"
+                                          Fill="{DynamicResource Text.Secondary}"
+                                          IsVisible="{Binding IsOssSecretKeyVisible}"/>
+                                    <TextBlock Text="{Binding IsOssSecretKeyVisible, Converter={StaticResource BoolToApiKeyToggleText}}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Text.Secondary}"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
+                        <TextBlock Grid.Column="1" Grid.Row="1"
+                                   Text="{Binding OssAccessKeyError}"
+                                   FontSize="11" Foreground="{DynamicResource State.Danger}"
+                                   Margin="0,4,0,0"
+                                   IsVisible="{Binding OssAccessKeyError, Converter={StaticResource IsNotEmptyToBool}}"/>
+                        <TextBlock Grid.Column="1" Grid.Row="2"
+                                   Text="{Binding OssSecretKeyError}"
+                                   FontSize="11" Foreground="{DynamicResource State.Danger}"
+                                   Margin="0,4,0,0"
+                                   IsVisible="{Binding OssSecretKeyError, Converter={StaticResource IsNotEmptyToBool}}"/>
                     </Grid>
                 </Border>
 
-                <!-- 路径前缀 -->
+                <!-- 路径前缀（v0.11 §4.4 失焦补 /） -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
-                    <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="路径前缀"
+                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Column="0" Grid.RowSpan="2" Text="路径前缀"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="1"
+                        <TextBox Grid.Column="1" Grid.Row="0"
+                                 x:Name="OssPathPrefixBox"
                                  Text="{Binding OssPathPrefix, Mode=TwoWay}"
                                  FontSize="13"
-                                 Watermark="astrophotos/（可选）"
+                                 Watermark="astrophotos/"
                                  VerticalAlignment="Center"
+                                 LostFocus="OnOssPathPrefixLostFocus"
                                  Width="360" HorizontalAlignment="Left"/>
+                        <TextBlock Grid.Column="1" Grid.Row="1"
+                                   Text="失焦时自动补全末尾 /"
+                                   FontSize="11" Foreground="{DynamicResource Text.Tertiary}"
+                                   Margin="0,4,0,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- v0.11 §4.2: OSS 连接测试 -->
+                <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*">
+                        <TextBlock Grid.Column="0" Text="连接测试"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <Button Content="{Binding OssTestState, Converter={x:Static converters:AITestConverters.StateToButtonText}}"
+                                    Command="{Binding TestOssConnectionCommand}"
+                                    Padding="16,8"
+                                    FontSize="12"
+                                    Classes="primary"/>
+                            <TextBlock Text="{Binding OssTestState, Converter={x:Static converters:AITestConverters.StateToIcon}}"
+                                       FontSize="14" FontWeight="Bold"
+                                       Foreground="{Binding OssTestState, Converter={x:Static converters:AITestConverters.StateToBrush}}"
+                                       VerticalAlignment="Center"
+                                       IsVisible="{Binding OssTestState, Converter={x:Static converters:AITestConverters.IsResultVisible}}"/>
+                            <TextBlock Text="{Binding OssTestMessage}"
+                                       FontSize="12"
+                                       Foreground="{Binding OssTestState, Converter={x:Static converters:AITestConverters.StateToBrush}}"
+                                       VerticalAlignment="Center"
+                                       IsVisible="{Binding OssTestState, Converter={x:Static converters:AITestConverters.IsResultVisible}}"/>
+                        </StackPanel>
                     </Grid>
                 </Border>
             </StackPanel>
@@ -316,19 +439,19 @@
 
                 <!-- API Key -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
-                    <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="API Key"
+                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Column="0" Grid.RowSpan="2" Text="API Key"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <!-- TextBox 主体：PasswordChar 通过 converter 跟 IsAiApiKeyVisible 联动 -->
+                        <StackPanel Grid.Column="1" Grid.Row="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBox Text="{Binding AiApiKey, Mode=TwoWay}"
                                      FontSize="13"
                                      PasswordChar="{Binding IsAiApiKeyVisible, Converter={StaticResource BoolToPasswordChar}}"
                                      Watermark="请输入 API Key"
                                      VerticalAlignment="Center"
-                                     Width="420" HorizontalAlignment="Left"/>
-                            <!-- 眼睛切换按钮：图标 + 文字；按当前状态切显示/隐藏 -->
+                                     Width="420" HorizontalAlignment="Left"
+                                     Classes.error="{Binding AiApiKeyError, Converter={StaticResource IsNotEmptyToBool}}"
+                                     BorderBrush="{Binding AiApiKeyError, Converter={StaticResource ErrorToBorderBrush}}"/>
                             <Button Command="{Binding ToggleAiApiKeyVisibilityCommand}"
                                     Padding="10,6"
                                     FontSize="12"
@@ -336,13 +459,11 @@
                                     ToolTip.Tip="切换 API Key 明文/隐藏"
                                     Classes="secondary-button">
                                 <StackPanel Orientation="Horizontal" Spacing="4">
-                                    <!-- 默认隐藏 → 显示 Eye（点这个会变明文） -->
                                     <Path Data="{DynamicResource Icon.Eye}"
                                           Stretch="Uniform"
                                           Width="14" Height="14"
                                           Fill="{DynamicResource Text.Secondary}"
                                           IsVisible="{Binding !IsAiApiKeyVisible}"/>
-                                    <!-- 当前明文 → 显示 EyeOff（点这个会再隐藏） -->
                                     <Path Data="{DynamicResource Icon.EyeOff}"
                                           Stretch="Uniform"
                                           Width="14" Height="14"
@@ -355,6 +476,11 @@
                                 </StackPanel>
                             </Button>
                         </StackPanel>
+                        <TextBlock Grid.Column="1" Grid.Row="1"
+                                   Text="{Binding AiApiKeyError}"
+                                   FontSize="11" Foreground="{DynamicResource State.Danger}"
+                                   Margin="0,4,0,0"
+                                   IsVisible="{Binding AiApiKeyError, Converter={StaticResource IsNotEmptyToBool}}"/>
                     </Grid>
                 </Border>
 
@@ -373,19 +499,43 @@
                     </Grid>
                 </Border>
 
-                <!-- Model（可编辑下拉：推荐值 + 自由输入） -->
+                <!-- Model（可编辑下拉：推荐值 + 自由输入） + 说明文字（v0.11 §5.3） -->
                 <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
-                    <Grid ColumnDefinitions="160,*" Height="64">
-                        <TextBlock Grid.Column="0" Text="模型"
+                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Column="0" Grid.RowSpan="2" Text="模型"
                                    FontSize="13" Foreground="{DynamicResource Text.Primary}"
                                    VerticalAlignment="Center"/>
-                        <ComboBox Grid.Column="1"
+                        <ComboBox Grid.Column="1" Grid.Row="0"
                                   Width="420"
                                   HorizontalAlignment="Left"
                                   VerticalAlignment="Center"
                                   IsEditable="True"
                                   ItemsSource="{Binding AiRecommendedModels}"
                                   Text="{Binding AiModel, Mode=TwoWay}"/>
+                        <TextBlock Grid.Column="1" Grid.Row="1"
+                                   Text="可从下拉列表选择推荐模型，也可直接输入任意模型名"
+                                   FontSize="11" Foreground="{DynamicResource Text.Tertiary}"
+                                   Margin="0,4,0,0"/>
+                    </Grid>
+                </Border>
+
+                <!-- v0.11 §5.2: 可编辑测试 prompt -->
+                <Border Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*">
+                        <TextBlock Grid.Column="0" Text="测试 prompt"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Top" Margin="0,8,0,0"/>
+                        <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBox Text="{Binding AiTestPrompt, Mode=TwoWay}"
+                                     FontSize="13"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     Height="80"
+                                     Width="420" HorizontalAlignment="Left"
+                                     Watermark="点击「测试连接」时发给 AI 的 prompt，可自定义验证模型答复质量"/>
+                            <TextBlock Text="* 自定义 prompt 时会请求 max_tokens=256（默认用 say 'ok' 时是 16）"
+                                       FontSize="11" Foreground="{DynamicResource Text.Tertiary}"/>
+                        </StackPanel>
                     </Grid>
                 </Border>
 
