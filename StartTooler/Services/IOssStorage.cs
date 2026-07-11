@@ -17,6 +17,14 @@ namespace StartTooler.Services;
 public interface IOssStorage
 {
     /// <summary>
+    /// v0.11 §4.2: 验证当前凭据 / Region / Bucket 联通性。
+    /// 返回 true = 三者都通；false = 任意一项失败（不抛异常，失败原因由调用方记录）。
+    /// 实现：阿里云走 DoesBucketExistAsync。
+    /// </summary>
+    Task<bool> TestConnectionAsync(CancellationToken ct = default);
+
+
+    /// <summary>
     /// 上传本地文件到 OSS。内部按文件大小自动分流：
     ///   - 小于 <see cref="MultipartThresholdBytes"/>：走单 PUT（UploadSingleAsync）
     ///   - 大于阈值：走 multipart（Initiate / UploadPart × N / Complete）

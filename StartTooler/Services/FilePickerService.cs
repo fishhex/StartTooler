@@ -41,4 +41,36 @@ public class FilePickerService : IFilePickerService
 
         return null;
     }
+
+    public async Task<string?> SaveFileAsync(string title, string defaultFileName, string? extensionHint = null)
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            var window = desktop.MainWindow;
+            if (window == null)
+                return null;
+
+            var options = new FilePickerSaveOptions
+            {
+                Title = title,
+                DefaultExtension = extensionHint ?? "",
+                SuggestedFileName = defaultFileName,
+                ShowOverwritePrompt = true,
+            };
+
+            if (!string.IsNullOrEmpty(extensionHint))
+            {
+                var pattern = $"*.{extensionHint.TrimStart('.')}";
+                options.FileTypeChoices = new[]
+                {
+                    new FilePickerFileType(extensionHint.ToUpperInvariant()) { Patterns = new[] { pattern } }
+                };
+            }
+
+            var file = await window.StorageProvider.SaveFilePickerAsync(options);
+            return file?.Path.LocalPath;
+        }
+
+        return null;
+    }
 }

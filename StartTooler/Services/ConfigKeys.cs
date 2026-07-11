@@ -12,4 +12,11 @@ public static class ConfigKeys
 
     /// <summary>旧 Anthropic 专用 key。新代码不读，保留以便未来需要时回滚。</summary>
     public const string Anthropic = "anthropic";
+
+    /// <summary>
+    /// 项目目录历史（List&lt;string&gt;，最多 10 条，新条目插队首，去重）。
+    /// v0.11 起独立于 ProjectConfig.RecentDirectories，Save 时同步写两边保兼容。
+    /// spec doc/0.11/02-settings-improve.md §3.1
+    /// </summary>
+    public const string ProjectHistory = "project_history";
 }

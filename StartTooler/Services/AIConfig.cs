@@ -21,4 +21,10 @@ public class AIConfig
     public string BaseUrl { get; set; } = "";
     public string Model { get; set; } = "";
     public string Protocol { get; set; } = "";
+
+    /// <summary>
+    /// AI 连接测试用的 prompt。v0.11 起用户在 UI 可自定义（spec doc/0.11/02-settings-improve.md §5.2）。
+    /// 老 db 反序列化缺失 → 默认 "请分析这张天文照片的主体、质量和拍摄参数"。
+    /// </summary>
+    public string TestPrompt { get; set; } = "请分析这张天文照片的主体、质量和拍摄参数";
 }

@@ -223,6 +223,12 @@
         <Setter Property="Background" Value="{DynamicResource Bg.Surface}"/>
     </Style>
 
+    <!-- v0.11: 表单验证错误样式（spec §3.2）—— 边框转 State.Danger 提醒用户 -->
+    <Style Selector="TextBox.error /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{DynamicResource State.Danger}"/>
+        <Setter Property="BorderThickness" Value="1.5"/>
+    </Style>
+
     <!-- NumericUpDown 样式（深色主题） -->
     <Style Selector="NumericUpDown">
         <Setter Property="Background" Value="{DynamicResource Bg.Surface}"/>

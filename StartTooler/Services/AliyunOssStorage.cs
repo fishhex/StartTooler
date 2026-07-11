@@ -292,6 +292,31 @@ public sealed class AliyunOssStorage : IOssStorage, IDisposable
         Debug.WriteLine($"[OSS] DeleteObject: objectKey={objectKey}");
     }
 
+    /// <summary>
+    /// v0.11 §4.2: 用 DoesBucketExist 验证 Endpoint / 凭据 / Bucket 三者联通。
+    /// true = 全部正常；false = 任一项失败（SDK 内部已 catch 网络 / 鉴权错误并返回 false）。
+    /// 不抛异常 —— 调用方在 UI 上把 false 翻译成"连接失败"提示。
+    /// </summary>
+    public Task<bool> TestConnectionAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        return Task.Run(() =>
+        {
+            try
+            {
+                var ok = _client.DoesBucketExist(_config.Bucket);
+                Debug.WriteLine($"[OSS] TestConnection: bucket={_config.Bucket}, ok={ok}");
+                return ok;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OSS] TestConnection exception: {ex.Message}");
+                return false;
+            }
+        }, ct);
+    }
+
     /// <summary>ETag / UploadId 太长打日志看花眼，截前 16 字符 + ... 标识。</summary>
     private static string ShortId(string? s)
     {

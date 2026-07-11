@@ -46,6 +46,7 @@ namespace StartTooler.Services;
             string apiKey,
             string baseUrl,
             string model,
+            string? prompt = null,
             CancellationToken ct = default)
         {
             // 输入校验（本地直接 fail，避免发无意义的请求）
@@ -58,13 +59,18 @@ namespace StartTooler.Services;
             if (string.IsNullOrWhiteSpace(model))
                 return new TestResult(false, "Model 为空，请先填写", 0);
 
+            // v0.11: 用户可自定义测试 prompt；空时用默认 "say 'ok'" 跟老行为一致
+            var effectivePrompt = string.IsNullOrWhiteSpace(prompt) ? "say 'ok'" : prompt!;
+            // 验证场景 max_tokens 给多一点，让用户自定义 prompt 能拿到完整回答
+            var maxTokens = string.IsNullOrWhiteSpace(prompt) ? 16 : 256;
+
             var sw = Stopwatch.StartNew();
             try
             {
                 var result = protocol switch
                 {
-                    "Anthropic" => await SendAnthropicAsync(baseUrl, apiKey, model, ct),
-                    "OpenAI" => await SendOpenAIAsync(baseUrl, apiKey, model, ct),
+                    "Anthropic" => await SendAnthropicAsync(baseUrl, apiKey, model, effectivePrompt, maxTokens, ct),
+                    "OpenAI" => await SendOpenAIAsync(baseUrl, apiKey, model, effectivePrompt, maxTokens, ct),
                     _ => new TestResult(false, $"未知协议：{protocol}", (int)sw.ElapsedMilliseconds),
                 };
                 return result;
@@ -86,7 +92,7 @@ namespace StartTooler.Services;
         }
     }
 
-    private static async Task<TestResult> SendAnthropicAsync(string baseUrl, string apiKey, string model, CancellationToken ct)
+    private static async Task<TestResult> SendAnthropicAsync(string baseUrl, string apiKey, string model, string prompt, int maxTokens, CancellationToken ct)
     {
         var url = baseUrl.TrimEnd('/') + "/v1/messages";
         var sw = Stopwatch.StartNew();
@@ -97,8 +103,8 @@ namespace StartTooler.Services;
         req.Content = JsonContent.Create(new
         {
             model,
-            max_tokens = 16,
-            messages = new[] { new { role = "user", content = "say 'ok'" } }
+            max_tokens = maxTokens,
+            messages = new[] { new { role = "user", content = prompt } }
         });
 
         var resp = await s_http.SendAsync(req, ct);
@@ -113,7 +119,7 @@ namespace StartTooler.Services;
         return new TestResult(false, $"HTTP {(int)resp.StatusCode}：{Truncate(body, 150)}", latency);
     }
 
-    private static async Task<TestResult> SendOpenAIAsync(string baseUrl, string apiKey, string model, CancellationToken ct)
+    private static async Task<TestResult> SendOpenAIAsync(string baseUrl, string apiKey, string model, string prompt, int maxTokens, CancellationToken ct)
     {
         var url = baseUrl.TrimEnd('/') + "/chat/completions";
         var sw = Stopwatch.StartNew();
@@ -123,8 +129,8 @@ namespace StartTooler.Services;
         req.Content = JsonContent.Create(new
         {
             model,
-            max_tokens = 16,
-            messages = new[] { new { role = "user", content = "say 'ok'" } }
+            max_tokens = maxTokens,
+            messages = new[] { new { role = "user", content = prompt } }
         });
 
         var resp = await s_http.SendAsync(req, ct);

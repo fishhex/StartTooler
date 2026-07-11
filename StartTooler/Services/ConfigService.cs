@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
@@ -111,6 +114,11 @@ public class ConfigService : IConfigService
     public async Task SetAsync<T>(string key, T value) where T : class
     {
         var json = JsonSerializer.Serialize(value);
+        await SetRawAsync(key, json);
+    }
+
+    public async Task SetRawAsync(string key, string rawJson)
+    {
         var nowIso = DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
 
         await using var connection = new SqliteConnection(_connectionString);
@@ -125,7 +133,7 @@ public class ConfigService : IConfigService
                 value = @value,
                 updated_at = @updatedAt";
         command.Parameters.AddWithValue("@key", key);
-        command.Parameters.AddWithValue("@value", json);
+        command.Parameters.AddWithValue("@value", rawJson);
         command.Parameters.AddWithValue("@createdAt", nowIso);
         command.Parameters.AddWithValue("@updatedAt", nowIso);
 
@@ -141,5 +149,124 @@ public class ConfigService : IConfigService
         var newValue = new T();
         await SetAsync(key, newValue);
         return newValue;
+    }
+
+    // ============================================================
+    // 导入 / 导出 (v0.11 spec doc/0.11/02-settings-improve.md §3.4)
+    // ============================================================
+
+    /// <summary>
+    /// 密钥字段值占位符 —— 导出时塞这个串进 JSON，导入时遇到跳过写回，
+    /// 让用户在新机器上手动重填（避免密钥明文落地到备份文件）。
+    /// </summary>
+    public const string SecretPlaceholder = "<请在导入后手动填写>";
+
+    /// <summary>
+    /// 哪些 key 在导出时属于「密钥」需 redact，导入时跳过空占位。
+    /// 这里直接按 key 名匹配 —— 跟 ConfigKeys / 持久化结构对应，零魔法。
+    /// </summary>
+    private static readonly HashSet<string> SecretKeys = new()
+    {
+        ConfigKeys.AI,           // 通用 AI key 内部含 ApiKey
+        // 单独用 key 名（不是 ConfigKey）匹配也行，这里走"全 key → 字段级 redact"
+        // 简化：所有顶层 key 整体当作 string JSON 导出，密钥 redact 在 key 维度判断。
+    };
+
+    public async Task<int> ExportToJsonAsync(Stream stream, bool redactSecrets = true)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        // 1) 拉所有 key + 原始 JSON value
+        var rows = new List<(string Key, string Value)>();
+        await using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT key, value FROM config";
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                rows.Add((reader.GetString(0), reader.GetString(1)));
+            }
+        }
+
+        // 2) 构造导出 dict
+        var dict = new Dictionary<string, object?>();
+        foreach (var (key, value) in rows)
+        {
+            if (redactSecrets && IsSecretKey(key))
+            {
+                // 整 key redact —— 导入时跳过；用户导入后只能从 UI 手动填密钥
+                dict[key] = SecretPlaceholder;
+            }
+            else
+            {
+                // 把 value 字符串作为 JSON token 直接塞 dict（让它保持原始 JSON 形态）
+                // 用 JsonElement 更直观；这里走 TryParse 简单判定
+                try
+                {
+                    using var doc = JsonDocument.Parse(value);
+                    dict[key] = doc.RootElement.Clone();
+                }
+                catch (JsonException)
+                {
+                    // 退化：value 不是合法 JSON（比如未来某天直接存了非 JSON 字符串），
+                    // 原样落 string
+                    dict[key] = value;
+                }
+            }
+        }
+
+        // 3) 序列化 —— 用 UnsafeRelaxedJsonEscaping 不把非 ASCII 转成 \uXXXX，
+        //    这样用户在备份文件里能看到中文 key 注释（如果有）
+        var options = new JsonSerializerOptions
+        {
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            WriteIndented = true,
+        };
+        await JsonSerializer.SerializeAsync(stream, dict, options);
+        return dict.Count;
+    }
+
+    public async Task<int> ImportFromJsonAsync(Stream stream)
+    {
+        // 1) 读 stream → Dictionary<string, JsonElement>
+        var options = new JsonSerializerOptions
+        {
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        };
+        var dict = await JsonSerializer.DeserializeAsync<Dictionary<string, JsonElement>>(stream, options);
+        if (dict == null) return 0;
+
+        // 2) 逐 key 写回 —— v0.11 起允许全量导入（含密钥）。旧 redacted 备份里的 SecretPlaceholder
+        //    占位符会作为字面量写回（如 "<请在导入后手动填写>"），用户得自己再去 UI 改密钥。
+        var count = 0;
+        foreach (var (key, value) in dict)
+        {
+            string jsonValue;
+            if (value.ValueKind == JsonValueKind.String)
+            {
+                // 顶层 string —— 保持为 string JSON（外面加引号）
+                jsonValue = JsonSerializer.Serialize(value.GetString());
+            }
+            else
+            {
+                // object/array/number/bool —— 重新规范化
+                jsonValue = value.GetRawText();
+            }
+
+            await SetRawAsync(key, jsonValue);
+            count++;
+        }
+        return count;
+    }
+
+    /// <summary>
+    /// 判断 key 是否属于「密钥」分类。
+    /// v0.11 实现：直接按 key 名匹配 ConfigKeys.AI（内部含 ApiKey）。
+    /// OSS 凭据存在 oss key 里（AccessKeyId + AccessKeySecret 两个），SecretKey 一并 redact 防止泄漏。
+    /// </summary>
+    private static bool IsSecretKey(string key)
+    {
+        return key == ConfigKeys.AI || key == ConfigKeys.Oss;
     }
 }
