@@ -70,7 +70,7 @@ public partial class MainWindowViewModel : ObservableObject
                 .GetAwaiter().GetResult() ?? new OssConfig();
         });
 
-        SettingsViewModel = new SettingsViewModel(new DirectoryPickerService(), new FilePickerService(), _configService);
+        SettingsViewModel = new SettingsViewModel(new DirectoryPickerService(), new FilePickerService(), _configService, ossFactory);
 
         // 创建 ViewModel
         // onOssNotConfigured: Gallery 触发上传时如果 OSS 未配置，由 MainWindow 弹对话框并提供「去设置」入口
@@ -167,13 +167,24 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (IsSettingsPage && SettingsViewModel.IsDirty)
         {
-            // 有未保存的修改，弹出确认对话框
-            var result = await ShowDiscardConfirmDialog();
-            if (!result)
-                return; // 用户取消，留在设置页
-
-            // 用户确认丢弃，重置状态
-            SettingsViewModel.DiscardChanges();
+            // v0.11 §6: 三选导航守卫 —— 保存并离开 / 放弃更改 / 取消
+            var result = await ShowUnsavedChangesChoiceAsync();
+            switch (result)
+            {
+                case DialogHelper.DialogChoice.Primary:
+                    // 保存并离开
+                    await SettingsViewModel.SaveCommand.ExecuteAsync(null);
+                    // Save 失败（验证错误）时 IsDirty 仍为 true，留在设置页
+                    if (SettingsViewModel.IsDirty) return;
+                    break;
+                case DialogHelper.DialogChoice.Secondary:
+                    // 放弃更改
+                    SettingsViewModel.DiscardChanges();
+                    break;
+                default:
+                    // Tertiary / Cancelled：取消，留在设置页
+                    return;
+            }
         }
 
         CurrentView = GalleryViewModel;
@@ -278,6 +289,27 @@ public partial class MainWindowViewModel : ObservableObject
             message: "离开将丢弃所有修改，确定吗？",
             primaryButtonText: "丢弃",
             secondaryButtonText: "取消");
+    }
+
+    /// <summary>
+    /// v0.11 §6: 三选导航守卫对话框。
+    ///   Primary = 保存并离开
+    ///   Secondary = 放弃更改
+    ///   Tertiary = 取消
+    /// 用户点 X / Esc 走 Cancelled → 也按"取消"处理（不离开）。
+    /// </summary>
+    private async Task<DialogHelper.DialogChoice> ShowUnsavedChangesChoiceAsync()
+    {
+        var window = DialogHelper.GetMainWindow();
+        if (window == null) return DialogHelper.DialogChoice.Cancelled;
+
+        return await DialogHelper.ShowChoiceAsync(
+            window,
+            title: "有未保存的修改",
+            message: "是否保存后再离开？",
+            primaryButtonText: "保存并离开",
+            secondaryButtonText: "放弃更改",
+            tertiaryButtonText: "取消");
     }
 
     partial void OnCurrentPageChanged(ViewPage value)

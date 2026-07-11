@@ -78,11 +78,11 @@
                     </Button.IsVisible>
                 </Button>
 
-                <!-- 次右：保存按钮（设置页） -->
+                <!-- 次右：保存按钮（设置页）—— v0.11 §3.3 Content 绑 SaveButtonText（"保存" ↔ "已保存 ✓"） -->
                 <Button Classes="secondary-button"
                         DockPanel.Dock="Right"
                         Margin="0,0,8,0"
-                        Content="保存"
+                        Content="{Binding SettingsViewModel.SaveButtonText}"
                         Command="{Binding SettingsViewModel.SaveCommand}"
                         IsEnabled="{Binding SettingsViewModel.IsDirty}"
                         IsVisible="{Binding IsSettingsPageVisible}"/>
