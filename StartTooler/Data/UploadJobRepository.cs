@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using StartTooler.Models;
+using StartTooler.Services;
 
 namespace StartTooler.Data;
 
@@ -15,17 +16,8 @@ public class UploadJobRepository : IUploadJobRepository
 
     public UploadJobRepository()
     {
-        var dbPath = GetDbPath();
-        _connectionString = $"Data Source={dbPath}";
+        _connectionString = $"Data Source={AppPaths.MediaDbPath}";
         EnsureTable();
-    }
-
-    private static string GetDbPath()
-    {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var appFolder = Path.Combine(appData, "StartTooler");
-        Directory.CreateDirectory(appFolder);
-        return Path.Combine(appFolder, "media.db");
     }
 
     private void EnsureTable()
