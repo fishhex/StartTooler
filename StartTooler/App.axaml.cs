@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using StartTooler.Services;
@@ -23,7 +24,12 @@ public partial class App : Application
             // 启动时加载保存的主题 + FFmpeg 路径
             await LoadSavedAppConfigAsync();
 
-            desktop.MainWindow = new MainWindow();
+            var mainWindow = new MainWindow();
+            desktop.MainWindow = mainWindow;
+
+            // v0.11: 把 MainWindow 的剪贴板句柄绑到全局 ClipboardService，
+            // VM 层调 SetTextAsync 就能用了（ViewModel 没有可视化树）。
+            mainWindow.Opened += (_, _) => ClipboardService.Attach(mainWindow);
         }
 
         base.OnFrameworkInitializationCompleted();
