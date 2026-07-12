@@ -66,6 +66,23 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty] private string? _scanStatusMessage;
     [ObservableProperty] private RefreshState _refreshState = RefreshState.Idle;
 
+    // v0.11: 状态栏用 — 上次刷新时间
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LastRefreshText))]
+    private DateTime? _lastRefreshTime;
+    public string LastRefreshText
+    {
+        get
+        {
+            if (LastRefreshTime == null) return "—";
+            var elapsed = DateTime.Now - LastRefreshTime.Value;
+            if (elapsed.TotalSeconds < 60) return "刚刚刷新";
+            if (elapsed.TotalMinutes < 60) return $"{(int)elapsed.TotalMinutes} 分钟前刷新";
+            if (elapsed.TotalHours < 24) return $"{(int)elapsed.TotalHours} 小时前刷新";
+            return LastRefreshTime.Value.ToString("yyyy-MM-dd HH:mm") + " 刷新";
+        }
+    }
+
     // === v2.3 多选模式 ===
     [ObservableProperty] private bool _isMultiSelectMode;
     [ObservableProperty] private string? _toastMessage;
@@ -301,6 +318,17 @@ public partial class GalleryViewModel : ObservableObject
     public bool HasNoProject => string.IsNullOrEmpty(ProjectPath);
     public bool IsEmpty => !HasNoProject && !IsLoadingDateGroups && DateGroups.Count == 0;
 
+    // === v0.11 状态栏字段（spec demand/06 §9） ===
+    /// <summary>当前视图的文件数（CurrentMediaFiles.Count）。通知走 OnCurrentMediaFilesChanged → CollectionChanged。</summary>
+    public int CurrentFileCount => CurrentMediaFiles.Count;
+    /// <summary>当前视图已上传数（CurrentMediaFiles 中 IsUploaded=true 的）。每次 CurrentMediaFiles 变化重算时通知。</summary>
+    public int CurrentUploadedCount => CurrentMediaFiles.Count(f => f.IsUploaded);
+    /// <summary>状态栏友好文字："已上传 X / Y"（Y=CurrentFileCount，X=CurrentUploadedCount）。</summary>
+    public string UploadedFileStat =>
+        CurrentFileCount == 0
+            ? "—"
+            : $"已上传 {CurrentUploadedCount} / {CurrentFileCount}";
+
     // === v0.6 排序联动（spec §3.3.2 / v0.6.1 §6.2） ===
     // 切排序方式 → 重新加载当前视图（Date 或 Tag），按新排序展示。
     // 走 _cts 复用 SelectAsync 的 cancel-and-restart 模式，避免双发请求。
@@ -349,6 +377,11 @@ public partial class GalleryViewModel : ObservableObject
         // CurrentMediaFiles 内容变化（全选/反选命令的可用性主要依赖它）
         SelectAllCommand.NotifyCanExecuteChanged();
         InvertSelectionCommand.NotifyCanExecuteChanged();
+
+        // v0.11: 状态栏统计（任何集合变化都重算）
+        OnPropertyChanged(nameof(CurrentFileCount));
+        OnPropertyChanged(nameof(CurrentUploadedCount));
+        OnPropertyChanged(nameof(UploadedFileStat));
 
         // v0.12: 订阅新增 file 的 PropertyChanged，监听 Tags 变化触发左栏 TagGroups 刷新。
         // OldItems / Reset 时必须解绑，否则 MediaFile 引用泄漏（spec §6.4 内存风险）。
@@ -835,6 +868,7 @@ public partial class GalleryViewModel : ObservableObject
 
             RefreshState = Models.RefreshState.Completed;
             ScanStatusMessage = $"扫描完成 · 共 {result.Processed} 个文件，新增 {result.NewFiles}，更新 {result.UpdatedFiles}";
+            LastRefreshTime = DateTime.Now;  // v0.11: 状态栏用
         }
         catch (OperationCanceledException)
         {
