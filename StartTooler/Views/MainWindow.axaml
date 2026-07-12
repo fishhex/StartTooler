@@ -10,7 +10,7 @@
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="StartTooler.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="{Binding Title}"
+        Title="{Binding WindowTitle}"
         Width="1200"
         Height="800"
         MinWidth="800"
@@ -24,13 +24,21 @@
         <vm:MainWindowViewModel/>
     </Window.DataContext>
 
-    <!-- v2.3 布局：
+    <!-- v2.3 布局（v0.11 加状态栏）：
          Col 0: NavRail (80px)        Col 1: 内容
          Row 0: 标题栏 (38px, 跨两列)
          Row 1: 工具栏 (40px)         (NavRail 顶部留白 40px)
-         Row 2: 页面内容 (*)          NavRail 主体 -->
+         Row 2: 页面内容 (*)          NavRail 主体
+         Row 3: 状态栏 (28px)         跨两列 (spec demand/06 §9) -->
+    <Window.KeyBindings>
+        <!-- v0.11: NavRail 快捷键 (spec demand/06 §4. 无键盘快捷键) -->
+        <KeyBinding Gesture="Ctrl+1" Command="{Binding NavigateToMediaCommand}"/>
+        <KeyBinding Gesture="Ctrl+2" Command="{Binding NavigateToUploadServerCommand}"/>
+        <KeyBinding Gesture="Ctrl+3" Command="{Binding NavigateToTrashCommand}"/>
+        <KeyBinding Gesture="Ctrl+4" Command="{Binding NavigateToSettingsCommand}"/>
+    </Window.KeyBindings>
     <Grid ColumnDefinitions="80,*"
-          RowDefinitions="38,40,*">
+          RowDefinitions="38,40,*,28">
         <!-- Row 0 跨两列: 系统标题栏 -->
         <Panel Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0"
                x:Name="TitleBar"
@@ -63,12 +71,25 @@
                 BorderBrush="{DynamicResource Bg.Divider}"
                 BorderThickness="0,0,0,1">
             <DockPanel>
-                <!-- 最右：返回按钮（设置页 / 垃圾筒页） -->
+                <!-- 最右：返回按钮（设置页 / 垃圾筒页，v0.11 加 ← 箭头 spec demand/06 §9.） -->
                 <Button Classes="secondary-button"
                         DockPanel.Dock="Right"
                         Margin="0,0,16,0"
-                        Content="返回"
                         Command="{Binding NavigateToMediaCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <!-- 左箭头 ← Path -->
+                        <Path Data="M16,0 L6,8 L16,16"
+                              Stretch="Uniform"
+                              Width="10" Height="10"
+                              Stroke="{DynamicResource Text.Secondary}"
+                              StrokeThickness="2"
+                              Fill="Transparent"
+                              VerticalAlignment="Center"/>
+                        <TextBlock Text="返回"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
                     <Button.IsVisible>
                         <MultiBinding Converter="{x:Static BoolConverters.Or}">
                             <Binding Path="IsSettingsPageVisible"/>
@@ -108,16 +129,38 @@
                     </StackPanel>
                 </Button>
 
-                <!-- 排序 ComboBox（v0.6）：刷新的左侧，Gallery 页常驻 -->
+                <!-- 排序 ComboBox（v0.6 / v0.11 加 ↑↓ 图标 spec demand/06 §8.） -->
                 <ComboBox DockPanel.Dock="Right"
                           SelectedIndex="{Binding GalleryViewModel.SortModeIndex}"
                           IsVisible="{Binding IsGalleryPage}"
                           ToolTip.Tip="排序方式"
                           Classes="sort-combo"
-                          Width="80"
+                          Width="100"
                           Margin="0,0,8,0">
-                    <ComboBoxItem Content="时间↓"/>
-                    <ComboBoxItem Content="评分↓"/>
+                    <ComboBoxItem>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Data="M7,4 L7,16 M4,7 L7,4 L10,7 M2,18 L13,18"
+                                  Stroke="{DynamicResource Text.Secondary}"
+                                  StrokeThickness="1.5"
+                                  Fill="Transparent"
+                                  Width="14" Height="14"
+                                  Stretch="Uniform"
+                                  VerticalAlignment="Center"/>
+                            <TextBlock Text="时间" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </ComboBoxItem>
+                    <ComboBoxItem>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Data="M12,2 L15,8 L22,9 L17,14 L18,21 L12,18 L6,21 L7,14 L2,9 L9,8 Z"
+                                  Stroke="{DynamicResource Text.Secondary}"
+                                  StrokeThickness="1.5"
+                                  Fill="Transparent"
+                                  Width="14" Height="14"
+                                  Stretch="Uniform"
+                                  VerticalAlignment="Center"/>
+                            <TextBlock Text="评分" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </ComboBoxItem>
                 </ComboBox>
 
                 <!-- 左侧：动作按钮组（媒体页） -->
@@ -238,9 +281,12 @@
             <controls:NavRail DataContext="{Binding}"/>
         </Border>
 
-        <!-- Row 2 Col 1: 页面内容 -->
-        <ContentControl Grid.Column="1" Grid.Row="2" Content="{Binding CurrentView}">
-            <ContentControl.DataTemplates>
+        <!-- Row 2 Col 1: 页面内容（v0.11 用 TransitioningContentControl 加 PageSlide 过渡，spec demand/06 §10.） -->
+        <TransitioningContentControl Grid.Column="1" Grid.Row="2" Content="{Binding CurrentView}">
+            <TransitioningContentControl.PageTransition>
+                <PageSlide Duration="0:0:0.24" Orientation="Horizontal"/>
+            </TransitioningContentControl.PageTransition>
+            <TransitioningContentControl.DataTemplates>
                 <DataTemplate DataType="{x:Type vm:GalleryViewModel}">
                     <views:GalleryView DataContext="{Binding}"/>
                 </DataTemplate>
@@ -254,8 +300,8 @@
                 <DataTemplate DataType="{x:Type vm:TrashViewModel}">
                     <views:TrashView DataContext="{Binding}"/>
                 </DataTemplate>
-            </ContentControl.DataTemplates>
-        </ContentControl>
+            </TransitioningContentControl.DataTemplates>
+        </TransitioningContentControl>
 
         <!-- 右下角通知浮层（跨全窗口） -->
         <Panel Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="2"
@@ -276,5 +322,47 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </Panel>
+
+        <!-- v0.11 状态栏（spec demand/06 §12. 无状态栏）跨两列 28px -->
+        <Border Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="3"
+                Background="{DynamicResource Bg.Outer}"
+                BorderBrush="{DynamicResource Bg.Divider}"
+                BorderThickness="0,1,0,0"
+                Padding="16,0">
+            <DockPanel>
+                <!-- 左侧：已上传 / 当前文件数（仅 Gallery 页显示） -->
+                <TextBlock DockPanel.Dock="Left"
+                           Text="{Binding GalleryViewModel.UploadedFileStat}"
+                           FontSize="11"
+                           Foreground="{DynamicResource Text.Secondary}"
+                           VerticalAlignment="Center"/>
+
+                <!-- 中间：上次刷新时间（仅 Gallery 页显示） -->
+                <TextBlock DockPanel.Dock="Left"
+                           Text="{Binding GalleryViewModel.LastRefreshText}"
+                           FontSize="11"
+                           Foreground="{DynamicResource Text.Disabled}"
+                           VerticalAlignment="Center"
+                           Margin="16,0,0,0">
+                    <TextBlock.IsVisible>
+                        <Binding Path="IsGalleryPage"/>
+                    </TextBlock.IsVisible>
+                </TextBlock>
+
+                <!-- 右侧：OSS 状态圆点 + 文字 -->
+                <StackPanel DockPanel.Dock="Right"
+                            Orientation="Horizontal"
+                            Spacing="6"
+                            VerticalAlignment="Center">
+                    <Ellipse Width="8" Height="8"
+                             Fill="{Binding OssStatusColor}"
+                             VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding OssStatusText}"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text.Secondary}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
     </Grid>
 </Window>
