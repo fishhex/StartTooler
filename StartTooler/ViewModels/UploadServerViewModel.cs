@@ -1,7 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Media.Imaging;
@@ -13,11 +18,24 @@ using StartTooler.Services;
 
 namespace StartTooler.ViewModels;
 
+/// <summary>
+/// 上传历史条目：每次 OnUploadSuccess 追加一条，UI 在 ScrollViewer 里滚动展示。
+/// 故意不做持久化（重启清空），避免 LocalAddress/路径等历史信息误导。
+/// </summary>
+public class UploadHistoryEntry
+{
+    public string FileName { get; set; } = "";
+    public long FileSize { get; set; }
+    public DateTime Timestamp { get; set; }
+    public bool IsSuccess { get; set; }
+}
+
 public partial class UploadServerViewModel : ObservableObject, IDisposable
 {
     private readonly GalleryViewModel _gallery;
     private UploadServerService? _server;
     private CancellationTokenSource? _cts;
+    private string? _lastProjectPath;  // 监听项目目录变化，自动停服
 
     [ObservableProperty] private int _port = 8765;
     [ObservableProperty]
@@ -33,6 +51,26 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     /// <summary>当前 QR/URL 是否指向公网地址（公网 relay 在跑）。</summary>
     [ObservableProperty] private bool _isPublicMode;
 
+    /// <summary>
+    /// v0.11: 状态消息非冲突态时是否显示（绿）。避免绿色 TextBlock 在冲突态或空消息时残留。
+    /// </summary>
+    public bool ShowSuccessStatus => !IsPortConflict && !string.IsNullOrEmpty(StatusMessage);
+
+    // v0.11 上传历史 + 复制链接
+    public ObservableCollection<UploadHistoryEntry> UploadHistory { get; } = new();
+    /// <summary>历史非空时显示 ScrollViewer 区块。</summary>
+    public bool HasUploadHistory => UploadHistory.Count > 0;
+    [ObservableProperty] private string _copyButtonText = "📋";
+
+    // v0.11 端口冲突（State.Danger 颜色 + 建议空闲端口）
+    [ObservableProperty] private bool _isPortConflict;
+    [ObservableProperty] private List<int> _suggestedPorts = new();
+
+    // v0.11 多 IP 列表（StartServer 成功后从 Dns 拿，运行时可复制）
+    [ObservableProperty] private ObservableCollection<string> _localAddresses = new();
+    /// <summary>多 IP 列表非空时显示区块（至少有一个 IPv4 才显示）。</summary>
+    public bool HasLocalAddresses => LocalAddresses.Count > 0;
+
     [ObservableProperty] private PublicRelayViewModel publicRelayViewModel;
 
     public bool CanStart => !IsRunning;
@@ -44,11 +82,35 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         PublicRelayViewModel = publicRelayViewModel;
         // 订阅公网代理状态/URL 变化，让二维码跟着切换
         publicRelayViewModel.PropertyChanged += OnPublicRelayPropertyChanged;
+        // 监听项目目录变化：切项目时停服（路径已变，上传的文件会落错位置）
+        _gallery.PropertyChanged += OnGalleryPropertyChanged;
+        // v0.11: 集合增删要通知 HasXxx 派生属性
+        UploadHistory.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasUploadHistory));
+        LocalAddresses.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasLocalAddresses));
     }
+
+    private void OnGalleryPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(GalleryViewModel.ProjectPath)) return;
+        var newPath = _gallery.ProjectPath;
+        if (IsRunning && !string.IsNullOrEmpty(_lastProjectPath)
+            && !string.Equals(newPath, _lastProjectPath, StringComparison.Ordinal))
+        {
+            Trace.WriteLine($"[UploadServerVM] ProjectPath changed {_lastProjectPath} -> {newPath}, auto stopping server");
+            StopServer();
+        }
+    }
+
+    // v0.11: 状态消息/冲突态变化时通知 ShowSuccessStatus
+    partial void OnStatusMessageChanged(string? value) => OnPropertyChanged(nameof(ShowSuccessStatus));
+    partial void OnIsPortConflictChanged(bool value) => OnPropertyChanged(nameof(ShowSuccessStatus));
 
     [RelayCommand(CanExecute = nameof(CanStart))]
     private async Task StartServer()
     {
+        // 重置冲突态（重新启动时清掉上次的红色提示）
+        IsPortConflict = false;
+        SuggestedPorts = new List<int>();
         ErrorMessage = null;
         StatusMessage = "正在启动...";
 
@@ -56,13 +118,28 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         {
             _server = new UploadServerService(_gallery.ProjectPath ?? "");
             _cts = new CancellationTokenSource();
+            _lastProjectPath = _gallery.ProjectPath;
 
             _server.OnUploadSuccess += path =>
             {
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
                     var fileName = Path.GetFileName(path);
+                    long size = 0;
+                    try { size = new FileInfo(path).Length; } catch { /* 文件可能已移走 */ }
+
                     RecentUploadMessage = $"✓ 已上传: {fileName}";
+                    UploadHistory.Insert(0, new UploadHistoryEntry
+                    {
+                        FileName = fileName,
+                        FileSize = size,
+                        Timestamp = DateTime.Now,
+                        IsSuccess = true,
+                    });
+                    // 限制最多保留 50 条（避免极端场景内存膨胀；UI MaxHeight=200 也基本只能看 10 来条）
+                    while (UploadHistory.Count > 50)
+                        UploadHistory.RemoveAt(UploadHistory.Count - 1);
+
                     Trace.WriteLine($"[UploadServerVM] Upload success: {path}");
                 });
             };
@@ -80,16 +157,93 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
 
             IsRunning = true;
             StatusMessage = "服务已启动";
+
+            // 拉取所有本机 IPv4（多网卡 / VPN / 虚拟机都可能给多个 IP；loopback 也包含便于本地调试）
+            var addrs = Dns.GetHostEntry(Dns.GetHostName())
+                .AddressList
+                .Where(ip => ip.AddressFamily == AddressFamily.InterNetwork)
+                .Select(ip => ip.ToString())
+                .ToList();
+            LocalAddresses.Clear();
+            foreach (var a in addrs) LocalAddresses.Add(a);
+            Trace.WriteLine($"[UploadServerVM] LocalAddresses: {string.Join(",", LocalAddresses)}");
+
             // 决定 QR 用哪个 URL：公网 relay 在跑就用公网，否则用局域网
             UpdateQrForMode();
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"启动失败: {ex.Message}";
-            StatusMessage = "启动失败";
             Trace.WriteLine($"[UploadServerVM] Start error: {ex}");
+            HandleStartError(ex);
             _server?.Dispose();
             _server = null;
+        }
+    }
+
+    /// <summary>
+    /// 启动失败分类：端口冲突（HttpListenerException + "address already in use"）→ 红色提示 + 建议空闲端口；
+    /// 其他 → 通用错误。spec §3.3。
+    /// </summary>
+    private void HandleStartError(Exception ex)
+    {
+        var msg = ex.Message ?? "";
+        var isConflict = ex is HttpListenerException
+            || msg.Contains("address already in use", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("无法绑定", StringComparison.OrdinalIgnoreCase);
+
+        if (isConflict)
+        {
+            IsPortConflict = true;
+            var free = FindFreePorts(3);
+            SuggestedPorts = free;
+            StatusMessage = "端口冲突";
+            ErrorMessage = free.Count == 0
+                ? $"端口 {Port} 被占用，且未找到可用端口（建议手动改 8765-65535 范围）"
+                : $"端口 {Port} 被占用，建议改用 {string.Join(" / ", free)} 之一";
+        }
+        else
+        {
+            IsPortConflict = false;
+            ErrorMessage = $"启动失败: {msg}";
+            StatusMessage = "启动失败";
+        }
+    }
+
+    /// <summary>
+    /// 扫连续端口找 N 个空闲的。返回 0~N 个（极端情况可能 0 个）。
+    /// 失败 cost 是一次 TcpListener bind/unbind，开销 O(N)；N 默认 3 完全可接受。
+    /// </summary>
+    private static List<int> FindFreePorts(int count)
+    {
+        var ports = new List<int>();
+        for (int p = 8765; p <= 65535 && ports.Count < count; p++)
+        {
+            try
+            {
+                using var s = new TcpListener(IPAddress.Loopback, p);
+                s.Start();
+                s.Stop();
+                ports.Add(p);
+            }
+            catch
+            {
+                // 端口被占用，跳过
+            }
+        }
+        return ports;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanStart))]
+    private void UseRandomPort(int? pickPort = null)
+    {
+        if (pickPort is int p && p > 0)
+        {
+            Port = p;
+        }
+        else
+        {
+            var free = FindFreePorts(1);
+            if (free.Count > 0) Port = free[0];
         }
     }
 
@@ -100,14 +254,42 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         _server?.Stop();
         _server?.Dispose();
         _server = null;
+        _lastProjectPath = null;
 
         IsRunning = false;
         UploadUrl = null;
         QrCodeImage?.Dispose();
         QrCodeImage = null;
         IsPublicMode = false;
+        IsPortConflict = false;
+        SuggestedPorts = new List<int>();
+        LocalAddresses.Clear();
         StatusMessage = "服务已停止";
         ErrorMessage = null;
+    }
+
+    /// <summary>
+    /// 复制 UploadUrl 到剪贴板，按钮短暂变 "已复制" 反馈。spec §3.2。
+    /// 走 <see cref="ClipboardService"/>（启动时 App 把 MainWindow.Clipboard 绑进来）。
+    /// </summary>
+    [RelayCommand]
+    private async Task CopyUrl()
+    {
+        if (string.IsNullOrEmpty(UploadUrl)) return;
+        await ClipboardService.SetTextAsync(UploadUrl);
+        CopyButtonText = "已复制";
+        await Task.Delay(1500);
+        CopyButtonText = "📋";
+    }
+
+    /// <summary>
+    /// 复制单个 IP（多网卡列表里每行一个复制按钮）。CommandParameter 传 IP 字符串。
+    /// </summary>
+    [RelayCommand]
+    private async Task CopyAddress(string? address)
+    {
+        if (string.IsNullOrEmpty(address)) return;
+        await ClipboardService.SetTextAsync(address);
     }
 
     private void OnPublicRelayPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -176,6 +358,7 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _gallery.PropertyChanged -= OnGalleryPropertyChanged;
         PublicRelayViewModel.PropertyChanged -= OnPublicRelayPropertyChanged;
         StopServer();
         _cts?.Dispose();

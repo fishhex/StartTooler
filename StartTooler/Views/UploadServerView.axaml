@@ -30,7 +30,7 @@
                                    Foreground="{DynamicResource Text.Secondary}"
                                    TextWrapping="Wrap"/>
 
-                        <!-- 端口配置 -->
+                        <!-- 端口配置 + 随机端口按钮（冲突时显示） -->
                         <Grid ColumnDefinitions="100,*">
                             <TextBlock Grid.Column="0"
                                        Text="端口"
@@ -44,8 +44,38 @@
                                                Width="120"
                                                IsEnabled="{Binding !IsRunning}"
                                                VerticalAlignment="Center"/>
+                                <Button Content="🎲 随机端口"
+                                        Command="{Binding UseRandomPortCommand}"
+                                        IsVisible="{Binding IsPortConflict}"
+                                        VerticalAlignment="Center"
+                                        Classes="secondary-button"/>
                             </StackPanel>
                         </Grid>
+
+                        <!-- 端口冲突时的建议端口 -->
+                        <StackPanel Spacing="6"
+                                    IsVisible="{Binding IsPortConflict}">
+                            <TextBlock Text="建议端口："
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Text.Secondary}"/>
+                            <ItemsControl ItemsSource="{Binding SuggestedPorts}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Content="{Binding}"
+                                                Command="{Binding $parent[UserControl].DataContext.UseRandomPortCommand}"
+                                                CommandParameter="{Binding}"
+                                                Margin="0,0,6,0"
+                                                Padding="10,4"
+                                                Classes="secondary-button"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
 
                         <!-- 启动按钮 -->
                         <StackPanel Orientation="Horizontal" Spacing="12">
@@ -59,17 +89,53 @@
                                     IsVisible="{Binding IsRunning}"/>
                         </StackPanel>
 
-                        <!-- 状态消息 -->
+                        <!-- 状态消息（端口冲突时 State.Danger 颜色，否则 State.Success） -->
+                        <TextBlock Text="{Binding StatusMessage}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource State.Danger}"
+                                   IsVisible="{Binding IsPortConflict}"/>
                         <TextBlock Text="{Binding StatusMessage}"
                                    FontSize="12"
                                    Foreground="{DynamicResource State.Success}"
-                                   IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                   IsVisible="{Binding ShowSuccessStatus}"/>
 
                         <!-- 错误消息 -->
                         <TextBlock Text="{Binding ErrorMessage}"
                                    FontSize="12"
                                    Foreground="{DynamicResource State.Error}"
+                                   TextWrapping="Wrap"
                                    IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <!-- 上传历史（最多 50 条 ScrollViewer 滚动；空时不显示） -->
+                        <StackPanel Spacing="6"
+                                    IsVisible="{Binding HasUploadHistory}">
+                            <TextBlock Text="最近上传"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text.Primary}"/>
+                            <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding UploadHistory}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2">
+                                                <TextBlock Text="{Binding FileName}"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource Text.Primary}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxWidth="220"/>
+                                                <TextBlock Text="{Binding FileSize, StringFormat={}{0:N0} B}"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource Text.Secondary}"/>
+                                                <TextBlock Text="✓"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource State.Success}"
+                                                           IsVisible="{Binding IsSuccess}"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- 右：二维码（运行时显示） -->
@@ -100,18 +166,55 @@
                                Height="180"
                                HorizontalAlignment="Center"/>
 
-                        <TextBlock Text="{Binding UploadUrl}"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource Text.Secondary}"
-                                   HorizontalAlignment="Center"
-                                   TextWrapping="Wrap"
-                                   TextAlignment="Center"
-                                   MaxWidth="220"/>
+                        <!-- URL：可读 TextBox + 复制按钮（spec §3.2） -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0"
+                                     Text="{Binding UploadUrl}"
+                                     IsReadOnly="True"
+                                     FontSize="11"
+                                     TextWrapping="Wrap"
+                                     MaxWidth="220"/>
+                            <Button Grid.Column="1"
+                                    Content="{Binding CopyButtonText}"
+                                    Command="{Binding CopyUrlCommand}"
+                                    Classes="secondary-button"
+                                    Margin="4,0,0,0"
+                                    Padding="8,4"
+                                    VerticalAlignment="Top"/>
+                        </Grid>
 
+                        <!-- 多 IP 列表（spec §3.4） -->
+                        <StackPanel Spacing="4"
+                                    IsVisible="{Binding HasLocalAddresses}">
+                            <TextBlock Text="本机 IP："
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Text.Secondary}"
+                                       HorizontalAlignment="Center"/>
+                            <ItemsControl ItemsSource="{Binding LocalAddresses}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                                            <TextBlock Text="{Binding}"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource Text.Primary}"/>
+                                            <Button Content="📋"
+                                                    FontSize="10"
+                                                    Padding="4,2"
+                                                    Command="{Binding $parent[UserControl].DataContext.CopyAddressCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <!-- 最近一次上传的瞬时提示（保留 v0.10 行为；详细列表走 ScrollViewer） -->
                         <TextBlock Text="{Binding RecentUploadMessage}"
                                    FontSize="12"
                                    Foreground="{DynamicResource Accent.Stellar}"
                                    HorizontalAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   MaxWidth="220"
                                    IsVisible="{Binding RecentUploadMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     </StackPanel>
                 </Grid>
@@ -124,7 +227,7 @@
                 <Border Padding="20,12,20,20"
                         Background="{DynamicResource Bg.SurfaceElevated}"
                         CornerRadius="6">
-                    <StackPanel Spacing="10">
+                    <StackPanel Spacing="12">
 
                         <TextBlock Text="通过 SSH 在 VPS 上部署代理，手机扫码通过公网中转到本机 StartTooler。"
                                    FontSize="12"
@@ -136,126 +239,233 @@
                                    Foreground="{DynamicResource State.Error}"
                                    IsVisible="{Binding PublicRelayViewModel.IsProjectPathSet, Converter={x:Static BoolConverters.Not}}"/>
 
-                        <!-- 认证方式 -->
-                        <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="认证方式" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
-                            <ComboBox Grid.Column="1"
-                                      SelectedIndex="{Binding PublicRelayViewModel.AuthMethodIndex}"
-                                      Width="200"
-                                      HorizontalAlignment="Left">
-                                <ComboBoxItem Content="密码"/>
-                                <ComboBoxItem Content="SSH Key"/>
-                            </ComboBox>
-                        </Grid>
+                        <!-- 第一步：VPS 连接（spec §4.1） -->
+                        <Border Background="{DynamicResource Bg.Surface}"
+                                CornerRadius="8"
+                                Padding="16">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0"
+                                               Text="第一步：VPS 连接"
+                                               FontSize="14"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text.Primary}"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="已保存 ✓"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource State.Success}"
+                                               VerticalAlignment="Center"
+                                               IsVisible="{Binding PublicRelayViewModel.Step1Done}"/>
+                                </Grid>
 
-                        <!-- SSH Host -->
-                        <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="SSH Host" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
-                            <TextBox Grid.Column="1" Text="{Binding PublicRelayViewModel.SshHost}" Watermark="例如 vps.example.com"/>
-                        </Grid>
+                                <!-- 认证方式 -->
+                                <Grid ColumnDefinitions="100,*">
+                                    <TextBlock Grid.Column="0" Text="认证方式" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1"
+                                              SelectedIndex="{Binding PublicRelayViewModel.AuthMethodIndex}"
+                                              Width="200"
+                                              HorizontalAlignment="Left">
+                                        <ComboBoxItem Content="密码"/>
+                                        <ComboBoxItem Content="SSH Key"/>
+                                    </ComboBox>
+                                </Grid>
 
-                        <!-- SSH Port -->
-                        <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="SSH Port" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
-                            <NumericUpDown Grid.Column="1" Value="{Binding PublicRelayViewModel.SshPort}"
-                                           Minimum="1" Maximum="65535" Width="120" HorizontalAlignment="Left"/>
-                        </Grid>
+                                <!-- SSH Host -->
+                                <Grid ColumnDefinitions="100,*">
+                                    <TextBlock Grid.Column="0" Text="SSH Host" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" Text="{Binding PublicRelayViewModel.SshHost}" Watermark="例如 vps.example.com"/>
+                                </Grid>
 
-                        <!-- User -->
-                        <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="User" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
-                            <TextBox Grid.Column="1" Text="{Binding PublicRelayViewModel.SshUser}" Watermark="SSH 用户名"/>
-                        </Grid>
+                                <!-- SSH Port -->
+                                <Grid ColumnDefinitions="100,*">
+                                    <TextBlock Grid.Column="0" Text="SSH Port" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
+                                    <NumericUpDown Grid.Column="1" Value="{Binding PublicRelayViewModel.SshPort}"
+                                                   Minimum="1" Maximum="65535" Width="120" HorizontalAlignment="Left"/>
+                                </Grid>
 
-                        <!-- Password -->
-                        <Grid ColumnDefinitions="100,*" IsVisible="{Binding PublicRelayViewModel.ShowPasswordFields}">
-                            <TextBlock Grid.Column="0" Text="Password" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
-                            <TextBox Grid.Column="1" Text="{Binding PublicRelayViewModel.SshPassword}" PasswordChar="•"/>
-                        </Grid>
+                                <!-- User -->
+                                <Grid ColumnDefinitions="100,*">
+                                    <TextBlock Grid.Column="0" Text="User" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" Text="{Binding PublicRelayViewModel.SshUser}" Watermark="SSH 用户名"/>
+                                </Grid>
 
-                        <!-- SSH Key -->
-                        <Grid ColumnDefinitions="100,*" IsVisible="{Binding PublicRelayViewModel.ShowKeyFields}">
-                            <TextBlock Grid.Column="0" Text="Key Path" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
-                            <DockPanel Grid.Column="1">
-                                <Button DockPanel.Dock="Right"
-                                        Content="浏览..."
-                                        Command="{Binding PublicRelayViewModel.BrowseKeyCommand}"
-                                        Margin="8,0,0,0"/>
-                                <TextBox Text="{Binding PublicRelayViewModel.SshKeyPath}" Watermark="例如 ~/.ssh/id_rsa"/>
-                            </DockPanel>
-                        </Grid>
+                                <!-- 认证切换防抖：Password / Key 区域 MinHeight 固定（spec §4.2） -->
+                                <Grid ColumnDefinitions="100,*">
+                                    <TextBlock Grid.Column="0" Text="凭据" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Top" Margin="0,8,0,0"/>
+                                    <StackPanel Grid.Column="1" Spacing="6">
+                                        <Border MinHeight="60"
+                                                IsVisible="{Binding PublicRelayViewModel.ShowPasswordFields}">
+                                            <TextBox Text="{Binding PublicRelayViewModel.SshPassword}"
+                                                     PasswordChar="•"
+                                                     Watermark="SSH 密码"
+                                                     VerticalAlignment="Top"/>
+                                        </Border>
+                                        <Border MinHeight="60"
+                                                IsVisible="{Binding PublicRelayViewModel.ShowKeyFields}">
+                                            <DockPanel>
+                                                <Button DockPanel.Dock="Right"
+                                                        Content="浏览..."
+                                                        Command="{Binding PublicRelayViewModel.BrowseKeyCommand}"
+                                                        Margin="8,0,0,0"
+                                                        Classes="secondary-button"/>
+                                                <TextBox Text="{Binding PublicRelayViewModel.SshKeyPath}"
+                                                         Watermark="例如 ~/.ssh/id_rsa"
+                                                         VerticalAlignment="Top"/>
+                                            </DockPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </Grid>
 
-                        <!-- Remote Path -->
-                        <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="Remote Path" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
-                            <TextBox Grid.Column="1" Text="{Binding PublicRelayViewModel.SshRemotePath}" Watermark="~/starttooler"/>
-                        </Grid>
+                                <!-- Remote Path -->
+                                <Grid ColumnDefinitions="100,*">
+                                    <TextBlock Grid.Column="0" Text="Remote Path" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" Text="{Binding PublicRelayViewModel.SshRemotePath}" Watermark="~/starttooler"/>
+                                </Grid>
 
-                        <!-- HTTP Port -->
-                        <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="HTTP Port" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
-                            <NumericUpDown Grid.Column="1" Value="{Binding PublicRelayViewModel.HttpPort}"
-                                           Minimum="1" Maximum="65535" Width="120" HorizontalAlignment="Left"/>
-                        </Grid>
+                                <!-- 架构 -->
+                                <Grid ColumnDefinitions="100,*">
+                                    <TextBlock Grid.Column="0" Text="VPS 架构" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1"
+                                              SelectedIndex="{Binding PublicRelayViewModel.RemoteArchIndex}"
+                                              Width="200"
+                                              HorizontalAlignment="Left">
+                                        <ComboBoxItem Content="自动检测"/>
+                                        <ComboBoxItem Content="amd64"/>
+                                        <ComboBoxItem Content="arm64"/>
+                                    </ComboBox>
+                                </Grid>
 
-                        <!-- TCP Port -->
-                        <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="TCP Port" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
-                            <NumericUpDown Grid.Column="1" Value="{Binding PublicRelayViewModel.TcpPort}"
-                                           Minimum="1" Maximum="65535" Width="120" HorizontalAlignment="Left"/>
-                        </Grid>
+                                <!-- 第一步底部：保存 -->
+                                <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,4,0,0">
+                                    <Button Content="保存"
+                                            Classes="primary-button"
+                                            Command="{Binding PublicRelayViewModel.SaveCommand}"
+                                            IsEnabled="{Binding PublicRelayViewModel.IsDirty}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
 
-                        <!-- Public Host -->
-                        <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="公网 Host" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
-                            <TextBox Grid.Column="1" Text="{Binding PublicRelayViewModel.PublicHost}" Watermark="留空用 SSH Host"/>
-                        </Grid>
+                        <!-- 第二步：服务配置（Step1Done 后才显示） -->
+                        <Border Background="{DynamicResource Bg.Surface}"
+                                CornerRadius="8"
+                                Padding="16"
+                                IsVisible="{Binding PublicRelayViewModel.Step1Done}">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0"
+                                               Text="第二步：服务配置"
+                                               FontSize="14"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text.Primary}"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="已部署 ✓"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource State.Success}"
+                                               VerticalAlignment="Center"
+                                               IsVisible="{Binding PublicRelayViewModel.Step2Done}"/>
+                                </Grid>
 
-                        <!-- 按钮 -->
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-                            <Button Content="保存" Classes="secondary-button"
-                                    Command="{Binding PublicRelayViewModel.SaveCommand}"
-                                    IsEnabled="{Binding PublicRelayViewModel.IsDirty}"/>
-                            <Button Content="部署" Classes="secondary-button"
-                                    Command="{Binding PublicRelayViewModel.DeployCommand}"/>
-                            <Button Content="启动" Classes="primary-button"
-                                    Command="{Binding PublicRelayViewModel.StartCommand}"
-                                    IsEnabled="{Binding PublicRelayViewModel.IsProjectPathSet}"/>
-                            <Button Content="停止" Classes="primary-button"
-                                    Command="{Binding PublicRelayViewModel.StopCommand}"
-                                    IsVisible="{Binding PublicRelayViewModel.IsPublicRelayRunning}"/>
-                        </StackPanel>
+                                <!-- HTTP Port -->
+                                <Grid ColumnDefinitions="100,*">
+                                    <TextBlock Grid.Column="0" Text="HTTP Port" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
+                                    <NumericUpDown Grid.Column="1" Value="{Binding PublicRelayViewModel.HttpPort}"
+                                                   Minimum="1" Maximum="65535" Width="120" HorizontalAlignment="Left"/>
+                                </Grid>
 
-                        <!-- 状态 / 待下载 / 错误 / 日志 -->
-                        <Grid ColumnDefinitions="100,*" Margin="0,8,0,0">
-                            <TextBlock Grid.Column="0" Text="状态" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="1" Text="{Binding PublicRelayViewModel.RelayStateText}"
-                                       FontSize="13" Foreground="{DynamicResource Text.Secondary}" VerticalAlignment="Center"/>
-                        </Grid>
+                                <!-- TCP Port -->
+                                <Grid ColumnDefinitions="100,*">
+                                    <TextBlock Grid.Column="0" Text="TCP Port" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
+                                    <NumericUpDown Grid.Column="1" Value="{Binding PublicRelayViewModel.TcpPort}"
+                                                   Minimum="1" Maximum="65535" Width="120" HorizontalAlignment="Left"/>
+                                </Grid>
 
-                        <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="待下载" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="1"
-                                       FontSize="13" Foreground="{DynamicResource Text.Secondary}" VerticalAlignment="Center">
-                                <Run Text="{Binding PublicRelayViewModel.PendingCount}"/>
-                                <Run Text=" 个"/>
-                            </TextBlock>
-                        </Grid>
+                                <!-- Public Host -->
+                                <Grid ColumnDefinitions="100,*">
+                                    <TextBlock Grid.Column="0" Text="公网 Host" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" Text="{Binding PublicRelayViewModel.PublicHost}" Watermark="留空用 SSH Host"/>
+                                </Grid>
 
-                        <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="错误" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="1" Text="{Binding PublicRelayViewModel.LastError}"
-                                       FontSize="12" Foreground="{DynamicResource State.Error}"
-                                       TextWrapping="Wrap" VerticalAlignment="Center"
-                                       IsVisible="{Binding PublicRelayViewModel.LastError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                        </Grid>
+                                <!-- 线性按钮组（spec §4.1） -->
+                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                                    <Button Content="部署"
+                                            Classes="secondary-button"
+                                            Command="{Binding PublicRelayViewModel.DeployCommand}"
+                                            IsEnabled="{Binding PublicRelayViewModel.CanDeploy}"/>
+                                    <Button Content="启动"
+                                            Classes="primary-button"
+                                            Command="{Binding PublicRelayViewModel.StartCommand}"
+                                            IsEnabled="{Binding PublicRelayViewModel.CanStart}"/>
+                                    <Button Content="停止"
+                                            Classes="secondary-button"
+                                            Command="{Binding PublicRelayViewModel.StopCommand}"
+                                            IsVisible="{Binding PublicRelayViewModel.IsPublicRelayRunning}"/>
+                                </StackPanel>
 
-                        <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0" Text="日志" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Top" Margin="0,6,0,0"/>
-                            <TextBlock Grid.Column="1" Text="{Binding PublicRelayViewModel.LastLog}"
-                                       FontSize="12" Foreground="{DynamicResource Text.Secondary}"
-                                       TextWrapping="Wrap" Margin="0,6,0,0"/>
-                        </Grid>
+                                <!-- 彩色状态指示器（spec §4.4） + 待下载 -->
+                                <Grid ColumnDefinitions="100,*" Margin="0,8,0,0">
+                                    <TextBlock Grid.Column="0" Text="状态" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <Ellipse Width="10" Height="10" Fill="{Binding PublicRelayViewModel.RelayStateColor}"/>
+                                        <TextBlock Text="{Binding PublicRelayViewModel.RelayStateText}"
+                                                   FontSize="13"
+                                                   Foreground="{DynamicResource Text.Primary}"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid ColumnDefinitions="100,*">
+                                    <TextBlock Grid.Column="0" Text="待下载" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1"
+                                               FontSize="13" Foreground="{DynamicResource Text.Secondary}" VerticalAlignment="Center">
+                                        <Run Text="{Binding PublicRelayViewModel.PendingCount}"/>
+                                        <Run Text=" 个"/>
+                                    </TextBlock>
+                                </Grid>
+
+                                <!-- 错误 -->
+                                <Grid ColumnDefinitions="100,*"
+                                      IsVisible="{Binding PublicRelayViewModel.LastError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                    <TextBlock Grid.Column="0" Text="错误" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Top" Margin="0,6,0,0"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding PublicRelayViewModel.LastError}"
+                                               FontSize="12" Foreground="{DynamicResource State.Error}"
+                                               TextWrapping="Wrap" VerticalAlignment="Top" Margin="0,6,0,0"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 多行日志（spec §4.3） -->
+                        <Border Background="{DynamicResource Bg.Surface}"
+                                CornerRadius="8"
+                                Padding="16"
+                                IsVisible="{Binding PublicRelayViewModel.Step1Done}">
+                            <StackPanel Spacing="8">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0"
+                                               Text="运行日志"
+                                               FontSize="13"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text.Primary}"
+                                               VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1"
+                                            Content="清空日志"
+                                            Classes="secondary-button"
+                                            Command="{Binding PublicRelayViewModel.ClearLogCommand}"
+                                            Padding="10,4"
+                                            FontSize="11"/>
+                                </Grid>
+                                <TextBox Text="{Binding PublicRelayViewModel.LogText}"
+                                         IsReadOnly="True"
+                                         TextWrapping="Wrap"
+                                         AcceptsReturn="True"
+                                         MinHeight="80"
+                                         MaxHeight="200"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                         FontFamily="Cascadia Code,Consolas,monospace"
+                                         FontSize="11"
+                                         Foreground="{DynamicResource Text.Secondary}"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Border>
             </Expander>
