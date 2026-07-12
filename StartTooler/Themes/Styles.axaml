@@ -371,6 +371,41 @@
         <Setter Property="Opacity" Value="0.4"/>
     </Style>
 
+    <!-- v0.11: 垃圾筒卡片底部恢复按钮（绿色调，区别于白色/红色，spec §8.1） -->
+    <Style Selector="Button.trash-action-restore">
+        <Setter Property="Background" Value="#33A5D6A7"/>
+        <Setter Property="Foreground" Value="#A5D6A7"/>
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="Padding" Value="6,2"/>
+        <Setter Property="CornerRadius" Value="4"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Height" Value="22"/>
+        <Setter Property="MinWidth" Value="36"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="BorderBrush" Value="#66BB6A40"/>
+        <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+    <Style Selector="Button.trash-action-restore:pointerover">
+        <Setter Property="Background" Value="#4CA5D6A7"/>
+    </Style>
+    <Style Selector="Button.trash-action-restore:disabled">
+        <Setter Property="Opacity" Value="0.4"/>
+    </Style>
+
+    <!-- v0.11: Toast 横幅内的链接按钮（撤销/跳转，spec §6.2） -->
+    <Style Selector="Button.link-button">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="#4DD0E1"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Padding" Value="8,2"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.link-button:pointerover">
+        <Setter Property="Foreground" Value="#80DEEA"/>
+    </Style>
+
     <!-- 导航 Rail 按钮样式 (C15 NavItem) -->
     <Style Selector="Button.nav-item">
         <Setter Property="Background" Value="Transparent"/>
