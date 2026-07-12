@@ -764,6 +764,59 @@ public class MediaRepository : IMediaRepository
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
+    public async Task UndoDeleteAsync(long fileId, long deletedAt, CancellationToken ct = default)
+    {
+        Trace.WriteLine($"[MediaRepository] UndoDeleteAsync: id={fileId}, deletedAt={deletedAt}");
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        // 重新把 deleted_at 设回原值。仅当 deleted_at 仍为 NULL 时生效（说明当前确实处于
+        // "Restore 之后的 Gallery 状态"），否则用户已经又做了别的操作（删除/恢复链），不覆盖。
+        var sql = @"UPDATE media_files
+                    SET deleted_at = @deletedAt, updated_at = @updatedAt
+                    WHERE id = @id AND deleted_at IS NULL";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@deletedAt", deletedAt);
+        cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
+        cmd.Parameters.AddWithValue("@id", fileId);
+
+        var rows = await cmd.ExecuteNonQueryAsync(ct);
+        Trace.WriteLine($"[MediaRepository] UndoDeleteAsync: rowsAffected={rows} (0 表示无操作，状态已变)");
+    }
+
+    public async Task<MediaFile?> GetByIdAsync(long fileId, CancellationToken ct = default)
+    {
+        Trace.WriteLine($"[MediaRepository] GetByIdAsync: id={fileId}");
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        // 不加 deleted_at 过滤——垃圾筒撤销场景需要读到刚被改回 deleted_at 的行。
+        var sql = @"
+            SELECT
+                id, project_path, relative_path, file_name, media_type,
+                file_size, last_modified, shot_at, is_uploaded, local_exists,
+                thumbnail_path, remote_url, uploaded_at, scanned_at,
+                created_at, updated_at,
+                tags, score, tagged_at, tag_error,
+                quality_tags,
+                deleted_at
+            FROM media_files
+            WHERE id = @id
+            LIMIT 1";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@id", fileId);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (await reader.ReadAsync(ct))
+        {
+            return ReadMediaFileRow(reader);
+        }
+        return null;
+    }
+
     // === Row 映射 helpers（GetByDateAsync / GetByTagAsync / GetDeletedAsync 共用） ===
 
     /// <summary>

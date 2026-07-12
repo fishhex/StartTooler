@@ -80,6 +80,21 @@ public interface IMediaRepository
     /// 实际 File.Delete 由 GalleryViewModel.FreeUpSpace 负责，DB 状态同步走这里。
     /// </summary>
     Task UpdateLocalExistsAsync(long fileId, bool exists, CancellationToken ct = default);
+
+    /// <summary>
+    /// 撤销"仅删除本地"清理：把 deleted_at 重新设回原值，让文件回到垃圾筒。
+    /// 配套流程：CleanSingle 选「仅删除本地」时 → File.Delete 本地 → RestoreAsync(deleted_at=NULL)
+    /// → 文件回到 Gallery 显示「云端有、本地无」；撤销 → 重新标记 deleted_at → 文件回到垃圾筒「已在云端」段。
+    /// 复用 SoftDeleteAsync 也能完成，但后者会生成新时间戳、丢原值——UndoDelete 明确传原 deletedAt。
+    /// 不影响 local_exists（用户在「仅删除本地」路径上已经走过 UpdateLocalExistsAsync(false)）。
+    /// </summary>
+    Task UndoDeleteAsync(long fileId, long deletedAt, CancellationToken ct = default);
+
+    /// <summary>
+    /// 按 id 查单条 MediaFile（不区分 deleted_at 状态——垃圾筒撤销后需要读到刚被改回 deleted_at 的行）。
+    /// 找不到返回 null。供 TrashViewModel 撤销后回填 ObservableCollection 用。
+    /// </summary>
+    Task<MediaFile?> GetByIdAsync(long fileId, CancellationToken ct = default);
 }
 
 public class ScanResult
