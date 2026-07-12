@@ -696,6 +696,64 @@ public partial class GalleryViewModel : ObservableObject
         await InitializeAsync();
     }
 
+    /// <summary>
+    /// v0.11 spec §7.2: 从垃圾筒跳转过来时定位到指定文件。
+    /// 简化版：只做"切到该文件所在日期"（按 shot_at 反查），让用户能立刻看到列表。
+    /// 不做 pixel-perfect scroll（spec 自己说"本次简化"——按 shot_at DESC 排序后用户能直接定位）。
+    /// 项目路径不匹配 / DateGroups 不含该日期时，silently no-op（MainWindow 那边的 Toast 也只显示文字不带跳转链接，spec §10）。
+    /// </summary>
+    public async void LocateAndScrollTo(long mediaId)
+    {
+        Trace.WriteLine($"[Gallery] LocateAndScrollTo: mediaId={mediaId}");
+
+        if (string.IsNullOrEmpty(ProjectPath))
+        {
+            Trace.WriteLine("[Gallery] LocateAndScrollTo 早返回: ProjectPath 为空");
+            return;
+        }
+
+        try
+        {
+            // 1) 查 file 的 shot_at
+            var file = await _mediaRepo.GetByIdAsync(mediaId);
+            if (file == null)
+            {
+                Trace.WriteLine($"[Gallery] LocateAndScrollTo 早返回: file id={mediaId} 不存在");
+                return;
+            }
+
+            // 2) 算 file 的本地日期
+            if (!file.ShotAt.HasValue)
+            {
+                Trace.WriteLine($"[Gallery] LocateAndScrollTo 早返回: file 无 shot_at");
+                return;
+            }
+            var fileDate = DateTimeOffset.FromUnixTimeMilliseconds(file.ShotAt.Value).ToLocalTime().Date;
+
+            // 3) 确保 DateGroups 已加载（用户在 Trash 期间可能没进过 Gallery）
+            if (DateGroups.Count == 0)
+            {
+                await InitializeAsync();
+            }
+
+            // 4) 在 DateGroups 里找匹配 date 的分组
+            var target = DateGroups.FirstOrDefault(g => g.Date.Date == fileDate);
+            if (target == null)
+            {
+                Trace.WriteLine($"[Gallery] LocateAndScrollTo: fileDate={fileDate:yyyy-MM-dd} 不在当前 DateGroups，跳过切日期");
+                return;
+            }
+
+            // 5) 切到该日期（按 shot_at DESC 排序后用户能直接滚到目标）
+            await SelectAsync(target);
+            Trace.WriteLine($"[Gallery] LocateAndScrollTo 完成: 已切到 {target.Date:yyyy-MM-dd}");
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[Gallery] LocateAndScrollTo 失败: {ex.Message}");
+        }
+    }
+
     // v0.11: 上传完自动刷新媒体（spec §3 延伸需求）
     // 多次上传合并成一次扫描：2s 内连拍 30 张也只跑一次 RefreshAsync。
     // IsScanning 时跳过（用户手动 Refresh 在跑就别打扰）。
@@ -831,6 +889,9 @@ public partial class GalleryViewModel : ObservableObject
     {
         IsMultiSelectMode = false;
     }
+
+    /// <summary>v0.11: 供 MainWindowViewModel 切页时调用（spec §10 边界：切页时退出多选）。</summary>
+    public void ExitMultiSelectPublic() => ExitMultiSelectCommand.Execute(null);
 
     [RelayCommand(CanExecute = nameof(CanSelectAll))]
     private void SelectAll()

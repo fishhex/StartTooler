@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -85,9 +86,11 @@ public partial class MainWindowViewModel : ObservableObject
         // v0.8: 垃圾筒 VM（spec doc/14-delete-and-trash.md §7.1）
         // 复用 mediaRepo / uploadJobRepo / ossFactory / configService；onOssNotConfigured 复用 MainWindow 的弹窗。
         // v0.8.1: 新增 thumbnailService 用于下载后重生成缩略图（spec §7.4）。
+        // v0.11: 加 onNavigateToFile 回调——Restore 成功后 Toast「跳转」按钮触发。
         TrashViewModel = new TrashViewModel(
             _mediaRepository, _uploadJobRepo, ossFactory, _configService, thumbnailService,
-            onOssNotConfigured: ShowOssNotConfiguredDialogAsync);
+            onOssNotConfigured: ShowOssNotConfiguredDialogAsync,
+            onNavigateToFile: NavigateToGalleryAndLocateFile);
 
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;
@@ -221,10 +224,17 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>
     /// v0.8: 跳到垃圾筒页（spec §9.1 NavigateToTrash）。
     /// 加载当前项目的垃圾筒数据；Gallery 查询删文件后这里能看到。
+    /// v0.11: 切到 Trash 时让 GalleryVM 退出多选（spec §10 边界）。
     /// </summary>
     [RelayCommand]
     private async Task NavigateToTrash()
     {
+        // 离开 Gallery 之前退出多选（避免切回 Gallery 时 SelectedFiles 残留）
+        if (GalleryViewModel != null && GalleryViewModel.IsMultiSelectMode)
+        {
+            GalleryViewModel.ExitMultiSelectPublic();
+        }
+
         CurrentView = TrashViewModel;
         IsSettingsPage = false;
         CurrentPage = ViewPage.Trash;
@@ -238,6 +248,31 @@ public partial class MainWindowViewModel : ObservableObject
         {
             System.Diagnostics.Trace.WriteLine($"[MainWindow] NavigateToTrash 加载失败: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// v0.11: 从垃圾筒「已恢复 xxx」Toast 的「跳转」按钮触发。
+    /// 切到 Gallery + 让 GalleryVM 定位到该文件（按 shot_at 算日期切过去）。
+    /// 简化版：不做 pixel-perfect scroll（spec §7.2 自己说"本次简化"），
+    /// 只做"切到该文件所在日期"，按 shot_at DESC 排序后用户能看到。
+    /// </summary>
+    private void NavigateToGalleryAndLocateFile(long mediaId)
+    {
+        Trace.WriteLine($"[MainWindow] NavigateToGalleryAndLocateFile: mediaId={mediaId}");
+
+        // 1. 切到 Gallery
+        CurrentView = GalleryViewModel;
+        IsSettingsPage = false;
+        CurrentPage = ViewPage.Gallery;
+
+        // 2. 退出 Trash 的多选（如果有）
+        if (TrashViewModel != null && TrashViewModel.IsMultiSelectMode)
+        {
+            TrashViewModel.ExitMultiSelectPublic();
+        }
+
+        // 3. 让 GalleryVM 切到对应日期（spec §7.2 LocateAndScrollTo）
+        GalleryViewModel?.LocateAndScrollTo(mediaId);
     }
 
     [RelayCommand]
