@@ -33,9 +33,43 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private UploadServerViewModel uploadServerViewModel;
     [ObservableProperty] private TrashViewModel trashViewModel;  // v0.8
     [ObservableProperty] private object currentView;
-    [ObservableProperty] private string title = "星助";
     [ObservableProperty] private bool isSettingsPage;
     [ObservableProperty] private ViewPage currentPage = ViewPage.Gallery;
+
+    // v0.11 状态栏数据：OssStatus（其他字段桥接到 GalleryVM / TrashVM，避免重复状态源）
+    public enum OssStatusKind { Unknown, Configured, NotConfigured }
+    [ObservableProperty] private OssStatusKind _ossStatus = OssStatusKind.Unknown;
+    partial void OnOssStatusChanged(OssStatusKind value)
+    {
+        OnPropertyChanged(nameof(OssStatusText));
+        OnPropertyChanged(nameof(OssStatusColor));
+    }
+    /// <summary>状态栏 OSS 文字（"已配置" / "未配置"）。</summary>
+    public string OssStatusText => OssStatus == OssStatusKind.Configured ? "OSS 已配置" : "OSS 未配置";
+    /// <summary>状态栏 OSS 圆点颜色（绿/红）。</summary>
+    public string OssStatusColor => OssStatus == OssStatusKind.Configured ? "#66BB6A" : "#EF5350";
+
+    /// <summary>
+    /// v0.11: 标题动态化。随 CurrentPage 变化更新（spec demand/06 §1）。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
+    private string _title = "星助";
+    public string WindowTitle
+    {
+        get
+        {
+            var pageName = CurrentPage switch
+            {
+                ViewPage.Gallery => "媒体",
+                ViewPage.Settings => "设置",
+                ViewPage.UploadServer => "上传服务",
+                ViewPage.Trash => "垃圾筒",
+                _ => string.Empty,
+            };
+            return string.IsNullOrEmpty(pageName) ? "星助" : $"星助 — {pageName}";
+        }
+    }
 
     public bool HasProject => !string.IsNullOrEmpty(GalleryViewModel?.ProjectPath);
 
@@ -121,6 +155,9 @@ public partial class MainWindowViewModel : ObservableObject
         await GalleryViewModel.InitializeAsync();
         await UploadServerViewModel.InitializeAsync();
         OnPropertyChanged(nameof(HasProject));
+
+        // v0.11: 启动后评估 OSS 状态（状态栏圆点初始化）
+        EvaluateOssStatus();
 
         // 启动恢复弹窗：扫描 upload_jobs，如有未完成任务询问用户
         await TryPromptResumeInterruptedAsync();
@@ -355,5 +392,41 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSettingsPageVisible));
         OnPropertyChanged(nameof(IsUploadServerActive));
         OnPropertyChanged(nameof(IsTrashActive));
+        OnPropertyChanged(nameof(WindowTitle));  // v0.11: 标题随 CurrentPage 变化
+        // v0.11: 切到设置页时重新评估 OSS 状态（用户在设置页改完配置后回到 Gallery 应立即反映）
+        // 注意：OnCurrentPageChanged 在构造期可能也会触发，OssStorageFactory 此时可能未就绪。
+        // 用 try-catch 兜底。
+        try
+        {
+            EvaluateOssStatus();
+        }
+        catch
+        {
+            // ignore - 构造期 Evaluate 失败不影响其他初始化
+        }
+    }
+
+    /// <summary>
+    /// v0.11: 重新评估 OSS 配置状态。给状态栏圆点用。
+    /// 用 IOssStorageFactory.IsConfigured(Config) 判断——它已经定义了。
+    /// </summary>
+    private void EvaluateOssStatus()
+    {
+        try
+        {
+            // 直接从 ConfigService 拿当前配置
+            var cfg = _configService.GetAsync<OssConfig>(ConfigKeys.Oss)
+                .GetAwaiter().GetResult() ?? new OssConfig();
+            var configured = !string.IsNullOrWhiteSpace(cfg.Region)
+                && !string.IsNullOrWhiteSpace(cfg.Bucket)
+                && !string.IsNullOrWhiteSpace(cfg.AccessKeyId)
+                && !string.IsNullOrWhiteSpace(cfg.AccessKeySecret);
+            OssStatus = configured ? OssStatusKind.Configured : OssStatusKind.NotConfigured;
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[MainWindow] EvaluateOssStatus 失败: {ex.Message}");
+            OssStatus = OssStatusKind.Unknown;
+        }
     }
 }
