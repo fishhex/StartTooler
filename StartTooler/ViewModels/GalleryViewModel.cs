@@ -550,6 +550,50 @@ public partial class GalleryViewModel : ObservableObject
         await InitializeAsync();
     }
 
+    // v0.11: 上传完自动刷新媒体（spec §3 延伸需求）
+    // 多次上传合并成一次扫描：2s 内连拍 30 张也只跑一次 RefreshAsync。
+    // IsScanning 时跳过（用户手动 Refresh 在跑就别打扰）。
+    private CancellationTokenSource? _autoRefreshDebounceCts;
+
+    public void RequestRefreshDebounced(int delayMs = 2000)
+    {
+        // 取消上一轮 debounce 等待
+        _autoRefreshDebounceCts?.Cancel();
+        _autoRefreshDebounceCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _autoRefreshDebounceCts = cts;
+        var ct = cts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(delayMs, ct);
+                if (ct.IsCancellationRequested) return;
+                if (IsScanning)
+                {
+                    Trace.WriteLine("[Gallery] RequestRefreshDebounced skip: manual scan in progress");
+                    return;
+                }
+                if (string.IsNullOrEmpty(ProjectPath))
+                {
+                    Trace.WriteLine("[Gallery] RequestRefreshDebounced skip: no ProjectPath");
+                    return;
+                }
+                Trace.WriteLine("[Gallery] auto refresh start (triggered by upload)");
+                await RefreshAsync();
+            }
+            catch (OperationCanceledException)
+            {
+                // 新一轮上传把它取消了，正常路径
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[Gallery] auto refresh err: {ex.Message}");
+            }
+        }, ct);
+    }
+
     [RelayCommand]
     private async Task RefreshAsync()
     {

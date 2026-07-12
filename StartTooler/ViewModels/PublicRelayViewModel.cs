@@ -122,6 +122,8 @@ public partial class PublicRelayViewModel : ObservableObject, IDisposable
         _gallery.PropertyChanged += OnGalleryPropertyChanged;
         _relayService.StateChanged += OnRelayStateChanged;
         _relayService.PendingCountChanged += OnRelayPendingCountChanged;
+        // v0.11: WAN scp 落盘完也触发 gallery 自动刷新（和 LAN OnUploadSuccess 走同一条防抖路径）
+        _relayService.FileReceived += OnRelayFileReceived;
         RefreshProjectPathSet();
     }
 
@@ -430,6 +432,21 @@ public partial class PublicRelayViewModel : ObservableObject, IDisposable
         Avalonia.Threading.Dispatcher.UIThread.Post(() => PendingCount = count);
     }
 
+    /// <summary>
+    /// v0.11: WAN scp 落盘成功回调。文件已写到项目目录的 YYYY-MM-DD/，触发 gallery 自动刷新。
+    /// FileReceived 在 PublicRelayService 的 Poller 线程触发，统一 marshal 到 UI 线程。
+    /// </summary>
+    private void OnRelayFileReceived(string localPath)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            Trace.WriteLine($"[PublicRelayVM] FileReceived: {localPath} → request gallery refresh");
+            _gallery.RequestRefreshDebounced();
+            // 单行日志也补一笔（用户切到 gallery 之前能在这看到）
+            AppendLog($"✅ 已下载到 {Path.GetFileName(localPath)}");
+        });
+    }
+
     private void UpdateRelayStateText()
     {
         RelayStateText = _relayService.State switch
@@ -497,6 +514,7 @@ public partial class PublicRelayViewModel : ObservableObject, IDisposable
         _gallery.PropertyChanged -= OnGalleryPropertyChanged;
         _relayService.StateChanged -= OnRelayStateChanged;
         _relayService.PendingCountChanged -= OnRelayPendingCountChanged;
+        _relayService.FileReceived -= OnRelayFileReceived;
         _relayService.Dispose();
     }
 }

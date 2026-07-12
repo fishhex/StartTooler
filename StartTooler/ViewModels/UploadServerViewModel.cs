@@ -140,6 +140,10 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
                     while (UploadHistory.Count > 50)
                         UploadHistory.RemoveAt(UploadHistory.Count - 1);
 
+                    // v0.11: 上传完自动刷新媒体（spec §3 延伸），
+                    // 2s 防抖把连拍多张合成一次扫描
+                    _gallery.RequestRefreshDebounced();
+
                     Trace.WriteLine($"[UploadServerVM] Upload success: {path}");
                 });
             };
