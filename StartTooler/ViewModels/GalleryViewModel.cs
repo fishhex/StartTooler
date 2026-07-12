@@ -35,6 +35,13 @@ public partial class GalleryViewModel : ObservableObject
     private CancellationTokenSource? _tagCts;  // v0.6 新增，独立于 _cts，切日期/刷新不取消打标
     private CancellationTokenSource? _downloadCts;  // v0.8.1 新增，批量下载取消源
 
+    // === 媒体进度通知钩子（spec doc/16-notify-progress.md）===
+    // 扫描/打标/上传三个 long-running 任务各自持有一个 NotificationItem 引用，
+    // 由对应 partial void OnXxxChanged 调 NotificationService.Current.ShowProgress / UpdateProgress / Dismiss。
+    private NotificationItem? _scanNotification;
+    private NotificationItem? _tagNotification;
+    private NotificationItem? _uploadNotification;
+
     // === 数据源 ===
     public ObservableCollection<TimelineEntry> DateGroups { get; } = new();
     public ObservableCollection<MediaFile> CurrentMediaFiles { get; } = new();
@@ -71,9 +78,55 @@ public partial class GalleryViewModel : ObservableObject
     public string UploadProgressText => IsUploading && UploadTotalCount > 0
         ? $"上传中 {UploadCompletedCount}/{UploadTotalCount}"
         : string.Empty;
-    partial void OnIsUploadingChanged(bool value) => OnPropertyChanged(nameof(UploadProgressText));
-    partial void OnUploadCompletedCountChanged(int value) => OnPropertyChanged(nameof(UploadProgressText));
-    partial void OnUploadTotalCountChanged(int value) => OnPropertyChanged(nameof(UploadProgressText));
+    partial void OnIsUploadingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(UploadProgressText));
+        // v0.12: 通知钩子（spec doc/16-notify-progress.md §3.1）
+        if (value)
+        {
+            // 启动上传：先清旧通知（防叠加），再弹新通知
+            if (_uploadNotification != null)
+            {
+                NotificationService.Current.Dismiss(_uploadNotification);
+                _uploadNotification = null;
+            }
+            _uploadNotification = NotificationService.Current.ShowProgress("上传中", "准备上传...");
+            Trace.WriteLine("[Gallery] upload notification: started");
+        }
+        else
+        {
+            // 上传结束：停留 2 秒后自动消失（让用户看到 Success/Error 状态）
+            var captured = _uploadNotification;
+            _uploadNotification = null;
+            if (captured != null)
+            {
+                _ = Task.Delay(2000).ContinueWith(_ =>
+                {
+                    NotificationService.Current.Dismiss(captured);
+                    Trace.WriteLine("[Gallery] upload notification: dismissed (after 2s)");
+                });
+            }
+        }
+    }
+    partial void OnUploadCompletedCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(UploadProgressText));
+        UpdateUploadProgressNotification();
+    }
+    partial void OnUploadTotalCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(UploadProgressText));
+        UpdateUploadProgressNotification();
+    }
+    private void UpdateUploadProgressNotification()
+    {
+        if (_uploadNotification == null) return;
+        if (UploadTotalCount <= 0) return;
+        var progress = (double)UploadCompletedCount / UploadTotalCount;
+        var body = $"上传中 {UploadCompletedCount}/{UploadTotalCount}";
+        NotificationService.Current.UpdateProgress(_uploadNotification, body: body, progress: progress);
+        Trace.WriteLine($"[Gallery] upload notification: {body} ({progress:P0})");
+    }
 
     // === v0.6 AI 打标状态（spec doc/12-ai-toolbar-buttons.md §3.3.1） ===
     [ObservableProperty] private bool _isTagging;
@@ -89,9 +142,102 @@ public partial class GalleryViewModel : ObservableObject
         OnPropertyChanged(nameof(IsBatchActionEnabled));
         SelectAllCommand.NotifyCanExecuteChanged();
         InvertSelectionCommand.NotifyCanExecuteChanged();
+        // v0.12: 通知钩子（spec doc/16-notify-progress.md §3.2）
+        if (value)
+        {
+            // 启动打标：先清旧通知，再弹新通知
+            if (_tagNotification != null)
+            {
+                NotificationService.Current.Dismiss(_tagNotification);
+                _tagNotification = null;
+            }
+            _tagNotification = NotificationService.Current.ShowProgress("AI 打标", "准备打标...");
+            Trace.WriteLine("[Gallery] tag notification: started");
+        }
+        else
+        {
+            // 打标结束：停留 2 秒后自动消失
+            var captured = _tagNotification;
+            _tagNotification = null;
+            if (captured != null)
+            {
+                _ = Task.Delay(2000).ContinueWith(_ =>
+                {
+                    NotificationService.Current.Dismiss(captured);
+                    Trace.WriteLine("[Gallery] tag notification: dismissed (after 2s)");
+                });
+            }
+        }
     }
-    partial void OnTagCompletedCountChanged(int value) => OnPropertyChanged(nameof(TagProgressText));
-    partial void OnTagTotalCountChanged(int value) => OnPropertyChanged(nameof(TagProgressText));
+    partial void OnTagCompletedCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(TagProgressText));
+        UpdateTagProgressNotification();
+    }
+    partial void OnTagTotalCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(TagProgressText));
+        UpdateTagProgressNotification();
+    }
+    private void UpdateTagProgressNotification()
+    {
+        if (_tagNotification == null) return;
+        if (TagTotalCount <= 0) return;
+        var progress = (double)TagCompletedCount / TagTotalCount;
+        var body = $"打标中 {TagCompletedCount}/{TagTotalCount}";
+        NotificationService.Current.UpdateProgress(_tagNotification, body: body, progress: progress);
+        Trace.WriteLine($"[Gallery] tag notification: {body} ({progress:P0})");
+    }
+
+    // === v0.12: 扫描通知钩子（spec doc/16-notify-progress.md §3.3）===
+    partial void OnIsScanningChanged(bool value)
+    {
+        if (value)
+        {
+            // 启动扫描：先清旧通知，再弹新通知
+            if (_scanNotification != null)
+            {
+                NotificationService.Current.Dismiss(_scanNotification);
+                _scanNotification = null;
+            }
+            _scanNotification = NotificationService.Current.ShowProgress("扫描中", "正在扫描...");
+            Trace.WriteLine("[Gallery] scan notification: started");
+        }
+        else
+        {
+            // 扫描结束：停留 2 秒后自动消失
+            var captured = _scanNotification;
+            _scanNotification = null;
+            if (captured != null)
+            {
+                _ = Task.Delay(2000).ContinueWith(_ =>
+                {
+                    NotificationService.Current.Dismiss(captured);
+                    Trace.WriteLine("[Gallery] scan notification: dismissed (after 2s)");
+                });
+            }
+        }
+    }
+
+    partial void OnScanStatusMessageChanged(string? value)
+    {
+        if (_scanNotification == null) return;
+        if (value == null) return; // 启动时 ScanStatusMessage=null，跳过不更新
+        // 根据 message 内容判断 type（Info 默认；Success 完成；Error 失败/停止）
+        var type = NotificationType.Info;
+        if (value.StartsWith("扫描完成")) type = NotificationType.Success;
+        else if (value.StartsWith("扫描失败") || value.StartsWith("已停止")) type = NotificationType.Error;
+        NotificationService.Current.UpdateProgress(_scanNotification, body: value, type: type);
+        Trace.WriteLine($"[Gallery] scan notification: {value} ({type})");
+    }
+
+    partial void OnScanProgressChanged(ScanProgress? value)
+    {
+        if (_scanNotification == null) return;
+        if (value == null || value.Total <= 0) return;
+        var progress = (double)value.Processed / value.Total;
+        NotificationService.Current.UpdateProgress(_scanNotification, progress: progress);
+    }
 
     // === v0.6 分类与排序（spec §3.3.1） ===
     [ObservableProperty]

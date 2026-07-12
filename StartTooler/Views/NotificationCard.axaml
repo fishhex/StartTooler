@@ -15,14 +15,14 @@
             MinWidth="280"
             MaxWidth="360"
             Margin="0,4,16,0">
-        <Grid ColumnDefinitions="4,*">
+        <Grid ColumnDefinitions="4,*,Auto">
             <!-- 左侧色条：按 Type 区分 -->
             <Border Grid.Column="0"
                     Background="{Binding Type, Converter={x:Static services:NotificationTypeToBrushConverter.Instance}}"
                     CornerRadius="0"/>
 
             <StackPanel Grid.Column="1"
-                        Margin="12,10,12,10"
+                        Margin="12,10,4,10"
                         Spacing="2">
                 <TextBlock Text="{Binding Title}"
                            FontSize="13"
@@ -33,7 +33,26 @@
                            Foreground="{DynamicResource Text.Secondary}"
                            TextWrapping="Wrap"
                            LineHeight="18"/>
+                <!-- 进度条：仅 Progress != null 时显示（ShowProgress 调用方传入） -->
+                <ProgressBar IsVisible="{Binding Progress, Converter={x:Static ObjectConverters.IsNotNull}}"
+                             Value="{Binding Progress}"
+                             Maximum="1"
+                             MinHeight="4"
+                             Margin="0,6,0,0"
+                             Foreground="{DynamicResource Accent.Stellar}"/>
             </StackPanel>
+
+            <!-- 关闭按钮（手动 dismiss） -->
+            <Button Grid.Column="2"
+                    Content="×"
+                    FontSize="14"
+                    Padding="8,2"
+                    Margin="0,6,8,0"
+                    VerticalAlignment="Top"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Foreground="{DynamicResource Text.Secondary}"
+                    Click="OnDismissClick"/>
         </Grid>
     </Border>
 </UserControl>

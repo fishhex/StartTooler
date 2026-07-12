@@ -48,8 +48,7 @@
                                VerticalAlignment="Center"/>
                 </Grid>
             </Border>
-            <components:ScanProgressBar VerticalAlignment="Bottom"
-                                        DataContext="{Binding GalleryViewModel}"/>
+            <!-- v0.12: 扫描进度改用 NotificationCard 通知（spec doc/16-notify-progress.md §3.3），不再常驻底部进度条 -->
         </Panel>
 
         <!-- Row 1 Col 0: NavRail 上方 40px 留白 (背景色与 NavRail 一致) -->
@@ -213,25 +212,13 @@
                             Command="{Binding GalleryViewModel.CancelUploadCommand}"
                             IsVisible="{Binding GalleryViewModel.IsUploading}"/>
 
-                    <!-- v0.6: 打标中：取消按钮 + 进度文本 -->
+                    <!-- v0.6: 打标中：取消按钮（v0.12 进度文本改用 NotificationCard 通知） -->
                     <Button Classes="toolbar-button-danger"
                             Content="取消打标"
                             Command="{Binding GalleryViewModel.CancelTagCommand}"
                             IsVisible="{Binding GalleryViewModel.IsTagging}"/>
 
-                    <TextBlock Text="{Binding GalleryViewModel.TagProgressText}"
-                               FontSize="12"
-                               Foreground="{DynamicResource Accent.Stellar}"
-                               VerticalAlignment="Center"
-                               Margin="8,0,0,0"
-                               IsVisible="{Binding GalleryViewModel.IsTagging}"/>
-
-                    <TextBlock Text="{Binding GalleryViewModel.UploadProgressText}"
-                               FontSize="12"
-                               Foreground="{DynamicResource Accent.Stellar}"
-                               VerticalAlignment="Center"
-                               Margin="8,0,0,0"
-                               IsVisible="{Binding GalleryViewModel.IsUploading}"/>
+                    <!-- v0.12: TagProgressText / UploadProgressText TextBlock 删除，改用 NotificationCard 通知（spec doc/16-notify-progress.md §3.1 §3.2） -->
 
                     <TextBlock Text="{Binding GalleryViewModel.SelectedCount, StringFormat='已选 {0} 项'}"
                                FontSize="12"
