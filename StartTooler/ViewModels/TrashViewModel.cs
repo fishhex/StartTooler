@@ -82,6 +82,14 @@ public partial class TrashViewModel : ObservableObject
     public bool HasCloudFiles => CloudFiles.Count > 0;
     public bool HasLocalFiles => LocalFiles.Count > 0;
 
+    /// <summary>
+    /// v0.11: 垃圾筒总文件数（云端 + 本地），供 NavRail 徽章绑定。
+    /// CloudFiles / LocalFiles 是 ObservableCollection，Count 变化时需要手动通知。
+    /// 在 LoadAsync / Restore / CleanSingle / BatchCleanAll / BatchRestore / BatchCleanSelected 末尾
+    /// 已调 OnPropertyChanged(nameof(CapacityStats))，这里同时通知 TrashCount 即可复用。
+    /// </summary>
+    public int TrashCount => CloudFiles.Count + LocalFiles.Count;
+
     /// <summary>容量统计：N 个文件 · 总大小（spec §7.1）。</summary>
     public string CapacityStats
     {
@@ -148,6 +156,10 @@ public partial class TrashViewModel : ObservableObject
             }
             _subscribedFiles.Clear();
         }
+
+        // v0.11: 任何集合变化都通知 TrashCount（NavRail 徽章）+ CapacityStats（标题）
+        OnPropertyChanged(nameof(TrashCount));
+        OnPropertyChanged(nameof(CapacityStats));
     }
 
     private void OnMediaFilePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
