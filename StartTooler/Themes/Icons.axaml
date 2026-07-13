@@ -104,4 +104,15 @@
     <!-- 加号 (Plus) - 24x24，"添加标签" 按钮用 -->
     <StreamGeometry x:Key="Icon.Plus">M12 5v14m-7-7h14</StreamGeometry>
 
+    <!-- v0.11: UI 审计新增图标（spec doc/0.11/spec/05-ui-interaction-review.md） -->
+
+    <!-- 复制 (Copy) - 24x24，"复制" 按钮用 -->
+    <StreamGeometry x:Key="Icon.Copy">M16 1H4a2 2 0 00-2 2v14h2V3h12V1zm3 4H8a2 2 0 00-2 2v14a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2zm0 16H8V7h11v14z</StreamGeometry>
+
+    <!-- 铃铛 (Bell) - 24x24，状态栏通知历史入口 -->
+    <StreamGeometry x:Key="Icon.Bell">M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9m-4.27 13a1.98 1.98 0 01-3.46 0</StreamGeometry>
+
+    <!-- 鼠标右键 (ContextMenu) - 16x16，"更多" 按钮下拉箭头 -->
+    <StreamGeometry x:Key="Icon.More">M12 8a2 2 0 11-4 0 2 2 0 014 0zm0-6a2 2 0 11-4 0 2 2 0 014 0zm0 12a2 2 0 11-4 0 2 2 0 014 0z</StreamGeometry>
+
 </ResourceDictionary>
