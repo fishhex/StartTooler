@@ -75,6 +75,19 @@ public partial class MainWindowViewModel : ObservableObject
 
     public bool IsMediaActive => CurrentPage == ViewPage.Gallery;
 
+    // v0.11: NavRail tooltip 快捷键提示（spec §3.2），macOS 用 ⌘，其它用 Ctrl
+    public string NavMediaTooltip => OperatingSystem.IsMacOS() ? "媒体 (⌘1)" : "媒体 (Ctrl+1)";
+    public string NavUploadTooltip => OperatingSystem.IsMacOS() ? "上传 (⌘2)" : "上传 (Ctrl+2)";
+    public string NavTrashTooltip => OperatingSystem.IsMacOS() ? "垃圾筒 (⌘3)" : "垃圾筒 (Ctrl+3)";
+    public string NavSettingsTooltip => OperatingSystem.IsMacOS() ? "设置 (⌘4)" : "设置 (Ctrl+4)";
+
+    /// <summary>
+    /// v0.11: 通知历史（spec §14）—— 状态栏铃铛 Flyout 绑定这个集合。
+    /// 直接代理 NotificationService.Current.History，保持单一数据源。
+    /// </summary>
+    public System.Collections.ObjectModel.ObservableCollection<Services.NotificationItem> NotificationHistory
+        => Services.NotificationService.Current.History;
+
     public bool IsSettingsActive => CurrentPage == ViewPage.Settings;
 
     public bool IsUploadServerActive => CurrentPage == ViewPage.UploadServer;

@@ -648,6 +648,7 @@ public partial class GalleryViewModel : ObservableObject
     /// <summary>
     /// 选中某个 tag → 调 GetByTagAsync + 反推 UploadStatus + 灌入 CurrentMediaFiles。
     /// 镜像 LoadDateAsync 模式（cancel-and-restart + UploadStatus 派生）。
+    /// v0.11: 同步更新 TagGroups 各项 IsSelected 状态（spec §15.4）—— 选中项文字变色 / 加粗。
     /// </summary>
     [RelayCommand]
     private async Task SelectTagAsync(TagGroupItem? group)
@@ -669,6 +670,9 @@ public partial class GalleryViewModel : ObservableObject
 
         ExitMultiSelect();
         SelectedTag = group.Tag;
+
+        // v0.11: 同步更新所有 tag 项的 IsSelected（spec §15.4）
+        foreach (var t in TagGroups) t.IsSelected = t.Tag == group.Tag;
 
         try
         {
@@ -1012,7 +1016,9 @@ public partial class GalleryViewModel : ObservableObject
 
         if (!IsMultiSelectMode)
         {
-            // 非多选模式：单击无操作（v2.3: 单击仅做选中，不做预览）
+            // v0.11: 非多选模式单击直接进灯箱预览（spec §6）
+            // 双击行为不变（仍触发 OnPhotoTileDoubleTapped → PreviewCommand）
+            PreviewCommand.Execute(file);
             return;
         }
 
