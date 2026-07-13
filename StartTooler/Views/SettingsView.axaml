@@ -15,22 +15,18 @@
     </UserControl.Resources>
 
     <Grid RowDefinitions="Auto,Auto,Auto,*">
-        <!-- Tab 栏 -->
+        <!--
+          v0.11: Tab 栏从 Button 改为原生 TabControl（spec §12.1）。
+          SelectedIndex 双向绑 SelectedTabIndex，UI 状态在 XAML 层自有。
+        -->
         <Border Grid.Row="0" Background="{DynamicResource Bg.Outer}" Height="44">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="24" VerticalAlignment="Center">
-                <Button Content="通用" Classes="tab-item"
-                        Classes.active="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.General}}"
-                        Command="{Binding SelectTabCommand}"
-                        CommandParameter="{x:Static vm:SettingsTab.General}"/>
-                <Button Content="OSS配置" Classes="tab-item"
-                        Classes.active="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.Oss}}"
-                        Command="{Binding SelectTabCommand}"
-                        CommandParameter="{x:Static vm:SettingsTab.Oss}"/>
-                <Button Content="AI" Classes="tab-item"
-                        Classes.active="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.AI}}"
-                        Command="{Binding SelectTabCommand}"
-                        CommandParameter="{x:Static vm:SettingsTab.AI}"/>
-            </StackPanel>
+            <TabControl SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}"
+                        Classes="settings-tabs">
+                <TabItem Header="通用" />
+                <TabItem Header="OSS 配置" />
+                <TabItem Header="AI" />
+                <TabItem Header="关于" />
+            </TabControl>
         </Border>
 
         <!-- 状态行（仅在有 StatusMessage 时显示） -->
@@ -148,6 +144,7 @@
                                      Watermark="留空走 PATH（如 /Users/you/.local/bin/ffmpeg）"
                                      VerticalAlignment="Center"
                                      LostFocus="OnFfmpegPathLostFocus"
+                                     TextChanged="OnFfmpegPathTextChanged"
                                      Classes.error="{Binding FfmpegPathError, Converter={StaticResource IsNotEmptyToBool}}"
                                      BorderBrush="{Binding FfmpegPathError, Converter={StaticResource ErrorToBorderBrush}}"/>
                             <Button Grid.Column="1" Content="浏览..."
@@ -178,6 +175,7 @@
                                      Watermark="留空走 PATH（如 /Users/you/.local/bin/ffprobe）"
                                      VerticalAlignment="Center"
                                      LostFocus="OnFfprobePathLostFocus"
+                                     TextChanged="OnFfprobePathTextChanged"
                                      Classes.error="{Binding FfprobePathError, Converter={StaticResource IsNotEmptyToBool}}"
                                      BorderBrush="{Binding FfprobePathError, Converter={StaticResource ErrorToBorderBrush}}"/>
                             <Button Grid.Column="1" Content="浏览..."
@@ -564,6 +562,31 @@
                         </StackPanel>
                     </Grid>
                 </Border>
+            </StackPanel>
+
+            <!--
+              v0.11: 关于 Tab（spec §12.2）。
+              IsVisible 绑 SelectedTabIndex==3。
+            -->
+            <StackPanel Margin="40,24" Spacing="16"
+                        IsVisible="{Binding SelectedTabIndex, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=3}">
+                <TextBlock Text="星助 StartTooler"
+                           FontSize="20" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text.Primary}" />
+                <TextBlock Text="{Binding AppVersion}"
+                           FontSize="13"
+                           Foreground="{DynamicResource Text.Secondary}" />
+                <TextBlock Text="{Binding AppDescription}"
+                           FontSize="13"
+                           Foreground="{DynamicResource Text.Secondary}" />
+                <TextBlock Text="{Binding AppDetail}"
+                           TextWrapping="Wrap" FontSize="12"
+                           Foreground="{DynamicResource Text.Tertiary}"
+                           MaxWidth="480" />
+                <TextBlock Text="{Binding AppLicense}"
+                           FontSize="11"
+                           Foreground="{DynamicResource Text.Disabled}"
+                           MaxWidth="480" />
             </StackPanel>
          </Panel>
         </Border>
