@@ -147,20 +147,21 @@
                             <ItemsControl ItemsSource="{Binding CloudFiles}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
-                                        <WrapPanel Orientation="Horizontal" ItemWidth="160" ItemHeight="180"/>
+                                        <!-- v0.11: 卡片高度 180→120（spec §10.2） -->
+                                        <WrapPanel Orientation="Horizontal" ItemWidth="160" ItemHeight="120"/>
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="data:MediaFile">
                                         <Border Margin="8"
-                                                Width="160" Height="180"
+                                                Width="160" Height="120"
                                                 Background="{DynamicResource Bg.SurfaceElevated}"
                                                 CornerRadius="{DynamicResource Radius.Large}"
                                                 ClipToBounds="True"
                                                 PointerPressed="OnCardPointerPressed">
                                             <Grid RowDefinitions="2,*,Auto">
                                                 <!-- 4.1 青蓝色顶条 -->
-                                                <Border Grid.Row="0" Background="#4DD0E1"/>
+                                                <Border Grid.Row="0" Background="{DynamicResource Cloud.TrashBar}"/>
 
                                                 <!-- 中部缩略图 + 徽章 -->
                                                 <Grid Grid.Row="1">
@@ -171,7 +172,7 @@
                                                     <Path Data="{DynamicResource Icon.Constellation}"
                                                           Stretch="Uniform"
                                                           Width="48" Height="48"
-                                                          Stroke="{DynamicResource Text.Disabled}"
+                                                          Stroke="{DynamicResource Card.EmptyStateStroke}"
                                                           StrokeThickness="1"
                                                           Fill="Transparent"
                                                           Opacity="0.4"
@@ -179,25 +180,46 @@
                                                           VerticalAlignment="Center"
                                                           IsVisible="{Binding ThumbnailPath, Converter={StaticResource FilePathToVis}, ConverterParameter=Invert}"/>
 
-                                                    <!-- 多选 CheckBox（spec §5.3） -->
-                                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                                              HorizontalAlignment="Left"
-                                                              VerticalAlignment="Top"
-                                                              Margin="8"
-                                                              IsVisible="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).IsMultiSelectMode}"/>
+                                                    <!--
+                                                      v0.11: 多选 CheckBox 替换为 Gallery 同款自定义圆圈（spec §10.1）。
+                                                      Panel 内两个 Border 互斥显示：未选 / 已选。
+                                                    -->
+                                                    <Panel HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           Width="28" Height="28"
+                                                           IsVisible="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).IsMultiSelectMode}">
+                                                        <Border Width="28" Height="28"
+                                                                Background="{DynamicResource Select.CheckBg}"
+                                                                BorderBrush="{DynamicResource Select.CheckBorder}"
+                                                                BorderThickness="2"
+                                                                CornerRadius="14"
+                                                                IsVisible="{Binding !IsSelected}" />
+                                                        <Border Width="28" Height="28"
+                                                                Background="{DynamicResource Select.CheckFilled}"
+                                                                BorderBrush="{DynamicResource Select.CheckFilledBorder}"
+                                                                BorderThickness="2"
+                                                                CornerRadius="14"
+                                                                IsVisible="{Binding IsSelected}">
+                                                            <Path Data="{StaticResource Icon.Check}"
+                                                                  Width="16" Height="16"
+                                                                  Fill="{DynamicResource Select.CheckTickFg}"
+                                                                  HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </Panel>
 
                                                     <!-- 右上角云端徽章（青蓝色） -->
                                                     <Border HorizontalAlignment="Right"
                                                             VerticalAlignment="Top"
                                                             Margin="6,6,10,6"
                                                             Width="22" Height="22"
-                                                            Background="#CCFFFFFF"
+                                                            Background="{DynamicResource Overlay.Light}"
                                                             CornerRadius="11"
                                                             IsVisible="{Binding IsUploaded}">
                                                         <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
                                                               Stretch="Uniform"
                                                               Width="12" Height="12"
-                                                              Fill="#4DD0E1"
+                                                              Fill="{DynamicResource Cloud.Accent}"
                                                               HorizontalAlignment="Center"
                                                               VerticalAlignment="Center"/>
                                                     </Border>
@@ -207,62 +229,29 @@
                                                             VerticalAlignment="Bottom"
                                                             Margin="6,6,10,6"
                                                             Width="22" Height="22"
-                                                            Background="#CCFFFFFF"
+                                                            Background="{DynamicResource Overlay.Light}"
                                                             CornerRadius="11"
                                                             IsVisible="{Binding LocalExists, Converter={x:Static BoolConverters.Not}}">
                                                         <TextBlock Text="!"
                                                                    FontSize="13"
                                                                    FontWeight="Bold"
-                                                                   Foreground="#FFA726"
+                                                                   Foreground="{DynamicResource State.Warning}"
                                                                    HorizontalAlignment="Center"
                                                                    VerticalAlignment="Center"/>
                                                     </Border>
                                                 </Grid>
 
-                                                <!-- 底部信息 + 操作区 -->
-                                                <Border Grid.Row="2" Background="#CC0A0E1A" Padding="6,4">
-                                                    <StackPanel Spacing="4">
-                                                        <!-- 原始路径（云端文件，spec §3.2） -->
-                                                        <TextBlock Text="{Binding RelativePath}"
-                                                                   FontSize="9"
-                                                                   Foreground="#80FFFFFF"
-                                                                   TextTrimming="CharacterEllipsis"
-                                                                   MaxLines="1"
-                                                                   IsVisible="{Binding IsUploaded}"/>
-                                                        <!-- 文件名 -->
+                                                <!-- 底部信息 + 操作区（v0.11: 180→120 压缩为单行） -->
+                                                <Border Grid.Row="2" Background="{DynamicResource Card.FooterBg}" Padding="4,2">
+                                                    <StackPanel Spacing="2">
                                                         <TextBlock Text="{Binding FileName}"
-                                                                   FontSize="11"
-                                                                   Foreground="#E6FFFFFF"
+                                                                   FontSize="10"
+                                                                   Foreground="{DynamicResource Card.FooterText}"
                                                                    TextTrimming="CharacterEllipsis"
-                                                                   MaxLines="1"/>
-                                                        <!-- 删除日期 + 文件大小（spec §3.1） -->
-                                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                                            <TextBlock Text="{Binding DeletedAt, Converter={StaticResource UnixMsToDate}}"
-                                                                       FontSize="9"
-                                                                       Foreground="#99FFFFFF"/>
-                                                            <TextBlock Text="{Binding FileSize, Converter={StaticResource BytesToHuman}}"
-                                                                       FontSize="9"
-                                                                       Foreground="#99FFFFFF"/>
-                                                        </StackPanel>
-                                                        <!-- 操作按钮（多选模式时隐藏，单文件操作才出现） -->
-                                                        <StackPanel Orientation="Horizontal"
-                                                                    Spacing="4"
-                                                                    HorizontalAlignment="Center"
-                                                                    IsVisible="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).IsMultiSelectMode, Converter={x:Static BoolConverters.Not}}">
-                                                            <Button Classes="trash-action-restore"
-                                                                    Content="恢复"
-                                                                    Command="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).RestoreCommand}"
-                                                                    CommandParameter="{Binding}"/>
-                                                            <Button Classes="trash-action"
-                                                                    Content="下载"
-                                                                    Command="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).DownloadCommand}"
-                                                                    CommandParameter="{Binding}"
-                                                                    IsVisible="{Binding LocalExists, Converter={x:Static BoolConverters.Not}}"/>
-                                                            <Button Classes="trash-action-danger"
-                                                                    Content="清理"
-                                                                    Command="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).CleanSingleCommand}"
-                                                                    CommandParameter="{Binding}"/>
-                                                        </StackPanel>
+                                                                   MaxLines="1" />
+                                                        <TextBlock Text="{Binding DeletedAt, Converter={StaticResource UnixMsToDate}}"
+                                                                   FontSize="8"
+                                                                   Foreground="{DynamicResource Text.Tertiary}" />
                                                     </StackPanel>
                                                 </Border>
                                             </Grid>
@@ -281,13 +270,14 @@
                             <ItemsControl ItemsSource="{Binding LocalFiles}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
-                                        <WrapPanel Orientation="Horizontal" ItemWidth="160" ItemHeight="180"/>
+                                        <!-- v0.11: 卡片高度 180→120（spec §10.2） -->
+                                        <WrapPanel Orientation="Horizontal" ItemWidth="160" ItemHeight="120"/>
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="data:MediaFile">
                                         <Border Margin="8"
-                                                Width="160" Height="180"
+                                                Width="160" Height="120"
                                                 Background="{DynamicResource Bg.SurfaceElevated}"
                                                 CornerRadius="{DynamicResource Radius.Large}"
                                                 ClipToBounds="True"
@@ -306,7 +296,7 @@
                                                     <Path Data="{DynamicResource Icon.Constellation}"
                                                           Stretch="Uniform"
                                                           Width="48" Height="48"
-                                                          Stroke="{DynamicResource Text.Disabled}"
+                                                          Stroke="{DynamicResource Card.EmptyStateStroke}"
                                                           StrokeThickness="1"
                                                           Fill="Transparent"
                                                           Opacity="0.4"
@@ -314,44 +304,44 @@
                                                           VerticalAlignment="Center"
                                                           IsVisible="{Binding ThumbnailPath, Converter={StaticResource FilePathToVis}, ConverterParameter=Invert}"/>
 
-                                                    <!-- 多选 CheckBox -->
-                                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                                              HorizontalAlignment="Left"
-                                                              VerticalAlignment="Top"
-                                                              Margin="8"
-                                                              IsVisible="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).IsMultiSelectMode}"/>
+                                                    <!-- v0.11: 多选 CheckBox 替换为自定义圆圈（spec §10.1） -->
+                                                    <Panel HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           Width="28" Height="28"
+                                                           IsVisible="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).IsMultiSelectMode}">
+                                                        <Border Width="28" Height="28"
+                                                                Background="{DynamicResource Select.CheckBg}"
+                                                                BorderBrush="{DynamicResource Select.CheckBorder}"
+                                                                BorderThickness="2"
+                                                                CornerRadius="14"
+                                                                IsVisible="{Binding !IsSelected}" />
+                                                        <Border Width="28" Height="28"
+                                                                Background="{DynamicResource Select.CheckFilled}"
+                                                                BorderBrush="{DynamicResource Select.CheckFilledBorder}"
+                                                                BorderThickness="2"
+                                                                CornerRadius="14"
+                                                                IsVisible="{Binding IsSelected}">
+                                                            <Path Data="{StaticResource Icon.Check}"
+                                                                  Width="16" Height="16"
+                                                                  Fill="{DynamicResource Select.CheckTickFg}"
+                                                                  HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </Panel>
 
                                                     <!-- 右上角无徽章（未上传） -->
                                                 </Grid>
 
-                                                <Border Grid.Row="2" Background="#CC0A0E1A" Padding="6,4">
-                                                    <StackPanel Spacing="4">
+                                                <Border Grid.Row="2" Background="{DynamicResource Card.FooterBg}" Padding="4,2">
+                                                    <StackPanel Spacing="2">
                                                         <TextBlock Text="{Binding FileName}"
-                                                                   FontSize="11"
-                                                                   Foreground="#E6FFFFFF"
+                                                                   FontSize="10"
+                                                                   Foreground="{DynamicResource Card.FooterText}"
                                                                    TextTrimming="CharacterEllipsis"
                                                                    MaxLines="1"/>
-                                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                                            <TextBlock Text="{Binding DeletedAt, Converter={StaticResource UnixMsToDate}}"
-                                                                       FontSize="9"
-                                                                       Foreground="#99FFFFFF"/>
-                                                            <TextBlock Text="{Binding FileSize, Converter={StaticResource BytesToHuman}}"
-                                                                       FontSize="9"
-                                                                       Foreground="#99FFFFFF"/>
-                                                        </StackPanel>
-                                                        <StackPanel Orientation="Horizontal"
-                                                                    Spacing="4"
-                                                                    HorizontalAlignment="Center"
-                                                                    IsVisible="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).IsMultiSelectMode, Converter={x:Static BoolConverters.Not}}">
-                                                            <Button Classes="trash-action-restore"
-                                                                    Content="恢复"
-                                                                    Command="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).RestoreCommand}"
-                                                                    CommandParameter="{Binding}"/>
-                                                            <Button Classes="trash-action-danger"
-                                                                    Content="清理"
-                                                                    Command="{Binding $parent[ItemsControl].((vm:TrashViewModel)DataContext).CleanSingleCommand}"
-                                                                    CommandParameter="{Binding}"/>
-                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding DeletedAt, Converter={StaticResource UnixMsToDate}}"
+                                                                   FontSize="8"
+                                                                   Foreground="{DynamicResource Text.Tertiary}"/>
                                                     </StackPanel>
                                                 </Border>
                                             </Grid>

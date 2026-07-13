@@ -44,12 +44,20 @@ public partial class NotificationItem : ObservableObject
 /// <summary>
 /// 应用级单例：所有 ViewModel 都通过 NotificationService.Current 发通知。
 /// MainWindow.axaml 绑 Items 渲染右下角浮窗。
+/// v0.11: 增加 History 列表 + Dismiss 时入历史（spec §14）。
 /// </summary>
 public class NotificationService
 {
     public static NotificationService Current { get; } = new();
 
     public ObservableCollection<NotificationItem> Items { get; } = new();
+
+    /// <summary>
+    /// v0.11: 通知历史（最近 10 条）。Dismiss 时把条目从 Items 移到 History 头部。
+    /// MainWindow 状态栏铃铛 Flyout 绑这个集合显示历史。
+    /// </summary>
+    public ObservableCollection<NotificationItem> History { get; } = new();
+    private const int MaxHistoryCount = 10;
 
     private const int DefaultDurationSeconds = 5;
 
@@ -99,6 +107,7 @@ public class NotificationService
 
     /// <summary>
     /// 立即移除通知。
+    /// v0.11: 同时入历史（spec §14）—— 用户能在状态栏铃铛里看回放最近 10 条通知。
     /// </summary>
     public void Dismiss(NotificationItem item)
     {
@@ -106,7 +115,14 @@ public class NotificationService
         Dispatcher.UIThread.Post(() =>
         {
             if (Items.Contains(item))
+            {
                 Items.Remove(item);
+                History.Insert(0, item);
+                while (History.Count > MaxHistoryCount)
+                {
+                    History.RemoveAt(History.Count - 1);
+                }
+            }
         });
     }
 }
