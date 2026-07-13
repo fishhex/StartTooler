@@ -86,6 +86,21 @@ public partial class MediaFile : ObservableObject
     private bool _isSelected;
 
     /// <summary>
+    /// v0.11: photo tile hover 态（spec §5.3）—— 由 View 在 PointerEnter/Leave 维护。
+    /// 用于控制质量标签条 IsVisible：仅 hover 显示，避免一直占位。
+    /// 运行时 UI 状态，不入 DB。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isHovered;
+
+    /// <summary>
+    /// v0.11: 键盘导航焦点态（spec §7）—— 由 GalleryView.OnKeyDown 维护。
+    /// 决定 photo tile 是否画键盘焦点边框。运行时 UI 状态，不入 DB。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isKeyboardFocused;
+
+    /// <summary>
     /// UI 用的瞬时上传状态。默认 NotUploaded；进 Gallery 时根据 upload_jobs 反推。
     /// </summary>
     [ObservableProperty]

@@ -68,8 +68,15 @@ public sealed class ScanProgress
 /// 取代 v0.6 用的 (string Tag, int Count) tuple，XAML x:DataType 写起来更顺。
 /// init-only 防 VM 误改字段（构造后不可变）。
 /// </summary>
-public sealed class TagGroupItem
+public sealed partial class TagGroupItem : ObservableObject
 {
     public string Tag { get; init; } = "";
     public int Count { get; init; }
+
+    /// <summary>
+    /// v0.11: 标签列表选中态（spec §15.4）—— 选中项文字变色 / 加粗。
+    /// 由 GalleryViewModel.SelectTagAsync 维护。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isSelected;
 }
