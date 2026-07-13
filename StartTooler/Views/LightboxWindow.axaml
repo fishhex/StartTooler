@@ -6,6 +6,7 @@
         xmlns:services="using:StartTooler.Services"
         xmlns:conv="using:StartTooler.Converters"
         xmlns:controls="using:StartTooler.Controls"
+        xmlns:converters="using:StartTooler.Converters"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="800"
         x:Class="StartTooler.Views.LightboxWindow"
         x:DataType="vm:LightboxViewModel"
@@ -16,6 +17,16 @@
         ShowInTaskbar="True"
         Background="{DynamicResource Bg.Outer}"
         KeyDown="OnKeyDown">
+
+    <Window.Resources>
+        <!-- v0.11: EXIF Converter（spec §11.2） -->
+        <converters:ExifToVisConverter x:Key="ExifToVis"/>
+        <converters:ExifToCameraConverter x:Key="ExifToCamera"/>
+        <converters:ExifToApertureConverter x:Key="ExifToAperture"/>
+        <converters:ExifToShutterConverter x:Key="ExifToShutter"/>
+        <converters:ExifToIsoConverter x:Key="ExifToIso"/>
+        <converters:ExifToFocalLengthConverter x:Key="ExifToFocalLength"/>
+    </Window.Resources>
 
     <!--
       v0.11 灯箱预览窗口（spec doc/0.11/01-lightbox-preview.md）
@@ -75,19 +86,24 @@
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center" />
 
-                    <!-- 居中 ▶ overlay + 提示（IsHitTestVisible=False 让点击穿透到底栏「打开外部」） -->
+                    <!--
+                      v0.11: 视频 overlay 可点击 → 直接触发 OpenExternally（spec §11.1）。
+                      原版 IsHitTestVisible=False + 文字提示 "点击底栏「打开外部」" 改成
+                      Cursor=Hand + Tapped 触发 vm.OpenExternallyCommand，提示文字也改成 "点击播放视频"。
+                    -->
                     <Border HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            Background="#CC0A0E1A"
+                            Background="{DynamicResource Overlay.Dark}"
                             CornerRadius="48"
                             Padding="40"
-                            IsHitTestVisible="False">
+                            Cursor="Hand"
+                            Tapped="OnVideoPlayTapped">
                         <StackPanel Spacing="12" HorizontalAlignment="Center">
                             <PathIcon Data="{StaticResource Icon.Play}"
                                       Width="64" Height="64"
                                       Foreground="#E6FFFFFF"
                                       HorizontalAlignment="Center" />
-                            <TextBlock Text="视频文件 · 点击底栏「打开外部」播放"
+                            <TextBlock Text="点击播放视频"
                                        FontSize="13"
                                        Foreground="#E6FFFFFF"
                                        HorizontalAlignment="Center" />
@@ -179,6 +195,29 @@
                                 <Run Text=" × " />
                                 <Run Text="{Binding ImageHeight, Mode=OneWay}" />
                             </TextBlock>
+                        </StackPanel>
+
+                        <!--
+                          v0.11: 拍摄参数 EXIF 区（spec §11.2）。
+                          绑定 CurrentFile.Path（MediaFile 自身）→ ExifConverter 内部拼 ProjectPath+RelativePath。
+                          任一字段（Camera / Aperture / Shutter / ISO / FocalLength）有值时整段显示。
+                        -->
+                        <StackPanel Spacing="4"
+                                    IsVisible="{Binding CurrentFile, Converter={StaticResource ExifToVis}}">
+                            <TextBlock Text="拍摄参数" Classes="InfoLabel" />
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{Binding CurrentFile, Converter={StaticResource ExifToCamera}}"
+                                           FontSize="11" Foreground="{DynamicResource Text.Secondary}" />
+                                <TextBlock FontSize="11" Foreground="{DynamicResource Text.Secondary}">
+                                    <Run Text="{Binding CurrentFile, Converter={StaticResource ExifToAperture}}" />
+                                    <Run Text=" · " />
+                                    <Run Text="{Binding CurrentFile, Converter={StaticResource ExifToShutter}}" />
+                                    <Run Text=" · ISO " />
+                                    <Run Text="{Binding CurrentFile, Converter={StaticResource ExifToIso}}" />
+                                </TextBlock>
+                                <TextBlock Text="{Binding CurrentFile, Converter={StaticResource ExifToFocalLength}}"
+                                           FontSize="11" Foreground="{DynamicResource Text.Secondary}" />
+                            </StackPanel>
                         </StackPanel>
 
                         <!-- 视频模式：「类型」标识 -->
@@ -361,6 +400,13 @@
                                MinWidth="56"
                                Foreground="{DynamicResource Text.Secondary}"
                                FontSize="12" />
+                    <!-- v0.11: 100% 重置按钮（spec §11.3） -->
+                    <Button Classes="LightboxToolButton"
+                            Command="{Binding ZoomResetCommand}"
+                            ToolTip.Tip="重置缩放 (0)"
+                            IsVisible="{Binding IsImage}">
+                        <TextBlock Text="100%" FontSize="11" />
+                    </Button>
                 </StackPanel>
 
                 <!-- 右：在 Finder 中显示 + 用默认应用打开 -->

@@ -167,4 +167,15 @@ public partial class LightboxWindow : Window
             vm.RemoveTagCommand.Execute(tag);
         }
     }
+
+    /// <summary>
+    /// v0.11: 视频 overlay 点击 → 直接调 OpenExternally（spec §11.1）。
+    /// 用户对视频最自然期望 = 点中心 ▶ 播放；之前 IsHitTestVisible=False 强制走底栏
+    /// 「打开外部」按钮 / Space 键，体验割裂。
+    /// </summary>
+    private void OnVideoPlayTapped(object? sender, TappedEventArgs e)
+    {
+        if (DataContext is LightboxViewModel vm)
+            vm.OpenExternallyCommand.Execute(null);
+    }
 }
