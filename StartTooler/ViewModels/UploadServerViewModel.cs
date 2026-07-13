@@ -60,7 +60,7 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     public ObservableCollection<UploadHistoryEntry> UploadHistory { get; } = new();
     /// <summary>历史非空时显示 ScrollViewer 区块。</summary>
     public bool HasUploadHistory => UploadHistory.Count > 0;
-    [ObservableProperty] private string _copyButtonText = "📋";
+    [ObservableProperty] private string _copyButtonText = "已复制";  // v0.11: 默认空，按钮渲染 Icon.Copy（XAML 端），执行后变 "已复制"
 
     // v0.11 端口冲突（State.Danger 颜色 + 建议空闲端口）
     [ObservableProperty] private bool _isPortConflict;
@@ -275,6 +275,8 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     /// <summary>
     /// 复制 UploadUrl 到剪贴板，按钮短暂变 "已复制" 反馈。spec §3.2。
     /// 走 <see cref="ClipboardService"/>（启动时 App 把 MainWindow.Clipboard 绑进来）。
+    /// v0.11: 默认 CopyButtonText="已复制" 占位（XAML 端 IsNullOrEmpty 才显示 Icon.Copy）；
+    /// 点击后设 "已复制" 显示文字 → 1.5s 后清空回 Icon。
     /// </summary>
     [RelayCommand]
     private async Task CopyUrl()
@@ -283,7 +285,7 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         await ClipboardService.SetTextAsync(UploadUrl);
         CopyButtonText = "已复制";
         await Task.Delay(1500);
-        CopyButtonText = "📋";
+        CopyButtonText = "";  // v0.11: 清空让 XAML 重新显示 Icon.Copy
     }
 
     /// <summary>
@@ -294,6 +296,17 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrEmpty(address)) return;
         await ClipboardService.SetTextAsync(address);
+    }
+
+    /// <summary>
+    /// v0.11: 清除上传历史（spec §13.2）。
+    /// 用户拍一下就把最近上传列表清空；不影响未来的上传（不持久化）。
+    /// </summary>
+    [RelayCommand]
+    private void ClearUploadHistory()
+    {
+        UploadHistory.Clear();
+        Trace.WriteLine("[UploadServerVM] ClearUploadHistory: 清空上传历史");
     }
 
     private void OnPublicRelayPropertyChanged(object? sender, PropertyChangedEventArgs e)

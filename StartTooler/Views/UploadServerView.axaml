@@ -44,7 +44,8 @@
                                                Width="120"
                                                IsEnabled="{Binding !IsRunning}"
                                                VerticalAlignment="Center"/>
-                                <Button Content="🎲 随机端口"
+                                <!-- v0.11: 🎲 随机端口 → 纯文字 "随机端口"（spec §13.1） -->
+                                <Button Content="随机端口"
                                         Command="{Binding UseRandomPortCommand}"
                                         IsVisible="{Binding IsPortConflict}"
                                         VerticalAlignment="Center"
@@ -102,17 +103,27 @@
                         <!-- 错误消息 -->
                         <TextBlock Text="{Binding ErrorMessage}"
                                    FontSize="12"
-                                   Foreground="{DynamicResource State.Error}"
+                                   Foreground="{DynamicResource State.Danger}"
                                    TextWrapping="Wrap"
                                    IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
                         <!-- 上传历史（最多 50 条 ScrollViewer 滚动；空时不显示） -->
                         <StackPanel Spacing="6"
                                     IsVisible="{Binding HasUploadHistory}">
-                            <TextBlock Text="最近上传"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource Text.Primary}"/>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0"
+                                           Text="最近上传"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text.Primary}"
+                                           VerticalAlignment="Center"/>
+                                <!-- v0.11: 「清除」按钮（spec §13.2） -->
+                                <Button Grid.Column="1"
+                                        Content="清除"
+                                        Classes="toolbar-button"
+                                        FontSize="11"
+                                        Command="{Binding ClearUploadHistoryCommand}"/>
+                            </Grid>
                             <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
                                 <ItemsControl ItemsSource="{Binding UploadHistory}">
                                     <ItemsControl.ItemTemplate>
@@ -174,13 +185,28 @@
                                      FontSize="11"
                                      TextWrapping="Wrap"
                                      MaxWidth="220"/>
+                            <!--
+                              v0.11: 复制按钮默认显示 Icon.Copy，点击后 1.5s 显示 "已复制"（spec §13.1）。
+                              XAML 端用 Grid 叠加：默认显示图标，点击后 CopyButtonText="已复制" 时显示文字。
+                            -->
                             <Button Grid.Column="1"
-                                    Content="{Binding CopyButtonText}"
                                     Command="{Binding CopyUrlCommand}"
                                     Classes="secondary-button"
                                     Margin="4,0,0,0"
                                     Padding="8,4"
-                                    VerticalAlignment="Top"/>
+                                    VerticalAlignment="Top"
+                                    ToolTip.Tip="复制 URL">
+                                <Panel>
+                                    <PathIcon Data="{StaticResource Icon.Copy}"
+                                              Width="12" Height="12"
+                                              Foreground="{DynamicResource Text.Secondary}"
+                                              IsVisible="{Binding CopyButtonText, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
+                                    <TextBlock Text="{Binding CopyButtonText}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Text.Secondary}"
+                                               IsVisible="{Binding CopyButtonText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                </Panel>
+                            </Button>
                         </Grid>
 
                         <!-- 多 IP 列表（spec §3.4） -->
@@ -197,11 +223,15 @@
                                             <TextBlock Text="{Binding}"
                                                        FontSize="11"
                                                        Foreground="{DynamicResource Text.Primary}"/>
-                                            <Button Content="📋"
-                                                    FontSize="10"
-                                                    Padding="4,2"
+                                            <!-- v0.11: 📋 emoji → Icon.Copy 图标（spec §13.1） -->
+                                            <Button Padding="6,2"
                                                     Command="{Binding $parent[UserControl].DataContext.CopyAddressCommand}"
-                                                    CommandParameter="{Binding}"/>
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip.Tip="复制 IP">
+                                                <PathIcon Data="{StaticResource Icon.Copy}"
+                                                          Width="11" Height="11"
+                                                          Foreground="{DynamicResource Text.Secondary}"/>
+                                            </Button>
                                         </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -236,7 +266,7 @@
 
                         <TextBlock Text="⚠ 请先在「设置」里选择项目目录"
                                    FontSize="12"
-                                   Foreground="{DynamicResource State.Error}"
+                                   Foreground="{DynamicResource State.Danger}"
                                    IsVisible="{Binding PublicRelayViewModel.IsProjectPathSet, Converter={x:Static BoolConverters.Not}}"/>
 
                         <!-- 第一步：VPS 连接（spec §4.1） -->
@@ -428,7 +458,7 @@
                                       IsVisible="{Binding PublicRelayViewModel.LastError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                                     <TextBlock Grid.Column="0" Text="错误" FontSize="13" Foreground="{DynamicResource Text.Primary}" VerticalAlignment="Top" Margin="0,6,0,0"/>
                                     <TextBlock Grid.Column="1" Text="{Binding PublicRelayViewModel.LastError}"
-                                               FontSize="12" Foreground="{DynamicResource State.Error}"
+                                               FontSize="12" Foreground="{DynamicResource State.Danger}"
                                                TextWrapping="Wrap" VerticalAlignment="Top" Margin="0,6,0,0"/>
                                 </Grid>
                             </StackPanel>
