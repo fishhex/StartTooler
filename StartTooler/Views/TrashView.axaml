@@ -239,6 +239,11 @@
                                                                    HorizontalAlignment="Center"
                                                                    VerticalAlignment="Center"/>
                                                     </Border>
+
+                                                    <!-- 选中时遮罩: 半透明蓝色叠加（与 Gallery 一致） -->
+                                                    <Border IsVisible="{Binding IsSelected}"
+                                                            Background="{DynamicResource Overlay.Selection}"
+                                                            IsHitTestVisible="False"/>
                                                 </Grid>
 
                                                 <!-- 底部信息 + 操作区（v0.11: 180→120 压缩为单行） -->
@@ -330,6 +335,11 @@
                                                     </Panel>
 
                                                     <!-- 右上角无徽章（未上传） -->
+
+                                                    <!-- 选中时遮罩: 半透明蓝色叠加（与 Gallery 一致） -->
+                                                    <Border IsVisible="{Binding IsSelected}"
+                                                            Background="{DynamicResource Overlay.Selection}"
+                                                            IsHitTestVisible="False"/>
                                                 </Grid>
 
                                                 <Border Grid.Row="2" Background="{DynamicResource Card.FooterBg}" Padding="4,2">

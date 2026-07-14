@@ -62,6 +62,7 @@ public partial class TrashViewModel : ObservableObject
 
     // === 多选状态（v0.11 spec §5） ===
     [ObservableProperty] private bool _isMultiSelectMode;
+    private bool _isBulkSelecting; // 批量选中时抑制单文件通知
 
     public HashSet<long> SelectedCloudIds { get; } = new();
     public HashSet<long> SelectedLocalIds { get; } = new();
@@ -160,9 +161,11 @@ public partial class TrashViewModel : ObservableObject
             _subscribedFiles.Clear();
         }
 
-        // v0.11: 任何集合变化都通知 TrashCount（NavRail 徽章）+ CapacityStats（标题）
+        // v0.11: 任何集合变化都通知相关属性
         OnPropertyChanged(nameof(TrashCount));
         OnPropertyChanged(nameof(CapacityStats));
+        OnPropertyChanged(nameof(HasCloudFiles));
+        OnPropertyChanged(nameof(HasLocalFiles));
     }
 
     private void OnMediaFilePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -171,8 +174,6 @@ public partial class TrashViewModel : ObservableObject
         if (sender is not MediaFile file) return;
 
         // 同步 IsSelected 变化到 SelectedCloudIds / SelectedLocalIds
-        // 来源可能是 CheckBox 直接改 IsSelected（双向 binding），也可能是 ToggleSelect 内部改。
-        // 双向 binding 路径下，HashSet 还没这个 id，需要 Add；Remove 路径同理。HashSet.Add/Remove 幂等。
         var set = file.IsUploaded ? SelectedCloudIds : SelectedLocalIds;
         if (file.IsSelected)
         {
@@ -182,6 +183,10 @@ public partial class TrashViewModel : ObservableObject
         {
             set.Remove(file.Id);
         }
+
+        // 批量选中时跳过单文件计数更新，由 SelectAll 最终统一通知
+        if (_isBulkSelecting) return;
+
         if (file.IsUploaded) SelectedCloudCount = SelectedCloudIds.Count;
         else                 SelectedLocalCount = SelectedLocalIds.Count;
         OnPropertyChanged(nameof(TotalSelectedCount));
@@ -290,11 +295,19 @@ public partial class TrashViewModel : ObservableObject
     [RelayCommand]
     private void SelectAll()
     {
-        foreach (var f in CloudFiles) { SelectedCloudIds.Add(f.Id); f.IsSelected = true; }
-        foreach (var f in LocalFiles) { SelectedLocalIds.Add(f.Id); f.IsSelected = true; }
-        SelectedCloudCount = SelectedCloudIds.Count;
-        SelectedLocalCount = SelectedLocalIds.Count;
-        OnPropertyChanged(nameof(TotalSelectedCount));
+        _isBulkSelecting = true;
+        try
+        {
+            foreach (var f in CloudFiles) { SelectedCloudIds.Add(f.Id); f.IsSelected = true; }
+            foreach (var f in LocalFiles) { SelectedLocalIds.Add(f.Id); f.IsSelected = true; }
+        }
+        finally
+        {
+            _isBulkSelecting = false;
+            SelectedCloudCount = SelectedCloudIds.Count;
+            SelectedLocalCount = SelectedLocalIds.Count;
+            OnPropertyChanged(nameof(TotalSelectedCount));
+        }
         Trace.WriteLine($"[Trash] SelectAll: cloud={SelectedCloudCount}, local={SelectedLocalCount}");
     }
 
