@@ -200,8 +200,9 @@
                                                                 BorderThickness="2"
                                                                 CornerRadius="14"
                                                                 IsVisible="{Binding IsSelected}">
-                                                            <Path Data="{StaticResource Icon.Check}"
-                                                                  Width="16" Height="16"
+                                                            <Path Data="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
+                                                                  Stretch="Uniform"
+                                                                  Width="18" Height="18"
                                                                   Fill="{DynamicResource Select.CheckTickFg}"
                                                                   HorizontalAlignment="Center"
                                                                   VerticalAlignment="Center"/>
@@ -326,8 +327,9 @@
                                                                 BorderThickness="2"
                                                                 CornerRadius="14"
                                                                 IsVisible="{Binding IsSelected}">
-                                                            <Path Data="{StaticResource Icon.Check}"
-                                                                  Width="16" Height="16"
+                                                            <Path Data="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
+                                                                  Stretch="Uniform"
+                                                                  Width="18" Height="18"
                                                                   Fill="{DynamicResource Select.CheckTickFg}"
                                                                   HorizontalAlignment="Center"
                                                                   VerticalAlignment="Center"/>
