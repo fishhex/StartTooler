@@ -66,13 +66,16 @@ public sealed class AliyunOssStorage : IOssStorage, IDisposable
         {
             ct.ThrowIfCancellationRequested();
 
-            // 阿里云 SDK 是同步阻塞 IO，放到 Task.Run 让出调用线程
-            var result = await Task.Run(() =>
-            {
-                using var stream = File.OpenRead(localPath);
-                var request = new PutObjectRequest(_config.Bucket, objectKey, stream);
-                return _client.PutObject(request);
-            }, ct);
+            // v0.11 spec/09 §5: PutObject 走重试包装,瞬时错误指数退避 1s/3s/9s,永久错误(鉴权/404 等)立即抛
+            var result = await ExecuteWithRetryAsync(
+                operation: () => Task.Run(() =>
+                {
+                    using var stream = File.OpenRead(localPath);
+                    var request = new PutObjectRequest(_config.Bucket, objectKey, stream);
+                    return _client.PutObject(request);
+                }, ct),
+                operationName: $"Upload({objectKey})",
+                ct: ct);
 
             return new OssUploadResult
             {
@@ -87,6 +90,7 @@ public sealed class AliyunOssStorage : IOssStorage, IDisposable
         }
         catch (OssException ex)
         {
+            // ExecuteWithRetryAsync 抛出的永久错误走到这里(瞬时错误已在重试内消化)
             return new OssUploadResult
             {
                 ObjectKey = objectKey,
@@ -96,6 +100,7 @@ public sealed class AliyunOssStorage : IOssStorage, IDisposable
         }
         catch (Exception ex)
         {
+            // 重试耗尽 / 其他异常
             return new OssUploadResult
             {
                 ObjectKey = objectKey,
@@ -130,13 +135,17 @@ public sealed class AliyunOssStorage : IOssStorage, IDisposable
         {
             ct.ThrowIfCancellationRequested();
 
-            await Task.Run(() =>
-            {
-                var ossObject = _client.GetObject(_config.Bucket, objectKey);
-                using var requestStream = ossObject.Content;
-                using var fileStream = File.OpenWrite(localPath);
-                requestStream.CopyTo(fileStream);
-            }, ct);
+            // v0.11 spec/09 §5: GetObject 走重试包装
+            await ExecuteWithRetryAsync(
+                operation: () => Task.Run(() =>
+                {
+                    var ossObject = _client.GetObject(_config.Bucket, objectKey);
+                    using var requestStream = ossObject.Content;
+                    using var fileStream = File.OpenWrite(localPath);
+                    requestStream.CopyTo(fileStream);
+                }, ct),
+                operationName: $"Download({objectKey})",
+                ct: ct);
         }
         catch (OperationCanceledException)
         {
@@ -356,6 +365,94 @@ public sealed class AliyunOssStorage : IOssStorage, IDisposable
         // OssClient 内部使用 HttpClient，.NET 5+ 会自动管理
         // 显式置空便于 GC
     }
+
+    // ==================== v0.11 spec/09 §5: OSS 重试 ====================
+
+    /// <summary>
+    /// 包装单次 OSS 调用:瞬时错误按 1s/3s/9s 指数退避重试 3 次,永久错误立即抛。
+    /// CancellationToken 一律透传——取消时不退避。
+    /// </summary>
+    /// <param name="operationName">操作名,用于 trace 日志（如 "Upload" / "Download" / "InitiateMultipart"）</param>
+    private async Task<T> ExecuteWithRetryAsync<T>(
+        Func<Task<T>> operation,
+        string operationName,
+        CancellationToken ct)
+    {
+        const int maxRetries = 3;
+        int delaySeconds = 1;
+
+        for (int attempt = 0; ; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                if (attempt > 0)
+                {
+                    Trace.WriteLine($"[OSS] {operationName} 第 {attempt} 次重试...");
+                }
+                return await operation();
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (IsPermanentError(ex))
+            {
+                Trace.WriteLine($"[OSS] {operationName} 永久错误: [{GetErrorCode(ex)}] {ex.Message}");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                if (attempt == maxRetries)
+                {
+                    Trace.WriteLine($"[OSS] {operationName} 重试 {maxRetries} 次后仍失败: {ex.Message}");
+                    throw;
+                }
+                Trace.WriteLine($"[OSS] {operationName} 瞬时错误, {delaySeconds}s 后重试: {ex.Message}");
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                delaySeconds *= 3;  // 1 → 3 → 9
+            }
+        }
+    }
+
+    /// <summary>无返回值的重试包装（用于 Download/Delete 等 void 风格操作）。</summary>
+    private async Task ExecuteWithRetryAsync(
+        Func<Task> operation,
+        string operationName,
+        CancellationToken ct)
+    {
+        await ExecuteWithRetryAsync<bool>(
+            async () => { await operation(); return true; },
+            operationName, ct);
+    }
+
+    /// <summary>
+    /// 永久错误判定(spec §5.1):鉴权失败 / 桶不存在 / 对象不存在 / 拒绝访问,不应重试。
+    /// 限流 429/503 不在此列,会被当作瞬时错误走指数退避(用更短退避 3/9/27 也可,这里统一走 1/3/9 简单点)。
+    /// </summary>
+    private static bool IsPermanentError(Exception ex)
+    {
+        if (ex is OssException ossEx)
+        {
+            var code = ossEx.ErrorCode ?? string.Empty;
+            return code.Contains("InvalidAccessKey")
+                || code.Contains("SignatureDoesNotMatch")
+                || code.Contains("NoSuchBucket")
+                || code.Contains("NoSuchKey")
+                || code.Contains("AccessDenied");
+        }
+        return false;
+    }
+
+    private static string GetErrorCode(Exception ex)
+        => ex is OssException ossEx ? (ossEx.ErrorCode ?? "(null)") : ex.GetType().Name;
 }
 
 /// <summary>
