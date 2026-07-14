@@ -358,7 +358,7 @@
                                                             <Border IsVisible="{Binding HasScore}"
                                                                     HorizontalAlignment="Stretch"
                                                                     VerticalAlignment="Bottom"
-                                                                    Margin="0"
+                                                                    Margin="0,0,0,3"
                                                                     Padding="6,3"
                                                                     Background="{DynamicResource Card.FooterBg}">
                                                                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
