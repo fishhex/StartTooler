@@ -4,6 +4,7 @@
              xmlns:models="using:StartTooler.Models"
              xmlns:data="using:StartTooler.Data"
              xmlns:converters="using:StartTooler.Converters"
+             xmlns:controls="using:StartTooler.Controls"
              x:Class="StartTooler.Views.GalleryView"
              x:DataType="vm:GalleryViewModel">
 
@@ -131,6 +132,17 @@
         <!-- 照片网格区域 -->
         <Border Grid.Column="1" Background="{DynamicResource Bg.Surface}">
             <Grid>
+                <!-- v0.11 spec/07: 首次使用引导卡片（盖在空态之上,ShowOnboarding 关闭后自然隐藏） -->
+                <controls:OnboardingCard IsVisible="{Binding ShowOnboarding}"
+                                          Step1Complete="{Binding Step1Complete}"
+                                          Step2Complete="{Binding Step2Complete}"
+                                          Step3Complete="{Binding Step3Complete}"
+                                          Step2Hint="{Binding Step2Hint}"
+                                          GoToSettingsCommand="{Binding OnboardingGoToSettingsCommand}"
+                                          GoToOssSettingsCommand="{Binding OnboardingGoToOssSettingsCommand}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+
                 <!-- 无项目目录空态 -->
                 <StackPanel IsVisible="{Binding HasNoProject}"
                             HorizontalAlignment="Center"

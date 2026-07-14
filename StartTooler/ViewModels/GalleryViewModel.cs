@@ -27,6 +27,13 @@ public partial class GalleryViewModel : ObservableObject
     private readonly IUploadJobRepository _uploadJobRepo;
     private readonly IAITagger _aiTagger;  // v0.6 新增
     private readonly Func<Task<bool>>? _onOssNotConfigured;
+    private Action? _navigateToSettings;  // v0.11 spec/07: 引导跳转回调(由 MainWindowVM 注入)
+    private Action? _navigateToOssSettings;  // v0.11 spec/07: 引导跳转 OSS Tab 回调
+
+    /// <summary>MainWindowViewModel 注入导航回调,供 Onboarding 卡片跳转用</summary>
+    public Action? NavigateToSettings { set => _navigateToSettings = value; }
+    public Action? NavigateToOssSettings { set => _navigateToOssSettings = value; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasNoProject))]
     private string? _projectPath;
@@ -318,6 +325,107 @@ public partial class GalleryViewModel : ObservableObject
     public bool HasNoProject => string.IsNullOrEmpty(ProjectPath);
     public bool IsEmpty => !HasNoProject && !IsLoadingDateGroups && DateGroups.Count == 0;
 
+    // === v0.11 spec/07: 首次使用引导状态 ===
+    [ObservableProperty] private bool _showOnboarding;
+    [ObservableProperty] private bool _step1Complete;
+    [ObservableProperty] private bool _step2Complete;
+    [ObservableProperty] private bool _step3Complete;
+    [ObservableProperty] private string _step2Hint = "完成第一步后自动触发";
+
+    [RelayCommand]
+    private void OnboardingGoToSettings()
+    {
+        _navigateToSettings?.Invoke();
+    }
+
+    [RelayCommand]
+    private void OnboardingGoToOssSettings()
+    {
+        _navigateToOssSettings?.Invoke();
+    }
+
+    /// <summary>v0.11 spec/07 §5: 启动时检查引导状态,决定是否显示引导卡</summary>
+    public async Task CheckOnboardingStatusAsync()
+    {
+        try
+        {
+            var state = await _configService.GetAsync<OnboardingState>(ConfigKeys.Onboarding);
+            if (state?.Completed == true)
+            {
+                ShowOnboarding = false;
+                Step1Complete = Step2Complete = Step3Complete = true;
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[Gallery] 读 Onboarding 状态失败: {ex.Message}");
+        }
+
+        ShowOnboarding = HasNoProject || IsEmpty;
+        UpdateStepStates();
+    }
+
+    /// <summary>v0.11 spec/07 §5: 步骤状态更新 + 全部完成时持久化</summary>
+    private void UpdateStepStates()
+    {
+        Step1Complete = !HasNoProject;
+        Step2Complete = !IsEmpty;
+        Step3Complete = CheckOssConfiguredSync();
+
+        // Step2 未完成且 Step1 已完成时,自动触发扫描(spec §3.3)
+        if (Step1Complete && !Step2Complete && !IsScanning)
+        {
+            Step2Hint = "正在自动扫描…";
+            // RequestRefreshDebounced 是同步方法,内部 Task.Run 异步执行
+            RequestRefreshDebounced(delayMs: 500);
+        }
+        else if (Step1Complete && !Step2Complete)
+        {
+            Step2Hint = "扫描中…";
+        }
+        else
+        {
+            Step2Hint = "完成第一步后自动触发";
+        }
+
+        if (Step1Complete && Step2Complete && Step3Complete)
+        {
+            ShowOnboarding = false;
+            // 异步持久化,fire-and-forget
+            _ = _configService.SetAsync(ConfigKeys.Onboarding, new OnboardingState
+            {
+                Completed = true,
+                CompletedAt = DateTime.UtcNow
+            });
+            Trace.WriteLine("[Gallery] 引导完成,已持久化");
+        }
+    }
+
+    private bool CheckOssConfiguredSync()
+    {
+        // 简化:不阻塞,OSS 检测放后台更新 Step3Complete
+        return _ossConfiguredCache;
+    }
+
+    private bool _ossConfiguredCache;
+
+    public async Task RefreshOssConfigAsync()
+    {
+        try
+        {
+            var oss = await _configService.GetAsync<OssConfig>(ConfigKeys.Oss);
+            _ossConfiguredCache = oss != null
+                && !string.IsNullOrEmpty(oss.Bucket)
+                && !string.IsNullOrEmpty(oss.AccessKeyId);
+            if (ShowOnboarding) UpdateStepStates();
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[Gallery] 读 OSS 配置失败: {ex.Message}");
+        }
+    }
+
     // === v0.11 状态栏字段（spec demand/06 §9） ===
     /// <summary>当前视图的文件数（CurrentMediaFiles.Count）。通知走 OnCurrentMediaFilesChanged → CollectionChanged。</summary>
     public int CurrentFileCount => CurrentMediaFiles.Count;
@@ -365,11 +473,14 @@ public partial class GalleryViewModel : ObservableObject
         _configService = configService;
         _systemShell = systemShell;
         _ossFactory = ossFactory;
+        _onOssNotConfigured = onOssNotConfigured;
+        SelectedFiles.CollectionChanged += OnSelectedFilesChanged;
         _uploadJobRepo = uploadJobRepo;
         _aiTagger = aiTagger;
         _onOssNotConfigured = onOssNotConfigured;
         SelectedFiles.CollectionChanged += OnSelectedFilesChanged;
         CurrentMediaFiles.CollectionChanged += OnCurrentMediaFilesChanged;
+        DateGroups.CollectionChanged += OnDateGroupsCollectionChanged;  // v0.11 spec/07
     }
 
     private void OnCurrentMediaFilesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -822,7 +933,9 @@ public partial class GalleryViewModel : ObservableObject
                     return;
                 }
                 Trace.WriteLine("[Gallery] auto refresh start (triggered by upload)");
-                await RefreshAsync();
+                // RefreshAsync 改 ObservableProperty,必须 UI 线程;Task.Run 在 background,
+                // 切回 UI 线程执行避免 "Call from invalid thread"
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(RefreshAsync);
             }
             catch (OperationCanceledException)
             {
@@ -834,6 +947,10 @@ public partial class GalleryViewModel : ObservableObject
             }
         }, ct);
     }
+
+    // === v0.11 spec/10 §4.1: 大图库提示回调 ===
+    // MainWindowViewModel 注入此回调，扫描完成后根据文件数提示。
+    internal Action<string?>? OnLargeLibraryHint;
 
     [RelayCommand]
     private async Task RefreshAsync()
@@ -900,6 +1017,49 @@ public partial class GalleryViewModel : ObservableObject
         {
             ScanStatusMessage = $"扫描完成 · 共 {ScanProgress?.Total} 个文件";
             _ = Task.Delay(2000).ContinueWith(_ => ScanStatusMessage = null);
+
+            // v0.11 spec/10 §4.1: 大图库提示（> 2000 张时显示，否则清除旧提示）
+            // 必须 Dispatcher.Post:OnRefreshStateChanged 可能从 background 线程触发(RequestRefreshDebounced)
+            var total = ScanProgress?.Total ?? 0;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                try
+                {
+                    if (total > 2000)
+                        OnLargeLibraryHint?.Invoke($"大图库模式 · 已加载 {total:N0} 张");
+                    else
+                        OnLargeLibraryHint?.Invoke(null);
+                }
+                catch (Exception ex)
+                {
+                    Trace.WriteLine($"[Gallery] OnLargeLibraryHint 回调异常: {ex.Message}");
+                }
+
+                // v0.11 spec/07: 扫描完成时刷新引导状态(Step2Complete)
+                if (ShowOnboarding || !Step1Complete || !Step2Complete)
+                {
+                    UpdateStepStates();
+                }
+            });
+        }
+    }
+
+    // v0.11 spec/07: 项目目录变化时刷新引导 Step1Complete + ShowOnboarding
+    partial void OnProjectPathChanged(string? value)
+    {
+        if (ShowOnboarding || Step1Complete != !string.IsNullOrEmpty(value))
+        {
+            UpdateStepStates();
+        }
+    }
+
+    // v0.11 spec/07: 媒体组变化时刷新引导 Step2Complete(扫描过程中可能 DateGroups 早于 RefreshState.Completed 变化)
+    // DateGroups 是手动属性,无 [ObservableProperty],所以订阅 CollectionChanged 而不是 OnXxxChanged partial
+    private void OnDateGroupsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        if (ShowOnboarding)
+        {
+            UpdateStepStates();
         }
     }
 

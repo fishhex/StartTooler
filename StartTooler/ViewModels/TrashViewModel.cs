@@ -44,6 +44,7 @@ public partial class TrashViewModel : ObservableObject
     private readonly IOssStorageFactory _ossFactory;
     private readonly IConfigService _configService;
     private readonly IThumbnailService _thumbnailService;
+    private readonly DontAskAgainService? _dontAskAgain;  // v0.11 spec/08 §5: 可选
     private readonly Func<Task<bool>>? _onOssNotConfigured;
     private readonly Action<long>? _onNavigateToFile;  // v0.11: 跳转 Gallery 回调
     private CancellationTokenSource? _cts;
@@ -107,6 +108,7 @@ public partial class TrashViewModel : ObservableObject
         IOssStorageFactory ossFactory,
         IConfigService configService,
         IThumbnailService thumbnailService,
+        DontAskAgainService? dontAskAgain = null,
         Func<Task<bool>>? onOssNotConfigured = null,
         Action<long>? onNavigateToFile = null)
     {
@@ -115,6 +117,7 @@ public partial class TrashViewModel : ObservableObject
         _ossFactory = ossFactory;
         _configService = configService;
         _thumbnailService = thumbnailService;
+        _dontAskAgain = dontAskAgain;
         _onOssNotConfigured = onOssNotConfigured;
         _onNavigateToFile = onNavigateToFile;
 
@@ -869,12 +872,32 @@ public partial class TrashViewModel : ObservableObject
         }
         else
         {
-            var confirmed = await DialogHelper.ShowConfirmAsync(
-                window,
-                title: "清空垃圾筒",
-                message: $"将永久删除 {total} 个文件，不可恢复。",
-                primaryButtonText: "彻底删除",
-                secondaryButtonText: "取消");
+            // v0.11 spec/08 §5: 「不再提示」支持（仅当 DontAskAgainService 注入时启用）
+            const string opKey = "empty_trash";
+            var needAsk = _dontAskAgain == null || await _dontAskAgain.ShouldAskAsync(opKey);
+
+            bool confirmed;
+            bool dontAskChecked = false;
+            if (needAsk)
+            {
+                (confirmed, dontAskChecked) = await DialogHelper.ShowConfirmWithOptionAsync(
+                    window,
+                    title: "清空垃圾筒",
+                    message: $"将永久删除 {total} 个文件，不可恢复。",
+                    primaryButtonText: "彻底删除",
+                    secondaryButtonText: "取消",
+                    dontAskAgainText: "30 天内不再提示",
+                    showDontAskAgain: _dontAskAgain != null);
+
+                if (dontAskChecked && _dontAskAgain != null)
+                {
+                    await _dontAskAgain.SetDontAskAsync(opKey);
+                }
+            }
+            else
+            {
+                confirmed = true; // 已设过「不再提示」，直接执行
+            }
 
             if (!confirmed) userCancelled = true;
         }
