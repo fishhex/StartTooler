@@ -26,7 +26,13 @@
     <Color x:Key="State.Warning">#FFA726</Color>
     <Color x:Key="State.Danger">#FF5252</Color>
     <Color x:Key="State.Success">#4DD0E1</Color>
-    
+
+    <!-- 状态图标色（v0.11 spec/10 §3.2） -->
+    <Color x:Key="StatusIcon.Synced">#4DD0E1</Color>
+    <Color x:Key="StatusIcon.RemoteOnly">#FFA726</Color>
+    <Color x:Key="StatusIcon.LocalOnly">#4A5273</Color>
+    <Color x:Key="StatusIcon.Attention">#FF5252</Color>
+
     <!-- 时间轴专用色 -->
     <Color x:Key="Timeline.Selected">#FF6B6B</Color>
     <Color x:Key="Timeline.Dot.Selected">#4FC3F7</Color>

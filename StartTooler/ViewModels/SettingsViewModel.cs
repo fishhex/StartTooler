@@ -72,6 +72,28 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
+    // === v0.11 spec/10 §4.2: 缩略图缓存管理 ===
+    [ObservableProperty] private string _cacheSizeText = "计算中…";
+    [ObservableProperty] private bool _hasCache;
+
+    [RelayCommand]
+    private void ClearCache()
+    {
+        ImageCacheService.ClearCache();
+        RefreshCacheStats();
+        // 复用已有 NotificationService 走全局 toast
+        Services.NotificationService.Current.Show("缓存已清理", "", Services.NotificationType.Success);
+    }
+
+    private void RefreshCacheStats()
+    {
+        var stats = ImageCacheService.GetStats();
+        HasCache = stats.CachedImageCount > 0;
+        CacheSizeText = stats.CachedImageCount > 0
+            ? $"已缓存 {stats.CachedImageCount} 张 · 约 {stats.FormattedSize}"
+            : "缓存为空";
+    }
+
     // v0.11: 关于页静态数据（spec §12.2）
     public string AppVersion
     {
@@ -324,6 +346,12 @@ public partial class SettingsViewModel : ObservableObject
         if (tab != SettingsTab.Oss)
         {
             IsOssSecretKeyVisible = false;
+        }
+
+        // v0.11 spec/10 §4.2.3: 切到通用 Tab 时刷新缓存统计（用户可能清过缓存）
+        if (tab == SettingsTab.General)
+        {
+            RefreshCacheStats();
         }
     }
 
@@ -626,6 +654,17 @@ public partial class SettingsViewModel : ObservableObject
 
         SelectedProjectDirectory = folder;
         AddToRecentDirectories(folder);
+    }
+
+    /// <summary>
+    /// v0.11 spec/06 §3.5: 拖入文件夹设为项目目录。
+    /// 只设值 + 加历史，不直接保存（等用户点"保存"按钮），保留 IsDirty 流程。
+    /// </summary>
+    public void SetProjectDirectoryFromDrag(string folderPath)
+    {
+        if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath)) return;
+        SelectedProjectDirectory = folderPath;
+        AddToRecentDirectories(folderPath);
     }
 
     [RelayCommand]
