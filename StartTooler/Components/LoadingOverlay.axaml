@@ -1,0 +1,21 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="StartTooler.Components.LoadingOverlay">
+
+    <Border Background="#880A0E1A"
+            IsHitTestVisible="False"
+            ZIndex="100">
+        <StackPanel HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="16">
+            <ProgressBar IsIndeterminate="True"
+                         Width="48" Height="48"
+                         Foreground="{DynamicResource Accent.Stellar}"/>
+            <TextBlock x:Name="MessageText"
+                       Text="加载中..."
+                       FontSize="14"
+                       Foreground="{DynamicResource Text.Primary}"
+                       HorizontalAlignment="Center"/>
+        </StackPanel>
+    </Border>
+</UserControl>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -10,6 +11,7 @@ public enum NotificationType
     Info,
     Success,
     Error,
+    Warning,    // v0.11 spec/08 §4.2: 新增橙色警告
 }
 
 /// <summary>
@@ -59,10 +61,17 @@ public class NotificationService
     public ObservableCollection<NotificationItem> History { get; } = new();
     private const int MaxHistoryCount = 10;
 
-    private const int DefaultDurationSeconds = 5;
+    // v0.11 spec/08 §4.3: 各类型默认自动消失时长（秒）
+    private static readonly Dictionary<NotificationType, int> DefaultDurationSeconds = new()
+    {
+        [NotificationType.Success] = 3,
+        [NotificationType.Error]   = 8,
+        [NotificationType.Warning] = 5,
+        [NotificationType.Info]    = 4,
+    };
 
     /// <summary>
-    /// 简单通知：5 秒后自动消失。
+    /// 简单通知：按类型自动消失（Success 3s / Warning 5s / Info 4s / Error 8s）。
     /// </summary>
     public void Show(string title, string body, NotificationType type = NotificationType.Info)
     {
@@ -71,12 +80,12 @@ public class NotificationService
             var item = new NotificationItem(title, body, type);
             Items.Add(item);
 
-            // N 秒后自动消失
+            var seconds = DefaultDurationSeconds.TryGetValue(type, out var s) ? s : 5;
             DispatcherTimer.RunOnce(() =>
             {
                 if (Items.Contains(item))
                     Items.Remove(item);
-            }, TimeSpan.FromSeconds(DefaultDurationSeconds));
+            }, TimeSpan.FromSeconds(seconds));
         });
     }
 

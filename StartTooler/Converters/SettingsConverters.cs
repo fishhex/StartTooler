@@ -148,3 +148,39 @@ public class BoolToApiKeyToggleTextConverter : IValueConverter
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotImplementedException();
 }
+
+/// <summary>
+/// v0.11 spec/08 §3.2: 按钮文字加载态转换器。
+/// value = bool IsLoading（true = 加载中），
+/// parameter = 按钮 idle 态文字（如 "保存设置" / "导出配置"）。
+/// 加载中返回 "处理中..."，否则返回 parameter。
+/// </summary>
+public class IsSavingToButtonTextConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is bool isSaving && isSaving)
+            return "处理中...";
+        return parameter?.ToString() ?? string.Empty;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
+
+/// <summary>
+/// v0.11 spec/08 §3.2: 按钮启用状态加载态转换器。
+/// 加载中返回 false（按钮禁用），否则返回 true。
+/// </summary>
+public class IsSavingToButtonEnabledConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is bool isSaving && isSaving)
+            return false;
+        return true;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
