@@ -7,6 +7,7 @@
         xmlns:components="using:StartTooler.Components"
         xmlns:controls="using:StartTooler.Controls"
         xmlns:services="using:StartTooler.Services"
+        xmlns:converters="using:StartTooler.Converters"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="StartTooler.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -18,7 +19,14 @@
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="38"
         SystemDecorations="Full"
-        Background="{DynamicResource Bg.Outer}">
+        Background="{DynamicResource Bg.Outer}"
+        DragDrop.AllowDrop="True">
+
+    <Window.Resources>
+        <!-- v0.11 spec/09 §3.1: 网络状态 Converter -->
+        <converters:BoolToNetworkColorConverter x:Key="BoolToNetworkColor"/>
+        <converters:BoolToNetworkTextConverter x:Key="BoolToNetworkText"/>
+    </Window.Resources>
 
     <Window.DataContext>
         <vm:MainWindowViewModel/>
@@ -354,6 +362,15 @@
                     </TextBlock.IsVisible>
                 </TextBlock>
 
+                <!-- v0.11 spec/10 §4.1: 大图库提示（> 2000 张时显示，null 时隐藏） -->
+                <TextBlock DockPanel.Dock="Left"
+                           Text="{Binding LargeLibraryHint}"
+                           FontSize="11"
+                           Foreground="{DynamicResource Text.Tertiary}"
+                           VerticalAlignment="Center"
+                           Margin="16,0,0,0"
+                           IsVisible="{Binding LargeLibraryHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
                 <!-- v0.11: 状态栏通知历史 🔔 入口（spec §14.2） -->
                 <Button DockPanel.Dock="Right"
                         Classes="toolbar-button"
@@ -416,7 +433,59 @@
                                Foreground="{DynamicResource Text.Secondary}"
                                VerticalAlignment="Center"/>
                 </StackPanel>
+
+                <!-- v0.11 spec/09 §3.1: 网络在线/离线指示器 -->
+                <StackPanel DockPanel.Dock="Right"
+                            Orientation="Horizontal"
+                            Spacing="6"
+                            VerticalAlignment="Center"
+                            Margin="0,0,12,0">
+                    <Ellipse Width="8" Height="8"
+                             Fill="{Binding IsOnline, Converter={StaticResource BoolToNetworkColor}}"
+                             VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding IsOnline, Converter={StaticResource BoolToNetworkText}}"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text.Secondary}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- v0.11 spec/09 §6.2: 状态栏磁盘空间显示 -->
+                <TextBlock DockPanel.Dock="Right"
+                           Text="{Binding DiskSpaceText}"
+                           FontSize="11"
+                           Foreground="{DynamicResource Text.Secondary}"
+                           VerticalAlignment="Center"
+                           Margin="0,0,12,0"
+                           ToolTip.Tip="项目目录所在磁盘的可用空间"/>
             </DockPanel>
+        </Border>
+
+        <!-- v0.11 spec/06 §4.1: 全局拖拽遮罩(置顶,IsHitTestVisible=False 让事件穿透) -->
+        <Border x:Name="DragDropOverlay"
+                Grid.Column="0" Grid.ColumnSpan="2"
+                Grid.Row="0" Grid.RowSpan="4"
+                IsVisible="False"
+                Background="#880A0E1A"
+                ZIndex="9999"
+                IsHitTestVisible="False">
+            <Border HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Background="#CC1A1E2E"
+                    CornerRadius="12"
+                    Padding="48,32">
+                <StackPanel Spacing="12" HorizontalAlignment="Center">
+                    <TextBlock Text="松开以导入"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Primary}"
+                               HorizontalAlignment="Center" />
+                    <TextBlock x:Name="DragDropFileCount"
+                               Text=""
+                               FontSize="14"
+                               Foreground="{DynamicResource Text.Secondary}"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+            </Border>
         </Border>
     </Grid>
 </Window>

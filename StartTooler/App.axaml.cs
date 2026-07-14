@@ -27,6 +27,26 @@ public partial class App : Application
             var mainWindow = new MainWindow();
             desktop.MainWindow = mainWindow;
 
+            // v0.11 spec/06: 创建 DragDropHandler 注入到 MainWindow。
+            // 关键:MainWindowViewModel 是 XAML 里 <Window.DataContext><vm:MainWindowViewModel/></Window.DataContext>
+            // 在 InitializeComponent() 时构造并赋值的,DataContextChanged 事件此时已触发过了,
+            // 用 DataContextChanged 订阅会错过初始化。改为同步从 DataContext 拿 VM。
+            if (mainWindow.DataContext is ViewModels.MainWindowViewModel vm)
+            {
+                var handler = new Services.DragDropHandler(
+                    configService: vm.ConfigService,
+                    getGalleryVm: () => vm.GalleryViewModel,
+                    getUploadVm: () => vm.UploadServerViewModel,
+                    getSettingsVm: () => vm.SettingsViewModel,
+                    getCurrentPage: () => vm.CurrentPage);
+                mainWindow.SetDragDropHandler(handler);
+                Trace.WriteLine("[App] DragDropHandler 注入成功");
+            }
+            else
+            {
+                Trace.WriteLine("[App] DragDropHandler 注入失败: DataContext 不是 MainWindowViewModel");
+            }
+
             // v0.11: 把 MainWindow 的剪贴板句柄绑到全局 ClipboardService，
             // VM 层调 SetTextAsync 就能用了（ViewModel 没有可视化树）。
             mainWindow.Opened += (_, _) => ClipboardService.Attach(mainWindow);
