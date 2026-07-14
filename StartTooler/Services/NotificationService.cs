@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -10,6 +11,7 @@ public enum NotificationType
     Info,
     Success,
     Error,
+    Warning,    // v0.11 spec/08 §4.2: 新增橙色警告
 }
 
 /// <summary>
@@ -44,6 +46,7 @@ public partial class NotificationItem : ObservableObject
 /// <summary>
 /// 应用级单例：所有 ViewModel 都通过 NotificationService.Current 发通知。
 /// MainWindow.axaml 绑 Items 渲染右下角浮窗。
+/// v0.11: 增加 History 列表 + Dismiss 时入历史（spec §14）。
 /// </summary>
 public class NotificationService
 {
@@ -51,10 +54,24 @@ public class NotificationService
 
     public ObservableCollection<NotificationItem> Items { get; } = new();
 
-    private const int DefaultDurationSeconds = 5;
+    /// <summary>
+    /// v0.11: 通知历史（最近 10 条）。Dismiss 时把条目从 Items 移到 History 头部。
+    /// MainWindow 状态栏铃铛 Flyout 绑这个集合显示历史。
+    /// </summary>
+    public ObservableCollection<NotificationItem> History { get; } = new();
+    private const int MaxHistoryCount = 10;
+
+    // v0.11 spec/08 §4.3: 各类型默认自动消失时长（秒）
+    private static readonly Dictionary<NotificationType, int> DefaultDurationSeconds = new()
+    {
+        [NotificationType.Success] = 3,
+        [NotificationType.Error]   = 8,
+        [NotificationType.Warning] = 5,
+        [NotificationType.Info]    = 4,
+    };
 
     /// <summary>
-    /// 简单通知：5 秒后自动消失。
+    /// 简单通知：按类型自动消失（Success 3s / Warning 5s / Info 4s / Error 8s）。
     /// </summary>
     public void Show(string title, string body, NotificationType type = NotificationType.Info)
     {
@@ -63,12 +80,12 @@ public class NotificationService
             var item = new NotificationItem(title, body, type);
             Items.Add(item);
 
-            // N 秒后自动消失
+            var seconds = DefaultDurationSeconds.TryGetValue(type, out var s) ? s : 5;
             DispatcherTimer.RunOnce(() =>
             {
                 if (Items.Contains(item))
                     Items.Remove(item);
-            }, TimeSpan.FromSeconds(DefaultDurationSeconds));
+            }, TimeSpan.FromSeconds(seconds));
         });
     }
 
@@ -99,6 +116,7 @@ public class NotificationService
 
     /// <summary>
     /// 立即移除通知。
+    /// v0.11: 同时入历史（spec §14）—— 用户能在状态栏铃铛里看回放最近 10 条通知。
     /// </summary>
     public void Dismiss(NotificationItem item)
     {
@@ -106,7 +124,14 @@ public class NotificationService
         Dispatcher.UIThread.Post(() =>
         {
             if (Items.Contains(item))
+            {
                 Items.Remove(item);
+                History.Insert(0, item);
+                while (History.Count > MaxHistoryCount)
+                {
+                    History.RemoveAt(History.Count - 1);
+                }
+            }
         });
     }
 }

@@ -7,6 +7,7 @@
         xmlns:components="using:StartTooler.Components"
         xmlns:controls="using:StartTooler.Controls"
         xmlns:services="using:StartTooler.Services"
+        xmlns:converters="using:StartTooler.Converters"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="StartTooler.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -18,7 +19,14 @@
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="38"
         SystemDecorations="Full"
-        Background="{DynamicResource Bg.Outer}">
+        Background="{DynamicResource Bg.Outer}"
+        DragDrop.AllowDrop="True">
+
+    <Window.Resources>
+        <!-- v0.11 spec/09 §3.1: 网络状态 Converter -->
+        <converters:BoolToNetworkColorConverter x:Key="BoolToNetworkColor"/>
+        <converters:BoolToNetworkTextConverter x:Key="BoolToNetworkText"/>
+    </Window.Resources>
 
     <Window.DataContext>
         <vm:MainWindowViewModel/>
@@ -198,21 +206,26 @@
                             IsEnabled="{Binding GalleryViewModel.IsBatchActionEnabled}"
                             IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"/>
 
-                    <!-- v0.8.1 新增：批量下载（spec doc/14-delete-and-trash.md §7.3 / §7.5） -->
+                    <!--
+                      v0.11: 工具栏多选按钮收拢（spec §4）——
+                      把「批量下载 / 释放本地空间」从主条移到 "更多 ▾" 下拉，保留核心 6 个按钮
+                      主条顺序：取消多选 | 全选 | 批量上传 | 开始AI | 编辑标签 | 删除 | 更多 ▾
+                    -->
                     <Button Classes="toolbar-button"
-                            Content="批量下载"
-                            Command="{Binding GalleryViewModel.BatchDownloadCommand}"
-                            IsEnabled="{Binding GalleryViewModel.IsBatchActionEnabled}"
+                            Content="更多 ▾"
                             IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"
-                            ToolTip.Tip="从云端拉回到本地"/>
-
-                    <!-- v0.8.1 新增：批量释放本地空间（spec §6.2 / §7.5） -->
-                    <Button Classes="toolbar-button"
-                            Content="释放本地空间"
-                            Command="{Binding GalleryViewModel.BatchFreeUpSpaceCommand}"
-                            IsEnabled="{Binding GalleryViewModel.IsBatchActionEnabled}"
-                            IsVisible="{Binding GalleryViewModel.IsMultiSelectMode}"
-                            ToolTip.Tip="删除本地文件，云端保留"/>
+                            Margin="6,0,0,0">
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <MenuItem Header="反选"
+                                          Command="{Binding GalleryViewModel.InvertSelectionCommand}" />
+                                <MenuItem Header="批量下载"
+                                          Command="{Binding GalleryViewModel.BatchDownloadCommand}" />
+                                <MenuItem Header="释放本地空间"
+                                          Command="{Binding GalleryViewModel.BatchFreeUpSpaceCommand}" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
 
                     <Button Classes="toolbar-button-danger"
                             Content="删除"
@@ -349,6 +362,64 @@
                     </TextBlock.IsVisible>
                 </TextBlock>
 
+                <!-- v0.11 spec/10 §4.1: 大图库提示（> 2000 张时显示，null 时隐藏） -->
+                <TextBlock DockPanel.Dock="Left"
+                           Text="{Binding LargeLibraryHint}"
+                           FontSize="11"
+                           Foreground="{DynamicResource Text.Tertiary}"
+                           VerticalAlignment="Center"
+                           Margin="16,0,0,0"
+                           IsVisible="{Binding LargeLibraryHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                <!-- v0.11: 状态栏通知历史 🔔 入口（spec §14.2） -->
+                <Button DockPanel.Dock="Right"
+                        Classes="toolbar-button"
+                        ToolTip.Tip="通知历史"
+                        Margin="0,0,12,0"
+                        Padding="6,2">
+                    <Button.Flyout>
+                        <Flyout Placement="Top">
+                            <Border MinWidth="280" MaxWidth="360" MaxHeight="400"
+                                    Background="{DynamicResource Bg.SurfaceElevated}"
+                                    CornerRadius="{DynamicResource Radius.Medium}"
+                                    Padding="8">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="通知历史"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text.Primary}"
+                                               Margin="0,0,0,8" />
+                                    <ScrollViewer MaxHeight="360">
+                                        <ItemsControl ItemsSource="{Binding NotificationHistory}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="services:NotificationItem">
+                                                    <Border Background="{DynamicResource Bg.Surface}"
+                                                            CornerRadius="4"
+                                                            Padding="8,6"
+                                                            Margin="0,2">
+                                                        <StackPanel Spacing="2">
+                                                            <TextBlock Text="{Binding Title}"
+                                                                       FontSize="12"
+                                                                       Foreground="{DynamicResource Text.Primary}" />
+                                                            <TextBlock Text="{Binding Body}"
+                                                                       FontSize="11"
+                                                                       Foreground="{DynamicResource Text.Secondary}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       MaxLines="2" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </StackPanel>
+                            </Border>
+                        </Flyout>
+                    </Button.Flyout>
+                    <PathIcon Data="{StaticResource Icon.Bell}"
+                              Width="14" Height="14"
+                              Foreground="{DynamicResource Text.Secondary}"/>
+                </Button>
+
                 <!-- 右侧：OSS 状态圆点 + 文字 -->
                 <StackPanel DockPanel.Dock="Right"
                             Orientation="Horizontal"
@@ -362,7 +433,59 @@
                                Foreground="{DynamicResource Text.Secondary}"
                                VerticalAlignment="Center"/>
                 </StackPanel>
+
+                <!-- v0.11 spec/09 §3.1: 网络在线/离线指示器 -->
+                <StackPanel DockPanel.Dock="Right"
+                            Orientation="Horizontal"
+                            Spacing="6"
+                            VerticalAlignment="Center"
+                            Margin="0,0,12,0">
+                    <Ellipse Width="8" Height="8"
+                             Fill="{Binding IsOnline, Converter={StaticResource BoolToNetworkColor}}"
+                             VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding IsOnline, Converter={StaticResource BoolToNetworkText}}"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text.Secondary}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- v0.11 spec/09 §6.2: 状态栏磁盘空间显示 -->
+                <TextBlock DockPanel.Dock="Right"
+                           Text="{Binding DiskSpaceText}"
+                           FontSize="11"
+                           Foreground="{DynamicResource Text.Secondary}"
+                           VerticalAlignment="Center"
+                           Margin="0,0,12,0"
+                           ToolTip.Tip="项目目录所在磁盘的可用空间"/>
             </DockPanel>
+        </Border>
+
+        <!-- v0.11 spec/06 §4.1: 全局拖拽遮罩(置顶,IsHitTestVisible=False 让事件穿透) -->
+        <Border x:Name="DragDropOverlay"
+                Grid.Column="0" Grid.ColumnSpan="2"
+                Grid.Row="0" Grid.RowSpan="4"
+                IsVisible="False"
+                Background="#880A0E1A"
+                ZIndex="9999"
+                IsHitTestVisible="False">
+            <Border HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Background="#CC1A1E2E"
+                    CornerRadius="12"
+                    Padding="48,32">
+                <StackPanel Spacing="12" HorizontalAlignment="Center">
+                    <TextBlock Text="松开以导入"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Primary}"
+                               HorizontalAlignment="Center" />
+                    <TextBlock x:Name="DragDropFileCount"
+                               Text=""
+                               FontSize="14"
+                               Foreground="{DynamicResource Text.Secondary}"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+            </Border>
         </Border>
     </Grid>
 </Window>

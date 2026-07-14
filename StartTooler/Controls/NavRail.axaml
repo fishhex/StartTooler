@@ -8,70 +8,75 @@
              x:Class="StartTooler.Controls.NavRail"
              x:DataType="vm:MainWindowViewModel">
 
+    <!--
+      v0.11: 4 个导航按钮加 PathIcon（spec §3.1），高度 48 → 56 容纳图标+文字
+      按钮 Foreground 自动驱动 PathIcon.Foreground（PathIcon 用 Fill="{TemplateBinding Foreground}" 风格跟随）
+    -->
     <Grid RowDefinitions="Auto,Auto,Auto,*">
         <!-- 媒体按钮 (C15 NavItem) -->
         <Button Grid.Row="0"
                 x:Name="MediaButton"
-                Height="48"
+                Height="56"
                 Classes="nav-item"
                 Classes.active="{Binding IsMediaActive}"
                 Command="{Binding NavigateToMediaCommand}"
+                ToolTip.Tip="{Binding NavMediaTooltip}"
                 VerticalAlignment="Center"
                 HorizontalContentAlignment="Center"
                 VerticalContentAlignment="Center"
                 Padding="0">
-            <TextBlock Text="媒体"
-                       FontSize="11"
-                       LineHeight="14"
-                       TextAlignment="Center"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center"/>
+            <StackPanel Spacing="4" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <!-- 媒体按钮：Icon.Photo（24x24 风景图标）—— 比 Constellation 五角星更直观地表达「照片/视频」 -->
+                <PathIcon Data="{DynamicResource Icon.Photo}"
+                          Width="18" Height="18" />
+                <TextBlock Text="媒体" FontSize="11" TextAlignment="Center" />
+            </StackPanel>
         </Button>
 
         <!-- 上传服务按钮（紧贴媒体） -->
         <Button Grid.Row="1"
                 x:Name="UploadServerButton"
-                Height="48"
+                Height="56"
                 Classes="nav-item"
                 Classes.active="{Binding IsUploadServerActive}"
                 Command="{Binding NavigateToUploadServerCommand}"
+                ToolTip.Tip="{Binding NavUploadTooltip}"
                 VerticalAlignment="Center"
                 HorizontalContentAlignment="Center"
                 VerticalContentAlignment="Center"
                 Padding="0">
-            <TextBlock Text="上传"
-                       FontSize="11"
-                       LineHeight="14"
-                       TextAlignment="Center"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center"/>
+            <StackPanel Spacing="4" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <PathIcon Data="{DynamicResource Icon.Upload}"
+                          Width="18" Height="18" />
+                <TextBlock Text="上传" FontSize="11" TextAlignment="Center" />
+            </StackPanel>
         </Button>
 
         <!-- v0.8: 垃圾筒按钮（紧贴上传，spec §9.2） -->
         <Button Grid.Row="2"
                 x:Name="TrashButton"
-                Height="48"
+                Height="56"
                 Classes="nav-item"
                 Classes.active="{Binding IsTrashActive}"
                 Command="{Binding NavigateToTrashCommand}"
+                ToolTip.Tip="{Binding NavTrashTooltip}"
                 VerticalAlignment="Center"
                 HorizontalContentAlignment="Center"
                 VerticalContentAlignment="Center"
                 Padding="0">
             <Panel>
-                <TextBlock Text="垃圾筒"
-                           FontSize="11"
-                           LineHeight="14"
-                           TextAlignment="Center"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"/>
+                <StackPanel Spacing="4" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <PathIcon Data="{DynamicResource Icon.Trash}"
+                              Width="18" Height="18" />
+                    <TextBlock Text="垃圾筒" FontSize="11" TextAlignment="Center" />
+                </StackPanel>
                 <!-- v0.11: 垃圾筒数量徽章（spec demand/06 §6. 无未读/状态标记） -->
                 <Border HorizontalAlignment="Right"
                         VerticalAlignment="Top"
-                        Margin="0,6,12,0"
+                        Margin="0,4,8,0"
                         MinWidth="16" Height="16"
                         Padding="4,0"
-                        Background="#EF5350"
+                        Background="{DynamicResource State.Danger}"
                         CornerRadius="8"
                         IsVisible="{Binding TrashViewModel.TrashCount, Converter={x:Static converters:Int32Converters.IsGreaterThanZero}}">
                     <TextBlock Text="{Binding TrashViewModel.TrashCount}"
@@ -87,20 +92,20 @@
         <!-- 设置按钮 (C15 NavItem) -->
         <Button Grid.Row="3"
                 x:Name="SettingsButton"
-                Height="48"
+                Height="56"
                 Classes="nav-item"
                 Classes.active="{Binding IsSettingsActive}"
                 Command="{Binding NavigateToSettingsCommand}"
+                ToolTip.Tip="{Binding NavSettingsTooltip}"
                 VerticalAlignment="Bottom"
                 HorizontalContentAlignment="Center"
                 VerticalContentAlignment="Center"
                 Padding="0">
-            <TextBlock Text="设置"
-                       FontSize="11"
-                       LineHeight="14"
-                       TextAlignment="Center"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center"/>
+            <StackPanel Spacing="4" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <PathIcon Data="{DynamicResource Icon.Settings}"
+                          Width="18" Height="18" />
+                <TextBlock Text="设置" FontSize="11" TextAlignment="Center" />
+            </StackPanel>
         </Button>
     </Grid>
 </UserControl>

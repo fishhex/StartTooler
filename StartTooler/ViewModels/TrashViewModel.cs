@@ -44,6 +44,7 @@ public partial class TrashViewModel : ObservableObject
     private readonly IOssStorageFactory _ossFactory;
     private readonly IConfigService _configService;
     private readonly IThumbnailService _thumbnailService;
+    private readonly DontAskAgainService? _dontAskAgain;  // v0.11 spec/08 §5: 可选
     private readonly Func<Task<bool>>? _onOssNotConfigured;
     private readonly Action<long>? _onNavigateToFile;  // v0.11: 跳转 Gallery 回调
     private CancellationTokenSource? _cts;
@@ -61,6 +62,7 @@ public partial class TrashViewModel : ObservableObject
 
     // === 多选状态（v0.11 spec §5） ===
     [ObservableProperty] private bool _isMultiSelectMode;
+    private bool _isBulkSelecting; // 批量选中时抑制单文件通知
 
     public HashSet<long> SelectedCloudIds { get; } = new();
     public HashSet<long> SelectedLocalIds { get; } = new();
@@ -107,6 +109,7 @@ public partial class TrashViewModel : ObservableObject
         IOssStorageFactory ossFactory,
         IConfigService configService,
         IThumbnailService thumbnailService,
+        DontAskAgainService? dontAskAgain = null,
         Func<Task<bool>>? onOssNotConfigured = null,
         Action<long>? onNavigateToFile = null)
     {
@@ -115,6 +118,7 @@ public partial class TrashViewModel : ObservableObject
         _ossFactory = ossFactory;
         _configService = configService;
         _thumbnailService = thumbnailService;
+        _dontAskAgain = dontAskAgain;
         _onOssNotConfigured = onOssNotConfigured;
         _onNavigateToFile = onNavigateToFile;
 
@@ -157,9 +161,11 @@ public partial class TrashViewModel : ObservableObject
             _subscribedFiles.Clear();
         }
 
-        // v0.11: 任何集合变化都通知 TrashCount（NavRail 徽章）+ CapacityStats（标题）
+        // v0.11: 任何集合变化都通知相关属性
         OnPropertyChanged(nameof(TrashCount));
         OnPropertyChanged(nameof(CapacityStats));
+        OnPropertyChanged(nameof(HasCloudFiles));
+        OnPropertyChanged(nameof(HasLocalFiles));
     }
 
     private void OnMediaFilePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -168,8 +174,6 @@ public partial class TrashViewModel : ObservableObject
         if (sender is not MediaFile file) return;
 
         // 同步 IsSelected 变化到 SelectedCloudIds / SelectedLocalIds
-        // 来源可能是 CheckBox 直接改 IsSelected（双向 binding），也可能是 ToggleSelect 内部改。
-        // 双向 binding 路径下，HashSet 还没这个 id，需要 Add；Remove 路径同理。HashSet.Add/Remove 幂等。
         var set = file.IsUploaded ? SelectedCloudIds : SelectedLocalIds;
         if (file.IsSelected)
         {
@@ -179,6 +183,10 @@ public partial class TrashViewModel : ObservableObject
         {
             set.Remove(file.Id);
         }
+
+        // 批量选中时跳过单文件计数更新，由 SelectAll 最终统一通知
+        if (_isBulkSelecting) return;
+
         if (file.IsUploaded) SelectedCloudCount = SelectedCloudIds.Count;
         else                 SelectedLocalCount = SelectedLocalIds.Count;
         OnPropertyChanged(nameof(TotalSelectedCount));
@@ -287,11 +295,19 @@ public partial class TrashViewModel : ObservableObject
     [RelayCommand]
     private void SelectAll()
     {
-        foreach (var f in CloudFiles) { SelectedCloudIds.Add(f.Id); f.IsSelected = true; }
-        foreach (var f in LocalFiles) { SelectedLocalIds.Add(f.Id); f.IsSelected = true; }
-        SelectedCloudCount = SelectedCloudIds.Count;
-        SelectedLocalCount = SelectedLocalIds.Count;
-        OnPropertyChanged(nameof(TotalSelectedCount));
+        _isBulkSelecting = true;
+        try
+        {
+            foreach (var f in CloudFiles) { SelectedCloudIds.Add(f.Id); f.IsSelected = true; }
+            foreach (var f in LocalFiles) { SelectedLocalIds.Add(f.Id); f.IsSelected = true; }
+        }
+        finally
+        {
+            _isBulkSelecting = false;
+            SelectedCloudCount = SelectedCloudIds.Count;
+            SelectedLocalCount = SelectedLocalIds.Count;
+            OnPropertyChanged(nameof(TotalSelectedCount));
+        }
         Trace.WriteLine($"[Trash] SelectAll: cloud={SelectedCloudCount}, local={SelectedLocalCount}");
     }
 
@@ -869,12 +885,32 @@ public partial class TrashViewModel : ObservableObject
         }
         else
         {
-            var confirmed = await DialogHelper.ShowConfirmAsync(
-                window,
-                title: "清空垃圾筒",
-                message: $"将永久删除 {total} 个文件，不可恢复。",
-                primaryButtonText: "彻底删除",
-                secondaryButtonText: "取消");
+            // v0.11 spec/08 §5: 「不再提示」支持（仅当 DontAskAgainService 注入时启用）
+            const string opKey = "empty_trash";
+            var needAsk = _dontAskAgain == null || await _dontAskAgain.ShouldAskAsync(opKey);
+
+            bool confirmed;
+            bool dontAskChecked = false;
+            if (needAsk)
+            {
+                (confirmed, dontAskChecked) = await DialogHelper.ShowConfirmWithOptionAsync(
+                    window,
+                    title: "清空垃圾筒",
+                    message: $"将永久删除 {total} 个文件，不可恢复。",
+                    primaryButtonText: "彻底删除",
+                    secondaryButtonText: "取消",
+                    dontAskAgainText: "30 天内不再提示",
+                    showDontAskAgain: _dontAskAgain != null);
+
+                if (dontAskChecked && _dontAskAgain != null)
+                {
+                    await _dontAskAgain.SetDontAskAsync(opKey);
+                }
+            }
+            else
+            {
+                confirmed = true; // 已设过「不再提示」，直接执行
+            }
 
             if (!confirmed) userCancelled = true;
         }

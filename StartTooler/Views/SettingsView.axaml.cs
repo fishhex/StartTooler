@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
@@ -130,5 +132,51 @@ public partial class SettingsView : UserControl
     private void OnOssPathPrefixLostFocus(object? sender, RoutedEventArgs e)
     {
         if (DataContext is SettingsViewModel vm) vm.NormalizeOssPathPrefix();
+    }
+
+    // ============================================================
+    // v0.11: FFmpeg / FFprobe 路径 TextChanged debounce（spec §12.3）
+    // 500ms 内无新输入才触发 ValidateFfmpegPath —— 输入体验比 LostFocus 更快。
+    // 保留 LostFocus 作为补充（用户点出去 / 切 Tab 时立即校验）。
+    // ============================================================
+
+    private CancellationTokenSource? _ffmpegValidateCts;
+    private CancellationTokenSource? _ffprobeValidateCts;
+    private static readonly TimeSpan ValidateDebounce = TimeSpan.FromMilliseconds(500);
+
+    private void OnFfmpegPathTextChanged(object? sender, Avalonia.Controls.TextChangedEventArgs e)
+    {
+        if (DataContext is not SettingsViewModel vm) return;
+
+        _ffmpegValidateCts?.Cancel();
+        _ffmpegValidateCts = new CancellationTokenSource();
+        var ct = _ffmpegValidateCts.Token;
+
+        _ = DebounceValidateAsync(ct, () => Dispatcher.UIThread.Post(() => vm.ValidateFfmpegPath()));
+    }
+
+    private void OnFfprobePathTextChanged(object? sender, Avalonia.Controls.TextChangedEventArgs e)
+    {
+        if (DataContext is not SettingsViewModel vm) return;
+
+        _ffprobeValidateCts?.Cancel();
+        _ffprobeValidateCts = new CancellationTokenSource();
+        var ct = _ffprobeValidateCts.Token;
+
+        _ = DebounceValidateAsync(ct, () => Dispatcher.UIThread.Post(() => vm.ValidateFfprobePath()));
+    }
+
+    private static async Task DebounceValidateAsync(CancellationToken ct, Action action)
+    {
+        try
+        {
+            await Task.Delay(ValidateDebounce, ct);
+            action();
+        }
+        catch (OperationCanceledException) { /* 后续输入覆盖，跳过本次验证 */ }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Settings] debounce validate failed: {ex.Message}");
+        }
     }
 }

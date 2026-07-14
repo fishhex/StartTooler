@@ -14,25 +14,31 @@ public partial class TrashView : UserControl
 
     /// <summary>
     /// v0.11 spec §5.2: 右键卡片 → 进入多选模式并选中该卡片；
-    /// 已在多选模式时仅切换该卡片选中态（spec §10 边界）。
-    /// 左键 / 双击不处理（让 Button.Command 继续生效）。
+    /// 已在多选模式时左/右键都切换该卡片选中态（spec §10 边界）。
+    /// 双击不处理。
     /// </summary>
     private void OnCardPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         var point = e.GetCurrentPoint(this);
-        if (!point.Properties.IsRightButtonPressed) return;
         if (sender is not Control c || c.DataContext is not MediaFile file) return;
         if (DataContext is not TrashViewModel vm) return;
 
-        // 已处理右键，阻止冒泡（避免被外层 ScrollViewer 拦截或弹出系统菜单）
-        e.Handled = true;
+        var isLeft = point.Properties.IsLeftButtonPressed;
+        var isRight = point.Properties.IsRightButtonPressed;
+        if (!isLeft && !isRight) return;
 
         if (!vm.IsMultiSelectMode)
         {
-            // 进入多选 + 立即选中该卡
+            // 仅右键可触发进入多选模式
+            if (!isRight) return;
+            e.Handled = true;
             vm.EnterMultiSelectCommand.Execute(null);
         }
-        // ToggleSelect（已选中的会变成未选中，符合桌面右键习惯）
+        else
+        {
+            // 多选模式下左/右键都切换选中
+            e.Handled = true;
+        }
         vm.ToggleSelectCommand.Execute(file);
     }
 }

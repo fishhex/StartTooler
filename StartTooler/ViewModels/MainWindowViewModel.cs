@@ -27,6 +27,10 @@ public partial class MainWindowViewModel : ObservableObject
     private readonly ConfigService _configService;
     private readonly MediaRepository _mediaRepository;
     private readonly UploadJobRepository _uploadJobRepo;
+    private readonly NetworkStatusService _networkStatus;  // v0.11 spec/09 §3
+
+    /// <summary>暴露给 App 层(创建 DragDropHandler 等需要 ConfigService 的服务用)</summary>
+    public ConfigService ConfigService => _configService;
 
     [ObservableProperty] private GalleryViewModel galleryViewModel;
     [ObservableProperty] private SettingsViewModel settingsViewModel;
@@ -48,6 +52,40 @@ public partial class MainWindowViewModel : ObservableObject
     public string OssStatusText => OssStatus == OssStatusKind.Configured ? "OSS 已配置" : "OSS 未配置";
     /// <summary>状态栏 OSS 圆点颜色（绿/红）。</summary>
     public string OssStatusColor => OssStatus == OssStatusKind.Configured ? "#66BB6A" : "#EF5350";
+
+    // === v0.11 spec/10 §4.1: 大图库提示（状态栏）===
+    // GalleryVM 扫描完成后根据文件数（> 2000）触发，null = 清除。
+    [ObservableProperty] private string? _largeLibraryHint;
+
+    // === v0.11 spec/09 §3/§6: 网络状态 + 磁盘空间（状态栏）===
+    [ObservableProperty] private bool _isOnline = true;
+    [ObservableProperty] private string _diskSpaceText = "—";
+
+    private void OnNetworkChanged(bool isOnline)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => IsOnline = isOnline);
+        // 网络变化时刷新磁盘空间（用户可能切换了 wifi，跨盘符移动概率小但安全）
+        UpdateDiskSpace();
+    }
+
+    private void UpdateDiskSpace()
+    {
+        var projectPath = GalleryViewModel?.ProjectPath;
+        if (string.IsNullOrEmpty(projectPath))
+        {
+            DiskSpaceText = "—";
+            return;
+        }
+        try
+        {
+            var free = DiskSpaceService.GetAvailableFreeSpace(projectPath);
+            DiskSpaceText = free < 0 ? "—" : DiskSpaceService.FormatBytes(free);
+        }
+        catch
+        {
+            DiskSpaceText = "—";
+        }
+    }
 
     /// <summary>
     /// v0.11: 标题动态化。随 CurrentPage 变化更新（spec demand/06 §1）。
@@ -74,6 +112,19 @@ public partial class MainWindowViewModel : ObservableObject
     public bool HasProject => !string.IsNullOrEmpty(GalleryViewModel?.ProjectPath);
 
     public bool IsMediaActive => CurrentPage == ViewPage.Gallery;
+
+    // v0.11: NavRail tooltip 快捷键提示（spec §3.2），macOS 用 ⌘，其它用 Ctrl
+    public string NavMediaTooltip => OperatingSystem.IsMacOS() ? "媒体 (⌘1)" : "媒体 (Ctrl+1)";
+    public string NavUploadTooltip => OperatingSystem.IsMacOS() ? "上传 (⌘2)" : "上传 (Ctrl+2)";
+    public string NavTrashTooltip => OperatingSystem.IsMacOS() ? "垃圾筒 (⌘3)" : "垃圾筒 (Ctrl+3)";
+    public string NavSettingsTooltip => OperatingSystem.IsMacOS() ? "设置 (⌘4)" : "设置 (Ctrl+4)";
+
+    /// <summary>
+    /// v0.11: 通知历史（spec §14）—— 状态栏铃铛 Flyout 绑定这个集合。
+    /// 直接代理 NotificationService.Current.History，保持单一数据源。
+    /// </summary>
+    public System.Collections.ObjectModel.ObservableCollection<Services.NotificationItem> NotificationHistory
+        => Services.NotificationService.Current.History;
 
     public bool IsSettingsActive => CurrentPage == ViewPage.Settings;
 
@@ -105,6 +156,17 @@ public partial class MainWindowViewModel : ObservableObject
                 .GetAwaiter().GetResult() ?? new OssConfig();
         });
 
+        // v0.11 spec/09 §3: 网络状态监控（OSS endpoint 探活,30s 周期）
+        // endpoint 用 region 拼 https://oss-{region}.aliyuncs.com/，未配置 region 时跳过探活
+        var ossConfig = _configService.GetAsync<OssConfig>(ConfigKeys.Oss)
+            .GetAwaiter().GetResult();
+        var ossEndpoint = !string.IsNullOrWhiteSpace(ossConfig?.Region)
+            ? $"https://oss-{ossConfig.Region}.aliyuncs.com"
+            : null;
+        _networkStatus = new NetworkStatusService(ossEndpoint);
+        _networkStatus.NetworkStatusChanged += OnNetworkChanged;
+        _networkStatus.Start();
+
         SettingsViewModel = new SettingsViewModel(new DirectoryPickerService(), new FilePickerService(), _configService, ossFactory);
 
         // 创建 ViewModel
@@ -113,6 +175,27 @@ public partial class MainWindowViewModel : ObservableObject
             _mediaRepository, thumbnailService, _configService, systemShell, ossFactory, _uploadJobRepo,
             aiTagger,
             onOssNotConfigured: ShowOssNotConfiguredDialogAsync);
+
+        // v0.11 spec/10 §4.1: 大图库提示桥接（Gallery 扫描完成 → 状态栏文字）
+        // 必须 Dispatcher.Post:OnLargeLibraryHint 可能在 background 线程触发(RequestRefreshDebounced 内部 Task.Run)
+        GalleryViewModel.OnLargeLibraryHint = hint =>
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => LargeLibraryHint = hint);
+
+        // v0.11 spec/09 §6.2: Gallery 项目目录变化时刷新磁盘空间显示
+        GalleryViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(GalleryViewModel.ProjectPath))
+                UpdateDiskSpace();
+        };
+        UpdateDiskSpace();  // 初始显示
+
+        // v0.11 spec/07: 引导卡片跳转回调（Onboarding 按钮触发）
+        GalleryViewModel.NavigateToSettings = NavigateToSettings;
+        GalleryViewModel.NavigateToOssSettings = NavigateToOssSettings;
+
+        // v0.11 spec/07: 检查引导状态 + OSS 配置（启动时跑一次）
+        _ = GalleryViewModel.CheckOnboardingStatusAsync();
+        _ = GalleryViewModel.RefreshOssConfigAsync();
         UploadServerViewModel = new UploadServerViewModel(
             GalleryViewModel,
             new PublicRelayViewModel(_configService, new PublicRelayService(), new FilePickerService(), GalleryViewModel));
@@ -121,8 +204,11 @@ public partial class MainWindowViewModel : ObservableObject
         // 复用 mediaRepo / uploadJobRepo / ossFactory / configService；onOssNotConfigured 复用 MainWindow 的弹窗。
         // v0.8.1: 新增 thumbnailService 用于下载后重生成缩略图（spec §7.4）。
         // v0.11: 加 onNavigateToFile 回调——Restore 成功后 Toast「跳转」按钮触发。
+        // v0.11 spec/08 §5: DontAskAgainService 注入，启用「清空垃圾筒 30 天内不再提示」。
+        var dontAskAgain = new DontAskAgainService(_configService);
         TrashViewModel = new TrashViewModel(
             _mediaRepository, _uploadJobRepo, ossFactory, _configService, thumbnailService,
+            dontAskAgain: dontAskAgain,
             onOssNotConfigured: ShowOssNotConfiguredDialogAsync,
             onNavigateToFile: NavigateToGalleryAndLocateFile);
 
@@ -241,6 +327,18 @@ public partial class MainWindowViewModel : ObservableObject
         CurrentView = SettingsViewModel;
         IsSettingsPage = true;
         CurrentPage = ViewPage.Settings;
+    }
+
+    /// <summary>
+    /// v0.11 spec/07: 引导跳转 — 切到 Settings 页 + 自动选 OSS Tab。
+    /// </summary>
+    public void NavigateToOssSettings()
+    {
+        CurrentView = SettingsViewModel;
+        IsSettingsPage = true;
+        CurrentPage = ViewPage.Settings;
+        SettingsViewModel.SelectedTab = SettingsTab.Oss;
+        Trace.WriteLine("[MainWindow] NavigateToOssSettings");
     }
 
     [RelayCommand]

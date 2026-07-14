@@ -1,0 +1,117 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="using:StartTooler.Converters"
+             xmlns:local="using:StartTooler.Controls"
+             x:Class="StartTooler.Controls.OnboardingCard"
+             x:DataType="local:OnboardingCard">
+
+    <UserControl.Styles>
+        <Style Selector="Border.step-card">
+            <Setter Property="Background" Value="{DynamicResource Bg.Surface}"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="16,12"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Border Background="{DynamicResource Bg.Outer}"
+            BorderBrush="{DynamicResource Bg.Divider}"
+            BorderThickness="1"
+            CornerRadius="12"
+            Padding="32,24"
+            MaxWidth="540">
+        <StackPanel Spacing="16">
+            <!-- 标题区 -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="欢迎使用星助"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text.Primary}"/>
+                <TextBlock Text="三步开始管理你的天文摄影作品"
+                           FontSize="12"
+                           Foreground="{DynamicResource Text.Tertiary}"/>
+            </StackPanel>
+
+            <!-- Step 1: 设置项目目录 -->
+            <Border Classes="step-card">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <TextBlock Grid.Column="0"
+                               Text="①"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="{Binding Step1Complete, Converter={x:Static converters:BoolToStepColorConverter.Completed}}"
+                               VerticalAlignment="Center"
+                               Width="32"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="设置项目目录"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}"/>
+                        <TextBlock Text="选择存放天文照片的文件夹"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text.Tertiary}"/>
+                    </StackPanel>
+                    <Button Grid.Column="2"
+                            Content="去设置 →"
+                            Classes="secondary-button"
+                            Command="{Binding GoToSettingsCommand}"
+                            IsVisible="{Binding !Step1Complete}"/>
+                </Grid>
+            </Border>
+
+            <!-- Step 2: 扫描媒体文件 -->
+            <Border Classes="step-card">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <TextBlock Grid.Column="0"
+                               Text="②"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="{Binding Step2Complete, Converter={x:Static converters:BoolToStepColorConverter.Completed}}"
+                               VerticalAlignment="Center"
+                               Width="32"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="扫描媒体文件"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}"/>
+                        <TextBlock Text="{Binding Step2Hint}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text.Tertiary}"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Step 3: 配置云备份(可选) -->
+            <Border Classes="step-card">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <TextBlock Grid.Column="0"
+                               Text="③"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="{Binding Step3Complete, Converter={x:Static converters:BoolToStepColorConverter.Completed}}"
+                               VerticalAlignment="Center"
+                               Width="32"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="配置云备份(可选)"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}"/>
+                        <TextBlock Text="将照片备份到阿里云 OSS,手机可随时访问"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text.Tertiary}"/>
+                    </StackPanel>
+                    <Button Grid.Column="2"
+                            Content="去配置 →"
+                            Classes="secondary-button"
+                            Command="{Binding GoToOssSettingsCommand}"
+                            IsVisible="{Binding !Step3Complete}"/>
+                </Grid>
+            </Border>
+
+            <TextBlock Text="全部完成后此卡片自动消失"
+                       FontSize="11"
+                       Foreground="{DynamicResource Text.Disabled}"
+                       HorizontalAlignment="Center"
+                       Margin="0,8,0,0"/>
+        </StackPanel>
+    </Border>
+</UserControl>

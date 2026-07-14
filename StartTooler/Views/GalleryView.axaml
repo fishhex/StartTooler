@@ -4,30 +4,32 @@
              xmlns:models="using:StartTooler.Models"
              xmlns:data="using:StartTooler.Data"
              xmlns:converters="using:StartTooler.Converters"
+             xmlns:controls="using:StartTooler.Controls"
              x:Class="StartTooler.Views.GalleryView"
              x:DataType="vm:GalleryViewModel">
 
     <UserControl.Resources>
-        <converters:SyncStatusToColorConverter x:Key="SyncStatusToColor"/>
-        <converters:SyncStatusToTooltipConverter x:Key="SyncStatusToTooltip"/>
-        <converters:BoolToAccentOrDividerConverter x:Key="BoolToAccentOrDivider"/>
-        <converters:BoolToFontWeightConverter x:Key="BoolToFontWeight"/>
-        <converters:BoolToAccentOrSecondaryConverter x:Key="BoolToAccentOrSecondary"/>
-        <converters:MediaFileToStatusConverter x:Key="MediaFileToStatus"/>
-        <converters:MediaFileToSyncVisibilityConverter x:Key="MediaFileToSyncVis"/>
-        <converters:MediaTypeToVideoConverter x:Key="MediaTypeToVideo"/>
-        <converters:FilePathToBitmapConverter x:Key="FilePathToBitmap"/>
-        <converters:FilePathToVisibilityConverter x:Key="FilePathToVis"/>
-        <converters:UploadStatusToVisibilityConverter x:Key="UploadStatusToVis"/>
-        <!-- v0.6: AI 打标 3 个 Converter（photo tile 评分角标/标签条/TagError） -->
+        <!-- v0.6.1: 标签分类 Converter（空标签 → 未分类） -->
+        <converters:EmptyTagToUntitledConverter x:Key="EmptyTagToUntitled"/>
+        <!-- v0.6: AI 打标 3 个 Converter（photo tile 评分角标/标签条） -->
         <converters:ScoreToBrushConverter x:Key="ScoreToBrush"/>
         <converters:ScoreToDisplayConverter x:Key="ScoreToDisplay"/>
         <converters:TagsToShortTextConverter x:Key="TagsToShortText"/>
-        <!-- v0.6.1: 标签分类 Converter（空标签 → 未分类） -->
-        <converters:EmptyTagToUntitledConverter x:Key="EmptyTagToUntitled"/>
-        <!-- v0.7: 质量标签 Converter（暖红调 quality 标签条截断/完整列表） -->
+        <!-- v0.7: 质量标签 Converter -->
         <converters:QualityTagsToShortTextConverter x:Key="QualityTagsToShortText"/>
         <converters:QualityTagsToTooltipConverter x:Key="QualityTagsToTooltip"/>
+        <!-- v0.11: 同步状态徽章 4 合一 Converter（spec §5.1） -->
+        <converters:SyncStatusToSingleBadgeVis x:Key="SyncBadgeToVis"/>
+        <converters:SyncStatusToSingleBadgeColor x:Key="SyncBadgeToColor"/>
+        <converters:SyncStatusToSingleBadgeIcon x:Key="SyncBadgeToIcon"/>
+        <converters:SyncStatusToSingleBadgeTooltip x:Key="SyncBadgeToTooltip"/>
+        <!-- 通用：文件 → 缩略图 / 视频 / 占位 -->
+        <converters:FilePathToBitmapConverter x:Key="FilePathToBitmap"/>
+        <converters:FilePathToVisibilityConverter x:Key="FilePathToVis"/>
+        <converters:MediaTypeToVideoConverter x:Key="MediaTypeToVideo"/>
+        <!-- 通用：选中态视觉（标签列表 spec §15.4） -->
+        <converters:BoolToAccentOrSecondaryConverter x:Key="BoolToAccentOrSecondary"/>
+        <converters:BoolToFontWeightConverter x:Key="BoolToFontWeight"/>
     </UserControl.Resources>
 
     <!-- v2.3: 工具栏已移至 MainWindow 全局工具栏 -->
@@ -62,23 +64,27 @@
                                         CommandParameter="{Binding}">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
+                                            <!-- v0.11: 高度 48→56 容纳日期+数量双行（spec §15.3） -->
                                             <Canvas Width="150" Height="56">
                                                 <!-- 圆点 -->
                                                 <Ellipse Width="10" Height="10"
-                                                         Fill="{Binding IsSelected, Converter={StaticResource BoolToAccentOrDivider}}"
-                                                         Canvas.Left="8" Canvas.Top="23"/>
+                                                         Fill="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"
+                                                         Canvas.Left="8" Canvas.Top="22"/>
                                                 <!-- 连接线段 (下方) -->
-                                                <Border Width="2" Height="36"
+                                                <Border Width="2" Height="32"
                                                         Background="{DynamicResource Timeline.Line}"
                                                         Opacity="0.3"
-                                                        Canvas.Left="12" Canvas.Top="33"/>
-                                                <!-- 日期文字 -->
-                                                <TextBlock Canvas.Left="32" Canvas.Top="20"
-                                                           Text="{Binding Date, StringFormat='{}{0:yyyy-MM-dd}'}"
-                                                           FontFamily="{DynamicResource Font.Mono}"
-                                                           FontSize="13"
-                                                           FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
-                                                           Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
+                                                        Canvas.Left="12" Canvas.Top="32"/>
+                                                <!-- 日期文字 + 数量（双行） -->
+                                                <StackPanel Canvas.Left="32" Canvas.Top="14" Spacing="2">
+                                                    <TextBlock Text="{Binding Date, StringFormat='{}{0:yyyy-MM-dd}'}"
+                                                               FontFamily="{DynamicResource Font.Mono}" FontSize="13"
+                                                               FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
+                                                               Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
+                                                    <TextBlock Text="{Binding PhotoCount, StringFormat='{}{0} 张'}"
+                                                               FontSize="10"
+                                                               Foreground="{DynamicResource Text.Tertiary}"/>
+                                                </StackPanel>
                                             </Canvas>
                                         </ControlTemplate>
                                     </Button.Template>
@@ -102,15 +108,18 @@
                                         Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).SelectTagCommand}"
                                         CommandParameter="{Binding}">
                                     <Grid>
+                                        <!-- v0.11: 选中态文字变色 / 加粗（spec §15.4） -->
                                         <TextBlock Text="{Binding Tag, Converter={StaticResource EmptyTagToUntitled}}"
                                                    HorizontalAlignment="Left"
                                                    VerticalAlignment="Center"
-                                                   FontSize="13"/>
+                                                   FontSize="13"
+                                                   FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
+                                                   Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
                                         <TextBlock Text="{Binding Count, StringFormat='{}{0} 张'}"
                                                    HorizontalAlignment="Right"
                                                    VerticalAlignment="Center"
                                                    FontSize="12"
-                                                   Foreground="{DynamicResource Text.Secondary}"/>
+                                                   Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
                                     </Grid>
                                 </Button>
                             </DataTemplate>
@@ -123,6 +132,17 @@
         <!-- 照片网格区域 -->
         <Border Grid.Column="1" Background="{DynamicResource Bg.Surface}">
             <Grid>
+                <!-- v0.11 spec/07: 首次使用引导卡片（盖在空态之上,ShowOnboarding 关闭后自然隐藏） -->
+                <controls:OnboardingCard IsVisible="{Binding ShowOnboarding}"
+                                          Step1Complete="{Binding Step1Complete}"
+                                          Step2Complete="{Binding Step2Complete}"
+                                          Step3Complete="{Binding Step3Complete}"
+                                          Step2Hint="{Binding Step2Hint}"
+                                          GoToSettingsCommand="{Binding OnboardingGoToSettingsCommand}"
+                                          GoToOssSettingsCommand="{Binding OnboardingGoToOssSettingsCommand}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+
                 <!-- 无项目目录空态 -->
                 <StackPanel IsVisible="{Binding HasNoProject}"
                             HorizontalAlignment="Center"
@@ -131,7 +151,7 @@
                     <Path Data="{DynamicResource Icon.Constellation}"
                           Stretch="Uniform"
                           Width="64" Height="64"
-                          Stroke="{DynamicResource Text.Disabled}"
+                          Stroke="{DynamicResource Card.EmptyStateStroke}"
                           StrokeThickness="1"
                           Fill="Transparent"
                           Opacity="0.4"
@@ -155,7 +175,7 @@
                     <Path Data="{DynamicResource Icon.Constellation}"
                           Stretch="Uniform"
                           Width="64" Height="64"
-                          Stroke="{DynamicResource Text.Disabled}"
+                          Stroke="{DynamicResource Card.EmptyStateStroke}"
                           StrokeThickness="1"
                           Fill="Transparent"
                           Opacity="0.4"
@@ -171,12 +191,31 @@
                                HorizontalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- 加载骨架屏 -->
+                <!--
+                  v0.11: 骨架屏替代 "加载中..." 纯文字（spec §9）。
+                  标题行 placeholder + 8 张 tile placeholder + 第二个标题 + 5 张 tile placeholder。
+                -->
                 <ScrollViewer IsVisible="{Binding IsLoadingDateGroups}">
-                    <StackPanel Margin="24">
-                        <TextBlock Text="加载中..."
-                                   FontSize="13"
-                                   Foreground="{DynamicResource Text.Secondary}"/>
+                    <StackPanel Margin="24" Spacing="16">
+                        <Border Classes="skeleton" Width="180" Height="16" CornerRadius="4" />
+                        <WrapPanel>
+                            <Border Classes="skeleton pulse" Width="160" Height="120" CornerRadius="8" Margin="4" />
+                            <Border Classes="skeleton pulse" Width="160" Height="120" CornerRadius="8" Margin="4" />
+                            <Border Classes="skeleton pulse" Width="160" Height="120" CornerRadius="8" Margin="4" />
+                            <Border Classes="skeleton pulse" Width="160" Height="120" CornerRadius="8" Margin="4" />
+                            <Border Classes="skeleton pulse" Width="160" Height="120" CornerRadius="8" Margin="4" />
+                            <Border Classes="skeleton pulse" Width="160" Height="120" CornerRadius="8" Margin="4" />
+                            <Border Classes="skeleton pulse" Width="160" Height="120" CornerRadius="8" Margin="4" />
+                            <Border Classes="skeleton pulse" Width="160" Height="120" CornerRadius="8" Margin="4" />
+                        </WrapPanel>
+                        <Border Classes="skeleton" Width="140" Height="16" CornerRadius="4" Margin="0,12,0,0" />
+                        <WrapPanel>
+                            <Border Classes="skeleton pulse" Width="160" Height="120" CornerRadius="8" Margin="4" />
+                            <Border Classes="skeleton pulse" Width="160" Height="120" CornerRadius="8" Margin="4" />
+                            <Border Classes="skeleton pulse" Width="160" Height="120" CornerRadius="8" Margin="4" />
+                            <Border Classes="skeleton pulse" Width="160" Height="120" CornerRadius="8" Margin="4" />
+                            <Border Classes="skeleton pulse" Width="160" Height="120" CornerRadius="8" Margin="4" />
+                        </WrapPanel>
                     </StackPanel>
                 </ScrollViewer>
 
@@ -202,328 +241,231 @@
                 </StackPanel>
 
                 <!-- 照片网格 -->
-                <ScrollViewer IsVisible="{Binding !IsLoadingDateGroups}">
-                    <ItemsControl ItemsSource="{Binding CurrentMediaFiles}" Margin="24">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel Orientation="Horizontal" ItemWidth="160" ItemHeight="120"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="data:MediaFile">
-                                <Button Classes="photo-tile"
-                                        Margin="8"
-                                        Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).ToggleSelectionCommand}"
-                                        CommandParameter="{Binding}"
-                                        DoubleTapped="OnPhotoTileDoubleTapped"
-                                        PointerPressed="OnPhotoTilePointerPressed">
-                                    <!-- v0.8.1: 右键菜单改为 code-behind 构建（PointerPressed 触发） -->
-                                    <!-- 原因: ContextFlyout 内 MenuItem 在编译 binding 模式下，
-                                         `$parent[ItemsControl].((vm:GalleryViewModel)DataContext).XxxCommand`
-                                         这种链式 cast 在 DataTemplate 编译期无法解析 → Command=null → 灰显。
-                                         改用代码构建 MenuFlyout，直接挂 VM 实例属性，跳过 binding 解析。 -->
-                                    <Button.Template>
-                                        <ControlTemplate TargetType="Button">
-                                            <Grid>
-                                                <!-- 选中时高亮边框: 浮在 PhotoBorder 外层, IsSelected=true 时显示 -->
-                                                <Border x:Name="SelectionHighlight"
-                                                        Width="160" Height="120"
-                                                        CornerRadius="{DynamicResource Radius.Large}"
-                                                        BorderBrush="{DynamicResource Accent.Stellar}"
-                                                        BorderThickness="2"
-                                                        IsVisible="{Binding IsSelected}"/>
+                <ScrollViewer x:Name="PhotoScrollViewer" IsVisible="{Binding !IsLoadingDateGroups}">
+                    <Grid>
+                        <ItemsControl ItemsSource="{Binding CurrentMediaFiles}" Margin="24">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" ItemWidth="160" ItemHeight="120"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="data:MediaFile">
+                                    <Button Classes="photo-tile"
+                                            Margin="8"
+                                            Command="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).ToggleSelectionCommand}"
+                                            CommandParameter="{Binding}"
+                                            DoubleTapped="OnPhotoTileDoubleTapped"
+                                            PointerPressed="OnPhotoTilePointerPressed">
+                                        <!-- 详见 GalleryView.axaml.cs：右键菜单 code-behind 构建 -->
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <!--
+                                                  v0.11: PointerEntered/Exited 在 code-behind 订阅（spec §5.3）。
+                                                  原因：编译 binding 模式下 Avalonia XAML 在 Button/Grid 上对继承自
+                                                  InputElement 的 PointerEntered/Exited 解析失败（AVLN3000）。
+                                                  改在 View 的 OnPhotoScrollViewerPointerMoved 统一处理：
+                                                  维护 _hoveredFiles 集合，OnApplyTemplate 时给 ScrollViewer
+                                                  AddHandler(PointerEnteredEvent) / AddHandler(PointerExitedEvent)。
+                                                -->
+                                                <Grid>
+                                                    <!--
+                                                      v0.11: 选中时高亮边框 + 键盘焦点边框 (spec §7)。
+                                                      SelectionHighlight 显示在 PhotoBorder 上层，KeyboardFocusBorder 更外层；
+                                                      两个状态可同时存在（多选+键盘焦点）。
+                                                    -->
+                                                    <Border Width="160" Height="120"
+                                                            CornerRadius="{DynamicResource Radius.Large}"
+                                                            BorderBrush="{DynamicResource Accent.Stellar}"
+                                                            BorderThickness="2"
+                                                            IsVisible="{Binding IsKeyboardFocused}"/>
+                                                    <Border x:Name="SelectionHighlight"
+                                                            Width="160" Height="120"
+                                                            CornerRadius="{DynamicResource Radius.Large}"
+                                                            BorderBrush="{DynamicResource Accent.Stellar}"
+                                                            BorderThickness="2"
+                                                            IsVisible="{Binding IsSelected}"/>
 
-                                                <!-- 照片卡片 -->
-                                                <Border x:Name="PhotoBorder"
-                                                        Width="160" Height="120"
-                                                        Background="{DynamicResource Bg.SurfaceElevated}"
-                                                        CornerRadius="{DynamicResource Radius.Large}"
-                                                        ClipToBounds="True">
+                                                    <!-- 照片卡片 -->
+                                                    <Border x:Name="PhotoBorder"
+                                                            Width="160" Height="120"
+                                                            Background="{DynamicResource Bg.SurfaceElevated}"
+                                                            CornerRadius="{DynamicResource Radius.Large}"
+                                                            ClipToBounds="True">
 
-                                                    <Grid>
-                                                        <!-- 缩略图（路径有效且文件存在才显示） -->
-                                                        <Image Source="{Binding ThumbnailPath, Converter={StaticResource FilePathToBitmap}}"
-                                                               Stretch="UniformToFill"
-                                                               IsVisible="{Binding ThumbnailPath, Converter={StaticResource FilePathToVis}}"/>
+                                                        <Grid>
+                                                            <!-- 缩略图 -->
+                                                            <Image Source="{Binding ThumbnailPath, Converter={StaticResource FilePathToBitmap}}"
+                                                                   Stretch="UniformToFill"
+                                                                   IsVisible="{Binding ThumbnailPath, Converter={StaticResource FilePathToVis}}"/>
 
-                                                        <!-- 占位星座图标（路径空 或 文件不存在时显示） -->
-                                                        <Path Data="{DynamicResource Icon.Constellation}"
-                                                              Stretch="Uniform"
-                                                              Width="48" Height="48"
-                                                              Stroke="{DynamicResource Text.Disabled}"
-                                                              StrokeThickness="1"
-                                                              Fill="Transparent"
-                                                              Opacity="0.4"
-                                                              HorizontalAlignment="Center"
-                                                              VerticalAlignment="Center"
-                                                              IsVisible="{Binding ThumbnailPath, Converter={StaticResource FilePathToVis}, ConverterParameter=Invert}"/>
-
-                                                        <!-- 视频徽章 (左上角) -->
-                                                        <Border IsVisible="{Binding MediaType, Converter={StaticResource MediaTypeToVideo}}"
-                                                                HorizontalAlignment="Left"
-                                                                VerticalAlignment="Top"
-                                                                Margin="6,10,10,6"
-                                                                Width="22" Height="22"
-                                                                Background="#CC0A0E1A"
-                                                                CornerRadius="11">
-                                                            <Path Data="{DynamicResource Icon.Play}"
+                                                            <!-- 占位星座图标 -->
+                                                            <Path Data="{DynamicResource Icon.Constellation}"
                                                                   Stretch="Uniform"
-                                                                  Width="12" Height="12"
-                                                                  Fill="{DynamicResource State.Warning}"
+                                                                  Width="48" Height="48"
+                                                                  Stroke="{DynamicResource Card.EmptyStateStroke}"
+                                                                  StrokeThickness="1"
+                                                                  Fill="Transparent"
+                                                                  Opacity="0.4"
                                                                   HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center"/>
-                                                        </Border>
+                                                                  VerticalAlignment="Center"
+                                                                  IsVisible="{Binding ThumbnailPath, Converter={StaticResource FilePathToVis}, ConverterParameter=Invert}"/>
 
-                                                        <!--
-                                                            右上角徽章分两组，互斥显示：
-                                                            A. 瞬时进度态（Uploading/Failed/Paused）—— 由 UploadStatusToVis 绑定 UploadStatus
-                                                            B. 持久同步态（UploadedAndLocal / UploadedButMissingLocal / NotUploaded）—— 由 MediaFileToSyncVis 派生
-
-                                                            A 组在上传过程中优先显示；B 组在静止状态（已上传/未上传）显示。
-                                                        -->
-
-                                                        <!-- 同步态: 已上传且本地存在 (青蓝云 + ✓) -->
-                                                        <Border IsVisible="{Binding SyncStatusValue, Converter={StaticResource MediaFileToSyncVis}, ConverterParameter=UploadedAndLocal}"
-                                                                HorizontalAlignment="Right"
-                                                                VerticalAlignment="Top"
-                                                                Margin="6,10,10,6"
-                                                                Width="24" Height="24"
-                                                                Background="#CCFFFFFF"
-                                                                CornerRadius="12">
-                                                            <Grid>
-                                                                <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
+                                                            <!-- 视频徽章 (左上角) -->
+                                                            <Border IsVisible="{Binding MediaType, Converter={StaticResource MediaTypeToVideo}}"
+                                                                    HorizontalAlignment="Left"
+                                                                    VerticalAlignment="Top"
+                                                                    Margin="6,10,10,6"
+                                                                    Width="22" Height="22"
+                                                                    Background="{DynamicResource Overlay.Dark}"
+                                                                    CornerRadius="11">
+                                                                <Path Data="{DynamicResource Icon.Play}"
                                                                       Stretch="Uniform"
-                                                                      Width="14" Height="14"
-                                                                      Fill="#4DD0E1"
-                                                                      HorizontalAlignment="Center"
-                                                                      VerticalAlignment="Center"/>
-                                                                <Path Data="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
-                                                                      Stretch="Uniform"
-                                                                      Width="10" Height="10"
-                                                                      Fill="#FFFFFF"
-                                                                      HorizontalAlignment="Center"
-                                                                      VerticalAlignment="Center"
-                                                                      Margin="0,1,0,0"/>
-                                                            </Grid>
-                                                        </Border>
-
-                                                        <!-- 同步态: 已上传但本地不存在 (橙色云 + ↓) -->
-                                                        <Border IsVisible="{Binding SyncStatusValue, Converter={StaticResource MediaFileToSyncVis}, ConverterParameter=UploadedButMissingLocal}"
-                                                                HorizontalAlignment="Right"
-                                                                VerticalAlignment="Top"
-                                                                Margin="6,10,10,6"
-                                                                Width="24" Height="24"
-                                                                Background="#CCFFFFFF"
-                                                                CornerRadius="12">
-                                                            <Grid>
-                                                                <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
-                                                                      Stretch="Uniform"
-                                                                      Width="14" Height="14"
-                                                                      Fill="#FFA726"
-                                                                      HorizontalAlignment="Center"
-                                                                      VerticalAlignment="Center"/>
-                                                                <Path Data="M20 12l-1.41-1.41L13 18.17V4h-2v14.17l-5.58-5.59L4 14l8 8 8-8z"
-                                                                      Stretch="Uniform"
-                                                                      Width="10" Height="10"
-                                                                      Fill="#FFFFFF"
-                                                                      HorizontalAlignment="Center"
-                                                                      VerticalAlignment="Center"
-                                                                      Margin="0,2,0,0"/>
-                                                            </Grid>
-                                                        </Border>
-
-                                                        <!-- 同步态: 未上传 (灰云 + 斜杠) -->
-                                                        <Border IsVisible="{Binding SyncStatusValue, Converter={StaticResource MediaFileToSyncVis}, ConverterParameter=NotUploaded}"
-                                                                HorizontalAlignment="Right"
-                                                                VerticalAlignment="Top"
-                                                                Margin="6,10,10,6"
-                                                                Width="24" Height="24"
-                                                                Background="#CCFFFFFF"
-                                                                CornerRadius="12">
-                                                            <Grid>
-                                                                <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
-                                                                      Stretch="Uniform"
-                                                                      Width="14" Height="14"
-                                                                      Fill="#4A5273"
-                                                                      HorizontalAlignment="Center"
-                                                                      VerticalAlignment="Center"/>
-                                                                <Path Data="M4 4 L20 20"
-                                                                      Stroke="#FFFFFF"
-                                                                      StrokeThickness="2.2"
-                                                                      StrokeLineCap="Round"
-                                                                      Width="14" Height="14"
-                                                                      Stretch="Uniform"
-                                                                      HorizontalAlignment="Center"
-                                                                      VerticalAlignment="Center"/>
-                                                            </Grid>
-                                                        </Border>
-
-                                                        <!-- Uploading: 半透明云 -->
-                                                        <Border IsVisible="{Binding UploadStatus, Converter={StaticResource UploadStatusToVis}, ConverterParameter=Uploading}"
-                                                                HorizontalAlignment="Right"
-                                                                VerticalAlignment="Top"
-                                                                Margin="6,10,10,6"
-                                                                Width="24" Height="24"
-                                                                Background="#CCFFFFFF"
-                                                                CornerRadius="12"
-                                                                Opacity="0.85">
-                                                            <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
-                                                                  Stretch="Uniform"
-                                                                  Width="14" Height="14"
-                                                                  Fill="{DynamicResource Accent.Stellar}"
-                                                                  HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center">
-                                                                <Path.RenderTransform>
-                                                                    <RotateTransform Angle="0"/>
-                                                                </Path.RenderTransform>
-                                                            </Path>
-                                                        </Border>
-
-                                                        <!-- Failed: 红色云 + 感叹号 -->
-                                                        <Border IsVisible="{Binding UploadStatus, Converter={StaticResource UploadStatusToVis}, ConverterParameter=Failed}"
-                                                                HorizontalAlignment="Right"
-                                                                VerticalAlignment="Top"
-                                                                Margin="6,10,10,6"
-                                                                Width="24" Height="24"
-                                                                Background="#CCFFFFFF"
-                                                                CornerRadius="12">
-                                                            <Grid>
-                                                                <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
-                                                                      Stretch="Uniform"
-                                                                      Width="14" Height="14"
-                                                                      Fill="{DynamicResource State.Danger}"
-                                                                      HorizontalAlignment="Center"
-                                                                      VerticalAlignment="Center"/>
-                                                                <TextBlock Text="!"
-                                                                           FontSize="13"
-                                                                           FontWeight="Bold"
-                                                                           Foreground="#FFFFFF"
-                                                                           HorizontalAlignment="Center"
-                                                                           VerticalAlignment="Center"
-                                                                           Margin="0,0,0,1"/>
-                                                            </Grid>
-                                                        </Border>
-
-                                                        <!-- Paused: 黄色云 -->
-                                                        <Border IsVisible="{Binding UploadStatus, Converter={StaticResource UploadStatusToVis}, ConverterParameter=Paused}"
-                                                                HorizontalAlignment="Right"
-                                                                VerticalAlignment="Top"
-                                                                Margin="6,10,10,6"
-                                                                Width="24" Height="24"
-                                                                Background="#CCFFFFFF"
-                                                                CornerRadius="12">
-                                                            <Path Data="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5c0-2.64-2.05-4.78-4.65-4.96z"
-                                                                  Stretch="Uniform"
-                                                                  Width="14" Height="14"
-                                                                  Fill="{DynamicResource State.Warning}"
-                                                                  HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center"/>
-                                                        </Border>
-
-                                                        <!-- v0.6: 评分角标 (左下) -->
-                                                        <Border IsVisible="{Binding HasScore}"
-                                                                HorizontalAlignment="Left"
-                                                                VerticalAlignment="Bottom"
-                                                                Margin="6,6,10,6"
-                                                                Padding="6,2"
-                                                                Background="{Binding Score, Converter={StaticResource ScoreToBrush}}"
-                                                                CornerRadius="8">
-                                                            <TextBlock Text="{Binding Score, Converter={StaticResource ScoreToDisplay}}"
-                                                                       FontSize="11"
-                                                                       FontWeight="SemiBold"
-                                                                       Foreground="#FFFFFF"
-                                                                       VerticalAlignment="Center"/>
-                                                        </Border>
-
-                                                        <!-- v0.6: 标签小角标条 (底部居中, hover tooltip 看完整) -->
-                                                        <Border IsVisible="{Binding HasTags}"
-                                                                HorizontalAlignment="Center"
-                                                                VerticalAlignment="Bottom"
-                                                                Margin="0,0,0,6"
-                                                                Padding="6,2"
-                                                                MaxWidth="140"
-                                                                Background="#CC0A0E1A"
-                                                                CornerRadius="8"
-                                                                ToolTip.Tip="{Binding Tags, Converter={StaticResource TagsToShortText}, ConverterParameter=Full}">
-                                                            <TextBlock Text="{Binding Tags, Converter={StaticResource TagsToShortText}}"
-                                                                       FontSize="10"
-                                                                       Foreground="#E6FFFFFF"
-                                                                       TextTrimming="CharacterEllipsis"
-                                                                       MaxLines="1"/>
-                                                        </Border>
-
-                                                        <!-- v0.7: 质量评价标签条 (底部居中, subject 标签条上方; 暖红底暖橙字, 视觉区分) -->
-                                                        <Border IsVisible="{Binding HasQualityTags}"
-                                                                HorizontalAlignment="Center"
-                                                                VerticalAlignment="Bottom"
-                                                                Margin="0,0,0,24"
-                                                                Padding="6,2"
-                                                                MaxWidth="140"
-                                                                Background="#CC3A1F1A"
-                                                                CornerRadius="8"
-                                                                ToolTip.Tip="{Binding QualityTags, Converter={StaticResource QualityTagsToTooltip}}">
-                                                            <TextBlock Text="{Binding QualityTags, Converter={StaticResource QualityTagsToShortText}}"
-                                                                       FontSize="10"
-                                                                       Foreground="#FFCC8888"
-                                                                       TextTrimming="CharacterEllipsis"
-                                                                       MaxLines="1"/>
-                                                        </Border>
-
-                                                        <!-- v0.6: 打标失败徽章 (右下, hover tooltip 看错误原因) -->
-                                                        <Border IsVisible="{Binding TagError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                                                HorizontalAlignment="Right"
-                                                                VerticalAlignment="Bottom"
-                                                                Margin="6,6,10,6"
-                                                                Width="20" Height="20"
-                                                                Background="#CCFFFFFF"
-                                                                CornerRadius="10"
-                                                                ToolTip.Tip="{Binding TagError}">
-                                                            <Path Data="{DynamicResource Icon.AlertTriangle}"
-                                                                  Width="12" Height="12"
-                                                                  Fill="{DynamicResource State.Danger}"
-                                                                  Stretch="Uniform"/>
-                                                        </Border>
-
-                                                        <!-- 选中时遮罩: 半透明蓝色叠加 -->
-                                                        <Border IsVisible="{Binding IsSelected}"
-                                                                Background="#334FC3F7"
-                                                                IsHitTestVisible="False"/>
-
-                                                        <!-- 多选模式复选框 (垂直水平居中) -->
-                                                        <Panel HorizontalAlignment="Center"
-                                                               VerticalAlignment="Center">
-                                                            <!-- 未选中的空心圆 (多选模式但未选中) -->
-                                                            <Border Width="28" Height="28"
-                                                                    Background="#AA000000"
-                                                                    BorderBrush="#E6FFFFFF"
-                                                                    BorderThickness="2"
-                                                                    CornerRadius="14"
-                                                                    IsVisible="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).IsMultiSelectMode}"/>
-
-                                                            <!-- 已选中的对勾 (多选模式 + 已选中) -->
-                                                            <Border Width="28" Height="28"
-                                                                    Background="{DynamicResource Accent.Stellar}"
-                                                                    BorderBrush="#FFFFFF"
-                                                                    BorderThickness="2"
-                                                                    CornerRadius="14"
-                                                                    IsVisible="{Binding IsSelected}">
-                                                                <Path Data="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
-                                                                      Stretch="Uniform"
-                                                                      Width="18" Height="18"
-                                                                      Fill="#0A0E1A"
+                                                                      Width="12" Height="12"
+                                                                      Fill="{DynamicResource State.Warning}"
                                                                       HorizontalAlignment="Center"
                                                                       VerticalAlignment="Center"/>
                                                             </Border>
-                                                        </Panel>
-                                                    </Grid>
-                                                </Border>
-                                            </Grid>
-                                        </ControlTemplate>
-                                    </Button.Template>
-                                </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+
+                                                            <!--
+                                                              v0.11: 同步状态徽章 6→1 合并（spec §5.1）。
+                                                              单 Border 由 4 个 Converter 各负责一个属性：
+                                                                - Background ← SyncBadgeToColor
+                                                                - IsVisible   ← SyncBadgeToVis
+                                                                - ToolTip.Tip ← SyncBadgeToTooltip
+                                                                - PathIcon.Data ← SyncBadgeToIcon
+                                                            -->
+                                                            <Border IsVisible="{Binding ., Converter={StaticResource SyncBadgeToVis}}"
+                                                                    HorizontalAlignment="Right"
+                                                                    VerticalAlignment="Top"
+                                                                    Margin="6,10,10,6"
+                                                                    Width="24" Height="24"
+                                                                    Background="{Binding ., Converter={StaticResource SyncBadgeToColor}}"
+                                                                    CornerRadius="12"
+                                                                    ToolTip.Tip="{Binding ., Converter={StaticResource SyncBadgeToTooltip}}">
+                                                                <PathIcon Data="{Binding ., Converter={StaticResource SyncBadgeToIcon}}"
+                                                                          Width="14" Height="14"
+                                                                          Foreground="White"
+                                                                          HorizontalAlignment="Center"
+                                                                          VerticalAlignment="Center"/>
+                                                            </Border>
+
+                                                            <!--
+                                                              v0.11: 评分 + 内容标签 合并为单条底部信息栏（spec §5.2）。
+                                                              替代原「左下评分角标 + 底部居中标签条」两行冗余。
+                                                              暖色背景适配白字；评分 + 标签横排展示。
+                                                            -->
+                                                            <Border IsVisible="{Binding HasScore}"
+                                                                    HorizontalAlignment="Stretch"
+                                                                    VerticalAlignment="Bottom"
+                                                                    Margin="0,0,0,3"
+                                                                    Padding="6,3"
+                                                                    Background="{DynamicResource Card.FooterBg}">
+                                                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                                    <Border IsVisible="{Binding HasScore}"
+                                                                            Background="{Binding Score, Converter={StaticResource ScoreToBrush}}"
+                                                                            CornerRadius="6"
+                                                                            Padding="4,1">
+                                                                        <TextBlock Text="{Binding Score, Converter={StaticResource ScoreToDisplay}}"
+                                                                                   FontSize="10" FontWeight="Bold"
+                                                                                   Foreground="White"
+                                                                                   VerticalAlignment="Center"/>
+                                                                    </Border>
+                                                                    <TextBlock Text="{Binding Tags, Converter={StaticResource TagsToShortText}}"
+                                                                               FontSize="10"
+                                                                               Foreground="{DynamicResource Card.FooterText}"
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               MaxLines="1"
+                                                                               MaxWidth="90"
+                                                                               VerticalAlignment="Center"
+                                                                               ToolTip.Tip="{Binding Tags, Converter={StaticResource TagsToShortText}, ConverterParameter=Full}"/>
+                                                                </StackPanel>
+                                                            </Border>
+
+                                                            <!--
+                                                              v0.11: 质量标签仅 hover 显示（spec §5.3）。
+                                                              IsHovered 由 View 的 PointerEnter/Leave 维护，IsVisible 绑定。
+                                                              没 hover 时质量条完全不占位。
+                                                            -->
+                                                            <Border IsVisible="{Binding IsHovered}"
+                                                                    HorizontalAlignment="Center"
+                                                                    VerticalAlignment="Bottom"
+                                                                    Margin="0,0,0,28"
+                                                                    Padding="6,2"
+                                                                    MaxWidth="140"
+                                                                    Background="{DynamicResource Tag.QualityBg}"
+                                                                    CornerRadius="8"
+                                                                    ToolTip.Tip="{Binding QualityTags, Converter={StaticResource QualityTagsToTooltip}}">
+                                                                <TextBlock Text="{Binding QualityTags, Converter={StaticResource QualityTagsToShortText}}"
+                                                                           FontSize="10"
+                                                                           Foreground="{DynamicResource Tag.QualityFg}"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           MaxLines="1"/>
+                                                            </Border>
+
+                                                            <!-- 打标失败徽章 (右下, hover tooltip 看错误原因) -->
+                                                            <Border IsVisible="{Binding TagError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                                    HorizontalAlignment="Right"
+                                                                    VerticalAlignment="Bottom"
+                                                                    Margin="6,6,10,6"
+                                                                    Width="20" Height="20"
+                                                                    Background="{DynamicResource Overlay.Light}"
+                                                                    CornerRadius="10"
+                                                                    ToolTip.Tip="{Binding TagError}">
+                                                                <Path Data="{DynamicResource Icon.AlertTriangle}"
+                                                                      Width="12" Height="12"
+                                                                      Fill="{DynamicResource State.Danger}"
+                                                                      Stretch="Uniform"/>
+                                                            </Border>
+
+                                                            <!-- 选中时遮罩: 半透明蓝色叠加 -->
+                                                            <Border IsVisible="{Binding IsSelected}"
+                                                                    Background="{DynamicResource Overlay.Selection}"
+                                                                    IsHitTestVisible="False"/>
+
+                                                            <!-- 多选模式复选框 (垂直水平居中) -->
+                                                            <Panel HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center">
+                                                                <!-- 未选中的空心圆 -->
+                                                                <Border Width="28" Height="28"
+                                                                        Background="{DynamicResource Select.CheckBg}"
+                                                                        BorderBrush="{DynamicResource Select.CheckBorder}"
+                                                                        BorderThickness="2"
+                                                                        CornerRadius="14"
+                                                                        IsVisible="{Binding $parent[ItemsControl].((vm:GalleryViewModel)DataContext).IsMultiSelectMode}"/>
+
+                                                                <!-- 已选中的对勾 -->
+                                                                <Border Width="28" Height="28"
+                                                                        Background="{DynamicResource Select.CheckFilled}"
+                                                                        BorderBrush="{DynamicResource Select.CheckFilledBorder}"
+                                                                        BorderThickness="2"
+                                                                        CornerRadius="14"
+                                                                        IsVisible="{Binding IsSelected}">
+                                                                    <Path Data="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
+                                                                          Stretch="Uniform"
+                                                                          Width="18" Height="18"
+                                                                          Fill="{DynamicResource Select.CheckTickFg}"
+                                                                          HorizontalAlignment="Center"
+                                                                          VerticalAlignment="Center"/>
+                                                                </Border>
+                                                            </Panel>
+                                                        </Grid>
+                                                    </Border>
+                                                </Grid>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!--
+                          v0.11: 拖拽矩形框选层（spec §8）。IsHitTestVisible=False 让 Canvas 不拦截 Pointer 事件
+                          → 原始 photo tile 仍能接收 PointerPressed/Moved/Released；
+                          marquee Border 是 code-behind 动态添加到 Canvas 的。
+                        -->
+                        <Canvas x:Name="SelectionCanvas" IsHitTestVisible="False" />
+                    </Grid>
                 </ScrollViewer>
             </Grid>
         </Border>

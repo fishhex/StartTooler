@@ -26,7 +26,13 @@
     <Color x:Key="State.Warning">#FFA726</Color>
     <Color x:Key="State.Danger">#FF5252</Color>
     <Color x:Key="State.Success">#4DD0E1</Color>
-    
+
+    <!-- 状态图标色（v0.11 spec/10 §3.2） -->
+    <Color x:Key="StatusIcon.Synced">#4DD0E1</Color>
+    <Color x:Key="StatusIcon.RemoteOnly">#FFA726</Color>
+    <Color x:Key="StatusIcon.LocalOnly">#4A5273</Color>
+    <Color x:Key="StatusIcon.Attention">#FF5252</Color>
+
     <!-- 时间轴专用色 -->
     <Color x:Key="Timeline.Selected">#FF6B6B</Color>
     <Color x:Key="Timeline.Dot.Selected">#4FC3F7</Color>
@@ -36,6 +42,52 @@
     <Color x:Key="TrafficLight.Red">#FF5F57</Color>
     <Color x:Key="TrafficLight.Yellow">#FFBD2E</Color>
     <Color x:Key="TrafficLight.Green">#28C940</Color>
+
+    <!-- ============ v0.11: 叠加层颜色（spec §15.2 硬编码替换） ============ -->
+    <Color x:Key="Overlay.Dark">#CC0A0E1A</Color>
+    <Color x:Key="Overlay.Light">#CCFFFFFF</Color>
+    <Color x:Key="Overlay.Selection">#334FC3F7</Color>
+    <Color x:Key="Overlay.Scrim">#80000000</Color>
+    <Color x:Key="Overlay.MarqueeFill">#204FC3F7</Color>
+    <Color x:Key="Overlay.MarqueeStroke">#4FC3F7</Color>
+    <Color x:Key="Overlay.Toast">#E60A0E1A</Color>
+
+    <!-- ============ v0.11: 标签条专用色（spec §15.2） ============ -->
+    <Color x:Key="Tag.QualityBg">#CC3A1F1A</Color>
+    <Color x:Key="Tag.QualityFg">#FFCC8888</Color>
+    <Color x:Key="Tag.ScoreBadgeText">#FFFFFF</Color>
+    <Color x:Key="Tag.ScoreBadgeAltText">#E6FFFFFF</Color>
+    <Color x:Key="Tag.ScoreBadgeFaint">#80FFFFFF</Color>
+    <Color x:Key="Tag.ScoreBadgeQuiet">#99FFFFFF</Color>
+
+    <!-- ============ v0.11: 云端/状态色（spec §15.2） ============ -->
+    <Color x:Key="Cloud.Accent">#4DD0E1</Color>
+    <Color x:Key="Cloud.MissingBg">#33A5D6A7</Color>
+    <Color x:Key="Cloud.MissingFg">#A5D6A7</Color>
+    <Color x:Key="Cloud.RestoreBorder">#66BB6A40</Color>
+    <Color x:Key="Cloud.NotUploaded">#4A5273</Color>
+    <Color x:Key="Cloud.WarnBg">#CCFFFFFF</Color>
+    <Color x:Key="Cloud.WarnStroke">#FFA726</Color>
+    <Color x:Key="Cloud.TrashBar">#4DD0E1</Color>
+
+    <!-- ============ v0.11: 卡片用色（spec §15.2） ============ -->
+    <Color x:Key="Card.FooterBg">#CC0A0E1A</Color>
+    <Color x:Key="Card.FooterText">#E6FFFFFF</Color>
+    <Color x:Key="Card.EmptyStateStroke">#4A5273</Color>
+
+    <!-- ============ v0.11: Chip 用色（spec §15.2） ============ -->
+    <Color x:Key="Chip.DeleteHover">#E63946</Color>
+    <Color x:Key="Chip.DeleteHoverLight">#66FF6666</Color>
+    <Color x:Key="Chip.ActionBg">#33FFFFFF</Color>
+    <Color x:Key="Chip.ActionBgHover">#66FFFFFF</Color>
+    <Color x:Key="Chip.ActionDangerFg">#FFCC6666</Color>
+
+    <!-- ============ v0.11: 选择边框（多选/键盘焦点/选中态） ============ -->
+    <Color x:Key="Select.CheckBg">#AA000000</Color>
+    <Color x:Key="Select.CheckBorder">#E6FFFFFF</Color>
+    <Color x:Key="Select.CheckFilled">#4FC3F7</Color>
+    <Color x:Key="Select.CheckFilledBorder">#FFFFFF</Color>
+    <Color x:Key="Select.CheckTickFg">#0A0E1A</Color>
 
     <!-- 渐变 -->
     <LinearGradientBrush x:Key="Gradient.Header" StartPoint="0,0" EndPoint="0,1">

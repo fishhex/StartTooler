@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -56,6 +57,55 @@ public partial class SettingsViewModel : ObservableObject
     private bool _skipProviderSwitchWarning;
 
     [ObservableProperty] private SettingsTab selectedTab = SettingsTab.General;
+
+    // v0.11: 同步 SelectedTabIndex 给新 TabControl 用（spec §12.1）。保留 selectedTab 枚举做兼容。
+    public int SelectedTabIndex
+    {
+        get => (int)SelectedTab;
+        set
+        {
+            if (value < 0) value = 0;
+            // About = 3 越界 → 仍设成 General (0)
+            if (value > 2) value = 0;
+            var tab = (SettingsTab)value;
+            if (tab != SelectedTab) SelectTab(tab);
+        }
+    }
+
+    // === v0.11 spec/10 §4.2: 缩略图缓存管理 ===
+    [ObservableProperty] private string _cacheSizeText = "计算中…";
+    [ObservableProperty] private bool _hasCache;
+
+    [RelayCommand]
+    private void ClearCache()
+    {
+        ImageCacheService.ClearCache();
+        RefreshCacheStats();
+        // 复用已有 NotificationService 走全局 toast
+        Services.NotificationService.Current.Show("缓存已清理", "", Services.NotificationType.Success);
+    }
+
+    private void RefreshCacheStats()
+    {
+        var stats = ImageCacheService.GetStats();
+        HasCache = stats.CachedImageCount > 0;
+        CacheSizeText = stats.CachedImageCount > 0
+            ? $"已缓存 {stats.CachedImageCount} 张 · 约 {stats.FormattedSize}"
+            : "缓存为空";
+    }
+
+    // v0.11: 关于页静态数据（spec §12.2）
+    public string AppVersion
+    {
+        get
+        {
+            var v = Assembly.GetEntryAssembly()?.GetName().Version;
+            return $"版本 {v?.ToString(3) ?? "0.11.0"}";
+        }
+    }
+    public string AppDescription => "跨平台桌面媒体管理工具";
+    public string AppDetail => "Avalonia UI + .NET 9.0 构建 · 支持照片/视频浏览、阿里云 OSS 云存储、AI 智能打标、局域网上传。";
+    public string AppLicense => "MIT License · 开源许可";
 
     // General Tab 字段
     [ObservableProperty] private string? selectedProjectDirectory;
@@ -296,6 +346,12 @@ public partial class SettingsViewModel : ObservableObject
         if (tab != SettingsTab.Oss)
         {
             IsOssSecretKeyVisible = false;
+        }
+
+        // v0.11 spec/10 §4.2.3: 切到通用 Tab 时刷新缓存统计（用户可能清过缓存）
+        if (tab == SettingsTab.General)
+        {
+            RefreshCacheStats();
         }
     }
 
@@ -598,6 +654,17 @@ public partial class SettingsViewModel : ObservableObject
 
         SelectedProjectDirectory = folder;
         AddToRecentDirectories(folder);
+    }
+
+    /// <summary>
+    /// v0.11 spec/06 §3.5: 拖入文件夹设为项目目录。
+    /// 只设值 + 加历史，不直接保存（等用户点"保存"按钮），保留 IsDirty 流程。
+    /// </summary>
+    public void SetProjectDirectoryFromDrag(string folderPath)
+    {
+        if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath)) return;
+        SelectedProjectDirectory = folderPath;
+        AddToRecentDirectories(folderPath);
     }
 
     [RelayCommand]

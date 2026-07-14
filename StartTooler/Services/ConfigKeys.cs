@@ -19,4 +19,16 @@ public static class ConfigKeys
     /// spec doc/0.11/02-settings-improve.md §3.1
     /// </summary>
     public const string ProjectHistory = "project_history";
+
+    /// <summary>
+    /// 「不再提示」偏好字典（Dictionary&lt;string, string&gt;）。
+    /// key = 操作类型（如 "delete_photos_batch"），value = ISO 8601 截止时间（30 天内有效）。
+    /// v0.11 spec/08 §5.1
+    /// </summary>
+    public const string DontAskAgain = "dont_ask_again";
+
+    /// <summary>
+    /// 首次使用引导完成状态（v0.11 spec/07 §4.3）。DTO: OnboardingState { Completed, CompletedAt }。
+    /// </summary>
+    public const string Onboarding = "onboarding_v1";
 }
