@@ -153,10 +153,10 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="data:MediaFile">
-                                        <Border Margin="8"
+                                        <Border Margin="4"
                                                 Width="160" Height="120"
                                                 Background="{DynamicResource Bg.SurfaceElevated}"
-                                                CornerRadius="{DynamicResource Radius.Large}"
+                                                CornerRadius="0"
                                                 ClipToBounds="True"
                                                 PointerPressed="OnCardPointerPressed">
                                             <Grid RowDefinitions="2,*,Auto">
@@ -282,10 +282,10 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="data:MediaFile">
-                                        <Border Margin="8"
+                                        <Border Margin="4"
                                                 Width="160" Height="120"
                                                 Background="{DynamicResource Bg.SurfaceElevated}"
-                                                CornerRadius="{DynamicResource Radius.Large}"
+                                                CornerRadius="0"
                                                 ClipToBounds="True"
                                                 PointerPressed="OnCardPointerPressed">
                                             <Grid RowDefinitions="2,*,Auto">
