@@ -46,7 +46,7 @@
         <Border Grid.Row="3" Background="{DynamicResource Bg.Surface}">
          <Panel>
             <!-- 通用 Tab -->
-            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*"
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*"
                   IsVisible="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.General}}">
                 <!-- 项目目录 FormRow -->
                 <Border Grid.Row="0" Padding="40,16" Background="{DynamicResource Bg.Surface}">
@@ -210,8 +210,27 @@
                     </Grid>
                 </Border>
 
+                <!-- v0.11 spec/10 §4.2.2: 缩略图缓存管理 -->
+                <Border Grid.Row="5" Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*">
+                        <TextBlock Grid.Column="0" Text="缩略图缓存"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding CacheSizeText}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Text.Tertiary}"
+                                       VerticalAlignment="Center"/>
+                            <Button Content="清理缓存"
+                                    Classes="secondary-button"
+                                    Command="{Binding ClearCacheCommand}"
+                                    IsEnabled="{Binding HasCache}"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
                 <!-- 空区域填充 -->
-                <Border Grid.Row="5" Background="{DynamicResource Bg.Surface}"/>
+                <Border Grid.Row="6" Background="{DynamicResource Bg.Surface}"/>
             </Grid>
 
             <!-- OSS Tab -->
