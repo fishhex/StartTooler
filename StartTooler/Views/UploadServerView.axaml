@@ -7,101 +7,138 @@
     <ScrollViewer>
         <StackPanel Margin="40,24" Spacing="24">
 
-            <!-- 服务控制 + 二维码（合并 card，运行时二维码在右侧） -->
-            <Border Background="{DynamicResource Bg.Surface}"
-                    CornerRadius="8"
-                    Padding="24">
-                <Grid ColumnDefinitions="*,Auto">
-                    <!-- 左：服务控制 -->
-                    <StackPanel Grid.Column="0" Spacing="16">
-                        <TextBlock Text="局域网上传"
-                                   FontSize="14"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource Text.Primary}"/>
+            <!--
+              v0.11 spec/17: 双卡片布局。LAN 上传（左）+ 扫码上传（右）等宽并排；
+              间距 Space.5 (24)，外层 Grid MinWidth 防窄窗口挤压。
+            -->
+            <Grid ColumnDefinitions="*,*" MinWidth="720">
+                <!-- 左：LAN 上传卡片 -->
+                <Border Grid.Column="0"
+                        Background="{DynamicResource Bg.Surface}"
+                        CornerRadius="{DynamicResource Radius.Large}"
+                        Padding="24"
+                        Margin="0,0,12,0">
+                    <StackPanel Spacing="16">
+                        <!-- 头部：图标 + 标题 + 副标题 + Running 徽章 -->
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <Border Grid.Column="0"
+                                    Width="32" Height="32"
+                                    CornerRadius="{DynamicResource Radius.Medium}"
+                                    Background="{DynamicResource Bg.SurfaceElevated}"
+                                    VerticalAlignment="Center">
+                                <PathIcon Data="{StaticResource Icon.Upload}"
+                                          Width="16" Height="16"
+                                          Foreground="{DynamicResource Accent.Stellar}"/>
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="局域网上传"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text.Primary}"/>
+                                <TextBlock Text="LAN Transfer · 同一网络下点对点直传"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource Text.Secondary}"/>
+                            </StackPanel>
+                            <Border Grid.Column="2" Classes="status-badge">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Ellipse Width="6" Height="6"
+                                             VerticalAlignment="Center"
+                                             Fill="{DynamicResource State.Success}"/>
+                                    <TextBlock Text="{Binding LanStatusText}"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource State.Success}"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
 
-                        <TextBlock Text="在其他设备上打开以下链接，上传图片或视频。文件会自动按日期归档到当前项目目录。"
+                        <TextBlock Text="在同一网络下打开链接，上传图片或视频。文件会自动按日期归档到当前项目目录。"
                                    FontSize="12"
                                    Foreground="{DynamicResource Text.Secondary}"
                                    TextWrapping="Wrap"/>
 
-                        <!-- 端口配置 + 随机端口按钮（冲突时显示） -->
-                        <Grid ColumnDefinitions="100,*">
-                            <TextBlock Grid.Column="0"
-                                       Text="端口"
-                                       FontSize="13"
-                                       Foreground="{DynamicResource Text.Primary}"
-                                       VerticalAlignment="Center"/>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
+                        <!-- PORT + 本机 IP：标签在上、数值在下的垂直布局 -->
+                        <StackPanel Orientation="Horizontal" Spacing="32">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="PORT"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource Text.Tertiary}"/>
                                 <NumericUpDown Value="{Binding Port}"
                                                Minimum="1024"
                                                Maximum="65535"
                                                Width="120"
                                                IsEnabled="{Binding !IsRunning}"
                                                VerticalAlignment="Center"/>
-                                <!-- v0.11: 🎲 随机端口 → 纯文字 "随机端口"（spec §13.1） -->
-                                <Button Content="随机端口"
-                                        Command="{Binding UseRandomPortCommand}"
-                                        IsVisible="{Binding IsPortConflict}"
-                                        VerticalAlignment="Center"
-                                        Classes="secondary-button"/>
                             </StackPanel>
-                        </Grid>
-
-                        <!-- 端口冲突时的建议端口 -->
-                        <StackPanel Spacing="6"
-                                    IsVisible="{Binding IsPortConflict}">
-                            <TextBlock Text="建议端口："
-                                       FontSize="12"
-                                       Foreground="{DynamicResource Text.Secondary}"/>
-                            <ItemsControl ItemsSource="{Binding SuggestedPorts}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <WrapPanel Orientation="Horizontal"/>
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Button Content="{Binding}"
-                                                Command="{Binding $parent[UserControl].DataContext.UseRandomPortCommand}"
-                                                CommandParameter="{Binding}"
-                                                Margin="0,0,6,0"
-                                                Padding="10,4"
-                                                Classes="secondary-button"/>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="本机 IP"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource Text.Tertiary}"/>
+                                <TextBlock Text="{Binding PreferredLocalAddress}"
+                                           FontSize="20"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text.Primary}"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
                         </StackPanel>
 
-                        <!-- 启动按钮 -->
+                        <!-- 端口冲突时的建议端口（spec §3.3） -->
+                        <StackPanel Spacing="6"
+                                    IsVisible="{Binding IsPortConflict}">
+                            <TextBlock Text="{Binding ErrorMessage}"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource State.Danger}"
+                                       TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="建议端口："
+                                           FontSize="12"
+                                           Foreground="{DynamicResource Text.Secondary}"
+                                           VerticalAlignment="Center"/>
+                                <ItemsControl ItemsSource="{Binding SuggestedPorts}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="6"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Content="{Binding}"
+                                                    Command="{Binding $parent[UserControl].DataContext.UseRandomPortCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    Padding="10,4"
+                                                    Classes="secondary-button"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- 操作按钮：启动 / 停止 -->
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <Button Content="启动服务"
                                     Classes="primary-button"
                                     Command="{Binding StartServerCommand}"
                                     IsVisible="{Binding !IsRunning}"/>
-                            <Button Content="停止服务"
-                                    Classes="secondary-button"
-                                    Command="{Binding StopServerCommand}"
-                                    IsVisible="{Binding IsRunning}"/>
+                            <Button Command="{Binding StopServerCommand}"
+                                    Classes="danger-button"
+                                    IsVisible="{Binding IsRunning}"
+                                    ToolTip.Tip="停止服务">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Ellipse Width="6" Height="6"
+                                             VerticalAlignment="Center"
+                                             Fill="{DynamicResource State.Danger}"/>
+                                    <TextBlock Text="停止服务" FontSize="13"/>
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
 
-                        <!-- 状态消息（端口冲突时 State.Danger 颜色，否则 State.Success） -->
-                        <TextBlock Text="{Binding StatusMessage}"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource State.Danger}"
-                                   IsVisible="{Binding IsPortConflict}"/>
+                        <!-- 通用状态消息（非冲突态 Success 色） -->
                         <TextBlock Text="{Binding StatusMessage}"
                                    FontSize="12"
                                    Foreground="{DynamicResource State.Success}"
                                    IsVisible="{Binding ShowSuccessStatus}"/>
 
-                        <!-- 错误消息 -->
-                        <TextBlock Text="{Binding ErrorMessage}"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource State.Danger}"
-                                   TextWrapping="Wrap"
-                                   IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-
-                        <!-- 上传历史（最多 50 条 ScrollViewer 滚动；空时不显示） -->
+                        <!-- 上传历史（spec §3.1：最多 50 条 ScrollViewer 滚动；空时不显示） -->
                         <StackPanel Spacing="6"
                                     IsVisible="{Binding HasUploadHistory}">
                             <Grid ColumnDefinitions="*,Auto">
@@ -111,7 +148,6 @@
                                            FontWeight="SemiBold"
                                            Foreground="{DynamicResource Text.Primary}"
                                            VerticalAlignment="Center"/>
-                                <!-- v0.11: 「清除」按钮（spec §13.2） -->
                                 <Button Grid.Column="1"
                                         Content="清除"
                                         Classes="toolbar-button"
@@ -141,20 +177,45 @@
                                 </ItemsControl>
                             </ScrollViewer>
                         </StackPanel>
+
+                        <TextBlock Text="修改端口后自动重启"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text.Tertiary}"/>
                     </StackPanel>
+                </Border>
 
-                    <!-- 右：二维码（运行时显示） -->
-                    <StackPanel Grid.Column="1"
-                                Spacing="12"
-                                Margin="24,0,0,0"
-                                VerticalAlignment="Top"
-                                IsVisible="{Binding IsRunning}">
-                        <TextBlock Text="扫码上传"
-                                   FontSize="14"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource Text.Primary}"
-                                   HorizontalAlignment="Center"/>
+                <!-- 右：扫码上传卡片 -->
+                <Border Grid.Column="1"
+                        Background="{DynamicResource Bg.Surface}"
+                        CornerRadius="{DynamicResource Radius.Large}"
+                        Padding="24"
+                        Margin="12,0,0,0">
+                    <StackPanel Spacing="16">
+                        <!-- 头部：标题 + 副标题 + Live QR 徽章 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="扫码上传"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text.Primary}"/>
+                                <TextBlock Text="QR · 扫码即可访问上传页"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource Text.Secondary}"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Classes="status-badge">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Ellipse Width="6" Height="6"
+                                             VerticalAlignment="Center"
+                                             Fill="{DynamicResource Accent.Stellar}"/>
+                                    <TextBlock Text="{Binding QrStatusText}"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Accent.Stellar}"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
 
+                        <!-- 公网中转小标记（保留 v0.10 行为） -->
                         <Border Background="{DynamicResource Accent.Stellar}"
                                 CornerRadius="3"
                                 Padding="6,2"
@@ -166,10 +227,31 @@
                                        Foreground="White"/>
                         </Border>
 
-                        <Image Source="{Binding QrCodeImage}"
-                               Width="180"
-                               Height="180"
-                               HorizontalAlignment="Center"/>
+                        <!-- 二维码区域：运行后显示 Image，未运行时显示占位 -->
+                        <Border Width="180" Height="180"
+                                HorizontalAlignment="Center"
+                                Background="{DynamicResource Bg.SurfaceElevated}"
+                                CornerRadius="{DynamicResource Radius.Medium}">
+                            <Grid>
+                                <Image Source="{Binding QrCodeImage}"
+                                       Width="180" Height="180"
+                                       IsVisible="{Binding IsRunning}"/>
+                                <TextBlock Text="启动服务后生成二维码"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource Text.Secondary}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap"
+                                           MaxWidth="140"
+                                           TextAlignment="Center"
+                                           IsVisible="{Binding !IsRunning}"/>
+                            </Grid>
+                        </Border>
+
+                        <TextBlock Text="用手机扫码立即访问"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource Text.Secondary}"
+                                   HorizontalAlignment="Center"/>
 
                         <!-- URL：可读 TextBox + 复制按钮（spec §3.2） -->
                         <Grid ColumnDefinitions="*,Auto">
@@ -177,21 +259,15 @@
                                      Text="{Binding UploadUrl}"
                                      IsReadOnly="True"
                                      FontSize="11"
-                                     MinWidth="260"
+                                     MinWidth="200"
                                      VerticalAlignment="Center"
                                      ToolTip.Tip="{Binding UploadUrl}"
                                      ScrollViewer.HorizontalScrollBarVisibility="Hidden"
                                      ScrollViewer.VerticalScrollBarVisibility="Disabled"/>
-                            <!--
-                              v0.11: 复制按钮默认显示 Icon.Copy，点击后 1.5s 显示 "已复制"（spec §13.1）。
-                              XAML 端用 Grid 叠加：默认显示图标，点击后 CopyButtonText="已复制" 时显示文字。
-                              Button 设 MinWidth 避免文字切换时挤压 TextBox。
-                            -->
                             <Button Grid.Column="1"
                                     Command="{Binding CopyUrlCommand}"
                                     Classes="secondary-button"
-                                    Margin="4,0,0,0"
-                                    Padding="8,4"
+                                    Margin="8,0,0,0"
                                     MinWidth="64"
                                     VerticalAlignment="Center"
                                     ToolTip.Tip="复制 URL">
@@ -222,7 +298,6 @@
                                             <TextBlock Text="{Binding}"
                                                        FontSize="11"
                                                        Foreground="{DynamicResource Text.Primary}"/>
-                                            <!-- v0.11: 📋 emoji → Icon.Copy 图标（spec §13.1） -->
                                             <Button Padding="6,2"
                                                     Command="{Binding $parent[UserControl].DataContext.CopyAddressCommand}"
                                                     CommandParameter="{Binding}"
@@ -237,7 +312,7 @@
                             </ItemsControl>
                         </StackPanel>
 
-                        <!-- 最近一次上传的瞬时提示（保留 v0.10 行为；详细列表走 ScrollViewer） -->
+                        <!-- 最近一次上传的瞬时提示 -->
                         <TextBlock Text="{Binding RecentUploadMessage}"
                                    FontSize="12"
                                    Foreground="{DynamicResource Accent.Stellar}"
@@ -245,9 +320,15 @@
                                    TextWrapping="Wrap"
                                    MaxWidth="220"
                                    IsVisible="{Binding RecentUploadMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <TextBlock Text="二维码永久有效，同一局域网下均可访问"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text.Tertiary}"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,8,0,0"/>
                     </StackPanel>
-                </Grid>
-            </Border>
+                </Border>
+            </Grid>
 
             <!-- 公网代理设置（折叠在下方，默认折叠） -->
             <Expander Header="公网代理设置"

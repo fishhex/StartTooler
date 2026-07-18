@@ -70,6 +70,12 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     [ObservableProperty] private ObservableCollection<string> _localAddresses = new();
     /// <summary>多 IP 列表非空时显示区块（至少有一个 IPv4 才显示）。</summary>
     public bool HasLocalAddresses => LocalAddresses.Count > 0;
+    /// <summary>左侧卡片展示的首选 IP；无 IPv4 时显示 "-"。</summary>
+    public string PreferredLocalAddress => LocalAddresses.Count > 0 ? LocalAddresses[0] : "-";
+    /// <summary>左侧卡片状态徽章文案。</summary>
+    public string LanStatusText => IsRunning ? "Running" : "Stopped";
+    /// <summary>右侧卡片状态徽章文案（启动后显示 Live QR，否则 QR Ready）。</summary>
+    public string QrStatusText => IsRunning ? "Live QR" : "QR Ready";
 
     [ObservableProperty] private PublicRelayViewModel publicRelayViewModel;
 
@@ -86,7 +92,11 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         _gallery.PropertyChanged += OnGalleryPropertyChanged;
         // v0.11: 集合增删要通知 HasXxx 派生属性
         UploadHistory.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasUploadHistory));
-        LocalAddresses.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasLocalAddresses));
+        LocalAddresses.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasLocalAddresses));
+            OnPropertyChanged(nameof(PreferredLocalAddress));
+        };
     }
 
     private void OnGalleryPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -104,6 +114,12 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     // v0.11: 状态消息/冲突态变化时通知 ShowSuccessStatus
     partial void OnStatusMessageChanged(string? value) => OnPropertyChanged(nameof(ShowSuccessStatus));
     partial void OnIsPortConflictChanged(bool value) => OnPropertyChanged(nameof(ShowSuccessStatus));
+    // v0.11 spec/17: IsRunning 变化时通知双卡片状态徽章文案
+    partial void OnIsRunningChanged(bool value)
+    {
+        OnPropertyChanged(nameof(LanStatusText));
+        OnPropertyChanged(nameof(QrStatusText));
+    }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
     private async Task StartServer()
