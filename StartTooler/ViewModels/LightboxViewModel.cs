@@ -167,6 +167,18 @@ namespace StartTooler.ViewModels;
         private int? _imageHeight;
 
         /// <summary>
+        /// 缩放后的图片宽度 = ImageWidth × Scale（spec/16 方案 A）。
+        /// Panel 绑这个属性，ScrollViewer 看到真实缩放尺寸，自动居中/滚动。
+        /// null 时（图片未探测完成）返回 0，由 XAML FallbackValue 兜底。
+        /// </summary>
+        public double ScaledWidth => (ImageWidth ?? 0) * Scale;
+
+        /// <summary>
+        /// 缩放后的图片高度 = ImageHeight × Scale。
+        /// </summary>
+        public double ScaledHeight => (ImageHeight ?? 0) * Scale;
+
+        /// <summary>
         /// 窗口标题：`{Index+1}/{Total} — {FileName}`（get-only 派生）。
         /// </summary>
         public string Title =>
@@ -277,6 +289,15 @@ namespace StartTooler.ViewModels;
     private const double MaxScale = 5.0;
     private const double ZoomStep = 0.25;
 
+    /// <summary>
+    /// Scale 变化时通知 ScaledWidth/ScaledHeight（spec/16 方案 A：Panel 绑这两个属性）。
+    /// </summary>
+    partial void OnScaleChanged(double value)
+    {
+        OnPropertyChanged(nameof(ScaledWidth));
+        OnPropertyChanged(nameof(ScaledHeight));
+    }
+
     [RelayCommand]
     private void ZoomIn()
     {
@@ -374,6 +395,8 @@ namespace StartTooler.ViewModels;
 
         ImageWidth = null;
         ImageHeight = null;
+        OnPropertyChanged(nameof(ScaledWidth));
+        OnPropertyChanged(nameof(ScaledHeight));
 
         if (IsImage)
         {
@@ -395,6 +418,8 @@ namespace StartTooler.ViewModels;
             {
                 ImageWidth = dim.Value.Width;
                 ImageHeight = dim.Value.Height;
+                OnPropertyChanged(nameof(ScaledWidth));
+                OnPropertyChanged(nameof(ScaledHeight));
             }
             else
             {

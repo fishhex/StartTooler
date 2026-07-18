@@ -56,23 +56,18 @@
                                   DoubleTapped="OnImageDoubleTapped">
 
                         <!--
-                          Image 容器：原图尺寸（ImageWidth × ImageHeight）由 VM 异步探测填入；
-                          ScaleTransform 把 Scale 属性套在 Image 上，RenderTransformOrigin=中心，
-                          这样缩放围绕图片中心展开。Stretch=Uniform 让 Scale=1 时填满 ScrollViewer。
+                          Image 容器：缩放后的尺寸（ScaledWidth × ScaledHeight = ImageWidth × Scale）
+                          由 VM 计算填入。让 ScrollViewer 看到真实缩放尺寸，自动居中/滚动。
+                          Scale=1.0 且图片小于视口 → 居中；Scale>1 或图片大于视口 → 出现滚动条。
+                          spec/16 方案 A（替代原 ScaleTransform + Stretch=Uniform 的失效布局）。
                         -->
                         <Panel HorizontalAlignment="Center"
                                VerticalAlignment="Center"
-                               Width="{Binding ImageWidth, FallbackValue=0}"
-                               Height="{Binding ImageHeight, FallbackValue=0}"
+                               Width="{Binding ScaledWidth, FallbackValue=0}"
+                               Height="{Binding ScaledHeight, FallbackValue=0}"
                                MinWidth="100" MinHeight="100">
                             <Image Source="{Binding CurrentFile, Converter={x:Static conv:LightboxConverters.MediaFileToOriginalBitmap}}"
-                                   Stretch="Uniform"
-                                   RenderTransformOrigin="0.5,0.5">
-                                <Image.RenderTransform>
-                                    <ScaleTransform ScaleX="{Binding Scale}"
-                                                    ScaleY="{Binding Scale}" />
-                                </Image.RenderTransform>
-                            </Image>
+                                   Stretch="Fill" />
                         </Panel>
                     </ScrollViewer>
                 </Panel>
