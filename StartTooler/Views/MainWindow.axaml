@@ -341,42 +341,25 @@
                 Background="{DynamicResource Bg.Outer}"
                 BorderBrush="{DynamicResource Bg.Divider}"
                 BorderThickness="0,1,0,0"
-                Padding="16,0">
-            <DockPanel>
-                <!-- 左侧：已上传 / 当前文件数（仅 Gallery 页显示） -->
-                <TextBlock DockPanel.Dock="Left"
-                           Text="{Binding GalleryViewModel.UploadedFileStat}"
-                           FontSize="11"
-                           Foreground="{DynamicResource Text.Secondary}"
-                           VerticalAlignment="Center"/>
-
-                <!-- 中间：上次刷新时间（仅 Gallery 页显示） -->
-                <TextBlock DockPanel.Dock="Left"
+                Padding="16,0,0,0">
+            <Grid ColumnDefinitions="*,Auto">
+                <!-- 左侧：上次刷新时间（仅 Gallery 页显示） -->
+                <TextBlock Grid.Column="0"
                            Text="{Binding GalleryViewModel.LastRefreshText}"
                            FontSize="11"
                            Foreground="{DynamicResource Text.Disabled}"
-                           VerticalAlignment="Center"
-                           Margin="16,0,0,0">
+                           VerticalAlignment="Center">
                     <TextBlock.IsVisible>
                         <Binding Path="IsGalleryPage"/>
                     </TextBlock.IsVisible>
                 </TextBlock>
 
-                <!-- v0.11 spec/10 §4.1: 大图库提示（> 2000 张时显示，null 时隐藏） -->
-                <TextBlock DockPanel.Dock="Left"
-                           Text="{Binding LargeLibraryHint}"
-                           FontSize="11"
-                           Foreground="{DynamicResource Text.Tertiary}"
-                           VerticalAlignment="Center"
-                           Margin="16,0,0,0"
-                           IsVisible="{Binding LargeLibraryHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-
-                <!-- v0.11: 状态栏通知历史 🔔 入口（spec §14.2） -->
-                <Button DockPanel.Dock="Right"
+                <!-- 右侧：通知历史入口 -->
+                <Button Grid.Column="1"
                         Classes="toolbar-button"
                         ToolTip.Tip="通知历史"
-                        Margin="0,0,12,0"
-                        Padding="6,2">
+                        Padding="6,2"
+                        HorizontalAlignment="Right">
                     <Button.Flyout>
                         <Flyout Placement="Top">
                             <Border MinWidth="280" MaxWidth="360" MaxHeight="400"
@@ -419,45 +402,7 @@
                               Width="14" Height="14"
                               Foreground="{DynamicResource Text.Secondary}"/>
                 </Button>
-
-                <!-- 右侧：OSS 状态圆点 + 文字 -->
-                <StackPanel DockPanel.Dock="Right"
-                            Orientation="Horizontal"
-                            Spacing="6"
-                            VerticalAlignment="Center">
-                    <Ellipse Width="8" Height="8"
-                             Fill="{Binding OssStatusColor}"
-                             VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding OssStatusText}"
-                               FontSize="11"
-                               Foreground="{DynamicResource Text.Secondary}"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
-
-                <!-- v0.11 spec/09 §3.1: 网络在线/离线指示器 -->
-                <StackPanel DockPanel.Dock="Right"
-                            Orientation="Horizontal"
-                            Spacing="6"
-                            VerticalAlignment="Center"
-                            Margin="0,0,12,0">
-                    <Ellipse Width="8" Height="8"
-                             Fill="{Binding IsOnline, Converter={StaticResource BoolToNetworkColor}}"
-                             VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding IsOnline, Converter={StaticResource BoolToNetworkText}}"
-                               FontSize="11"
-                               Foreground="{DynamicResource Text.Secondary}"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
-
-                <!-- v0.11 spec/09 §6.2: 状态栏磁盘空间显示 -->
-                <TextBlock DockPanel.Dock="Right"
-                           Text="{Binding DiskSpaceText}"
-                           FontSize="11"
-                           Foreground="{DynamicResource Text.Secondary}"
-                           VerticalAlignment="Center"
-                           Margin="0,0,12,0"
-                           ToolTip.Tip="项目目录所在磁盘的可用空间"/>
-            </DockPanel>
+            </Grid>
         </Border>
 
         <!-- v0.11 spec/06 §4.1: 全局拖拽遮罩(置顶,IsHitTestVisible=False 让事件穿透) -->

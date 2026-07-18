@@ -549,4 +549,15 @@
         <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
 
+    <!-- v0.11: 去除 Flyout 默认黑色背景，避免深色主题下出现明显黑边
+         （之前只去 BorderThickness 不够：FlyoutPresenter 自身的深色 Background
+          会透过内层 Border 的 Padding 漏出来，看起来像黑色边框。） -->
+    <Style Selector="FlyoutPresenter">
+        <Setter Property="Background" Value="{DynamicResource Bg.SurfaceElevated}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="CornerRadius" Value="{DynamicResource Radius.Medium}"/>
+        <Setter Property="Margin" Value="0"/>
+    </Style>
+
 </Styles>
