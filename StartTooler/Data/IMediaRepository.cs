@@ -11,6 +11,13 @@ public interface IMediaRepository
 {
     Task<IReadOnlyList<DateCount>> GetDateGroupsAsync(string projectPath, CancellationToken ct = default);
     Task<IReadOnlyList<MediaFile>> GetByDateAsync(string projectPath, DateTime date, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default);
+
+    /// <summary>
+    /// 按 shot_at 时间范围查询文件（v0.11 快捷时间刷选：今天/本周/本月/今年）。
+    /// 范围半开区间 [startTime, endTime)，按 SortMode 排序。
+    /// </summary>
+    Task<IReadOnlyList<MediaFile>> GetByTimeRangeAsync(string projectPath, DateTimeOffset startTime, DateTimeOffset endTime, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default);
+
     Task<ScanResult> ScanDirectoryAsync(string projectPath, IProgress<ScanProgress>? progress = null, CancellationToken ct = default);
     Task GenerateThumbnailsAsync(string projectPath, IThumbnailService thumbnailService, IProgress<ScanProgress>? progress = null, CancellationToken ct = default);
 

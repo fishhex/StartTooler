@@ -204,6 +204,54 @@ public class MediaRepository : IMediaRepository
         return results;
     }
 
+    public async Task<IReadOnlyList<MediaFile>> GetByTimeRangeAsync(string projectPath, DateTimeOffset startTime, DateTimeOffset endTime, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default)
+    {
+        var results = new List<MediaFile>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var startTimestamp = startTime.ToUnixTimeMilliseconds();
+        var endTimestamp = endTime.ToUnixTimeMilliseconds();
+
+        var orderBy = sortMode switch
+        {
+            SortMode.ScoreDesc => "ORDER BY score IS NULL, score DESC, shot_at DESC, file_name ASC",
+            _ => "ORDER BY shot_at DESC, file_name ASC",
+        };
+
+        var sql = $@"
+            SELECT
+                id, project_path, relative_path, file_name, media_type,
+                file_size, last_modified, shot_at, is_uploaded, local_exists,
+                thumbnail_path, remote_url, uploaded_at, scanned_at,
+                created_at, updated_at,
+                tags, score, tagged_at, tag_error,
+                quality_tags,
+                deleted_at
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND shot_at >= @startTime
+              AND shot_at < @endTime
+              AND deleted_at IS NULL
+            {orderBy}
+            LIMIT 2000";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+        cmd.Parameters.AddWithValue("@startTime", startTimestamp);
+        cmd.Parameters.AddWithValue("@endTime", endTimestamp);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            results.Add(ReadMediaFileRow(reader));
+        }
+
+        return results;
+    }
+
     public async Task<IReadOnlyList<MediaFile>> GetByDateAsync(string projectPath, DateTime date, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default)
     {
         var results = new List<MediaFile>();

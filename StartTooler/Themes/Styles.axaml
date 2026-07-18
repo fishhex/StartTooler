@@ -84,7 +84,7 @@
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Foreground" Value="{DynamicResource Text.Secondary}"/>
         <Setter Property="FontSize" Value="11"/>
-        <Setter Property="Padding" Value="8,4"/>
+        <Setter Property="Padding" Value="7,4"/>
         <Setter Property="MinHeight" Value="24"/>
         <Setter Property="CornerRadius" Value="{DynamicResource Radius.Segment}"/>
         <Setter Property="Cursor" Value="Hand"/>

@@ -872,6 +872,9 @@ public partial class GalleryViewModel : ObservableObject
         // 通过 FindParent 找父 Month/Year，反向设置 IsExpanded；订阅链路会自动 RefreshFlatTimeline。
         ExpandAncestorsOf(node);
 
+        // 用户明确选择了具体日期：退出快捷时间范围视图，回到日期浏览模式。
+        ClearQuickFilters();
+
         await LoadDateAsync(node, ct);
     }
 
@@ -922,6 +925,7 @@ public partial class GalleryViewModel : ObservableObject
     /// <summary>
     /// 应用快捷时间刷选（spec §4.3 / §2.2 截图）：按钮组下点击互斥由 VM 同步。
     /// 单选：取消除自己外所有项的 IsSelected；自己切换（再点同一个 → 取消）。
+    /// 激活快捷时间后切换到「时间范围视图」：加载该范围内所有文件，不再受 SelectedDate 限制。
     /// </summary>
     [RelayCommand]
     private async Task ApplyQuickFilter(QuickFilterItem? item)
@@ -934,8 +938,20 @@ public partial class GalleryViewModel : ObservableObject
             q.IsSelected = ReferenceEquals(q, item) && newValue;
 
         ActiveQuickFilter = ComputeActiveQuickFilter();
-        if (SelectedDate != null)
-            await ReloadCurrentDateWithFilterAsync();
+
+        if (ActiveQuickFilter == TimelineQuickFilter.All)
+        {
+            // 取消快捷时间：回到当前选中日期视图（若未选中日期则清空）
+            if (SelectedDate != null)
+                await ReloadCurrentDateWithFilterAsync();
+            else
+                CurrentMediaFiles.Clear();
+        }
+        else
+        {
+            // 激活快捷时间：加载该时间范围内所有文件
+            await LoadQuickFilterRangeAsync(ActiveQuickFilter);
+        }
     }
 
     /// <summary>
@@ -953,6 +969,14 @@ public partial class GalleryViewModel : ObservableObject
         if (QuickFilters.Any(q => q.IsSelected && q.Key == TimelineQuickFilter.ThisYear))
             return TimelineQuickFilter.ThisYear;
         return TimelineQuickFilter.All;
+    }
+
+    /// <summary>清除所有快捷时间按钮的选中态（回到 All）。</summary>
+    private void ClearQuickFilters()
+    {
+        foreach (var q in QuickFilters)
+            q.IsSelected = false;
+        ActiveQuickFilter = TimelineQuickFilter.All;
     }
 
     /// <summary>（v0.11 spec/15：搜索已移除）保留为历史占位，避免线上 partial 方法误调用。</summary>
@@ -1073,6 +1097,103 @@ public partial class GalleryViewModel : ObservableObject
         _cts = new CancellationTokenSource();
         await LoadDateAsync(SelectedDate, _cts.Token);
     }
+
+    /// <summary>
+    /// 加载快捷时间范围视图：查询指定时间区间内的所有文件（Today/ThisWeek/ThisMonth/ThisYear）。
+    /// 该视图独立于当前选中的具体日期。
+    /// </summary>
+    private async Task LoadQuickFilterRangeAsync(TimelineQuickFilter filter)
+    {
+        if (string.IsNullOrEmpty(ProjectPath)) return;
+
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+
+        try
+        {
+            IsLoadingMedia = true;
+
+            var (start, end) = GetQuickFilterRange(filter);
+            var files = await _mediaRepo.GetByTimeRangeAsync(ProjectPath, start, end, SortMode, ct);
+
+            // 反推 UploadStatus
+            IReadOnlyList<UploadJob> jobs;
+            try
+            {
+                jobs = await _uploadJobRepo.GetInProgressAsync(ProjectPath, ct);
+            }
+            catch
+            {
+                jobs = Array.Empty<UploadJob>();
+            }
+            var pausedSet = new HashSet<string>(
+                jobs.Select(j => j.RelativePath),
+                StringComparer.OrdinalIgnoreCase);
+
+            CurrentMediaFiles.Clear();
+            foreach (var file in files)
+            {
+                if (file.IsUploaded)
+                    file.UploadStatus = UploadStatus.Uploaded;
+                else if (pausedSet.Contains(file.RelativePath))
+                    file.UploadStatus = UploadStatus.Paused;
+                else
+                    file.UploadStatus = UploadStatus.NotUploaded;
+                CurrentMediaFiles.Add(file);
+            }
+
+            IsLoadingMedia = false;
+        }
+        catch (OperationCanceledException)
+        {
+            // 忽略取消
+        }
+        catch (Exception ex)
+        {
+            LoadErrorMessage = $"加载失败：{ex.Message}";
+            IsLoadingMedia = false;
+        }
+    }
+
+    /// <summary>根据快捷时间类型计算本地时间范围（半开区间）。</summary>
+    private static (DateTimeOffset Start, DateTimeOffset End) GetQuickFilterRange(TimelineQuickFilter filter)
+    {
+        var now = DateTime.Now;
+        DateTime startLocal;
+        DateTime endLocal;
+
+        switch (filter)
+        {
+            case TimelineQuickFilter.Today:
+                startLocal = now.Date;
+                endLocal = startLocal.AddDays(1);
+                break;
+            case TimelineQuickFilter.ThisWeek:
+                var dayOfWeek = (int)now.DayOfWeek;
+                var mondayDelta = dayOfWeek == 0 ? -6 : 1 - dayOfWeek;
+                startLocal = now.Date.AddDays(mondayDelta);
+                endLocal = startLocal.AddDays(7);
+                break;
+            case TimelineQuickFilter.ThisMonth:
+                startLocal = new DateTime(now.Year, now.Month, 1);
+                endLocal = startLocal.AddMonths(1);
+                break;
+            case TimelineQuickFilter.ThisYear:
+                startLocal = new DateTime(now.Year, 1, 1);
+                endLocal = startLocal.AddYears(1);
+                break;
+            default:
+                startLocal = now.Date;
+                endLocal = startLocal.AddDays(1);
+                break;
+        }
+
+        var startOffset = new DateTimeOffset(startLocal);
+        var endOffset = new DateTimeOffset(endLocal);
+        return (startOffset, endOffset);
+    }
+
     // === v0.6.1 标签分类（spec doc/11-ai-tagging.md §5.6） ===
 
     /// <summary>

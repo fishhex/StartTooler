@@ -40,8 +40,8 @@
     </UserControl.Resources>
 
     <!-- v2.3: 工具栏已移至 MainWindow 全局工具栏 -->
-    <!-- 页面结构：时间轴(220) + 照片网格(*) — 220 给快捷胶囊（今天/本周/本月/今年4项）足够横向排布 -->
-    <Grid ColumnDefinitions="220,*">
+    <!-- 页面结构：时间轴(260) + 照片网格(*) — 260 给快捷按钮组（全部/今天/本周/本月/今年 5 项）足够横向排布 -->
+    <Grid ColumnDefinitions="260,*">
         <!-- v0.11 spec/15: 左栏 — 顶部 TabControl + 快捷胶囊 + 年/月/日 三级时间轴 -->
         <Border Grid.Column="0"
                 Background="{DynamicResource Bg.Outer}"
@@ -58,11 +58,11 @@
 
                 <!-- v0.11: 快捷时间刷选（全部 / 今天 / 本周 / 本月 / 今年）— 按钮组。
                      每个按钮独立宽度，由内容自适应；选中态用 ApplyQuickFilter 内 VM 同步实现单选。 -->
-                <Border DockPanel.Dock="Top" Padding="10,6,10,4">
+                <Border DockPanel.Dock="Top" Padding="8,6,8,4">
                     <ItemsControl ItemsSource="{Binding QuickFilters}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="4"/>
+                                <StackPanel Orientation="Horizontal" Spacing="3"/>
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
