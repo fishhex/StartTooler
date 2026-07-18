@@ -7,7 +7,6 @@
         xmlns:components="using:StartTooler.Components"
         xmlns:controls="using:StartTooler.Controls"
         xmlns:services="using:StartTooler.Services"
-        xmlns:converters="using:StartTooler.Converters"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="StartTooler.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -21,12 +20,6 @@
         SystemDecorations="Full"
         Background="{DynamicResource Bg.Outer}"
         DragDrop.AllowDrop="True">
-
-    <Window.Resources>
-        <!-- v0.11 spec/09 §3.1: 网络状态 Converter -->
-        <converters:BoolToNetworkColorConverter x:Key="BoolToNetworkColor"/>
-        <converters:BoolToNetworkTextConverter x:Key="BoolToNetworkText"/>
-    </Window.Resources>
 
     <Window.DataContext>
         <vm:MainWindowViewModel/>

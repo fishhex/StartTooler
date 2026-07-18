@@ -1436,10 +1436,6 @@ public partial class GalleryViewModel : ObservableObject
         }, ct);
     }
 
-    // === v0.11 spec/10 §4.1: 大图库提示回调 ===
-    // MainWindowViewModel 注入此回调，扫描完成后根据文件数提示。
-    internal Action<string?>? OnLargeLibraryHint;
-
     [RelayCommand]
     private async Task RefreshAsync()
     {
@@ -1506,24 +1502,9 @@ public partial class GalleryViewModel : ObservableObject
             ScanStatusMessage = $"扫描完成 · 共 {ScanProgress?.Total} 个文件";
             _ = Task.Delay(2000).ContinueWith(_ => ScanStatusMessage = null);
 
-            // v0.11 spec/10 §4.1: 大图库提示（> 2000 张时显示，否则清除旧提示）
-            // 必须 Dispatcher.Post:OnRefreshStateChanged 可能从 background 线程触发(RequestRefreshDebounced)
-            var total = ScanProgress?.Total ?? 0;
+            // v0.11 spec/07: 扫描完成时刷新引导状态(Step2Complete)
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
-                try
-                {
-                    if (total > 2000)
-                        OnLargeLibraryHint?.Invoke($"大图库模式 · 已加载 {total:N0} 张");
-                    else
-                        OnLargeLibraryHint?.Invoke(null);
-                }
-                catch (Exception ex)
-                {
-                    Trace.WriteLine($"[Gallery] OnLargeLibraryHint 回调异常: {ex.Message}");
-                }
-
-                // v0.11 spec/07: 扫描完成时刷新引导状态(Step2Complete)
                 if (ShowOnboarding || !Step1Complete || !Step2Complete)
                 {
                     UpdateStepStates();
