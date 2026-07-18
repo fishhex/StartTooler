@@ -7,12 +7,6 @@
     <ScrollViewer>
         <StackPanel Margin="40,24" Spacing="24">
 
-            <!-- 标题 -->
-            <TextBlock Text="上传服务"
-                       FontSize="20"
-                       FontWeight="SemiBold"
-                       Foreground="{DynamicResource Text.Primary}"/>
-
             <!-- 服务控制 + 二维码（合并 card，运行时二维码在右侧） -->
             <Border Background="{DynamicResource Bg.Surface}"
                     CornerRadius="8"
