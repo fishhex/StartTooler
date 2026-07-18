@@ -9,6 +9,10 @@
     <Color x:Key="Bg.Hover">#252B45</Color>
     <Color x:Key="Bg.HoverSubtle">#3A4060</Color>
 
+    <!-- 边框层（v0.11 spec/06 §6 — 不再硬编码 BorderColor） -->
+    <Color x:Key="Border.Subtle">#4A5273</Color>
+    <Color x:Key="Border.Strong">#8892B0</Color>
+
     <!-- 文字层 -->
     <Color x:Key="Text.Primary">#E8EAF0</Color>
     <Color x:Key="Text.Secondary">#8892B0</Color>
@@ -18,6 +22,7 @@
 
     <!-- 强调色 -->
     <Color x:Key="Accent.Stellar">#4FC3F7</Color>
+    <Color x:Key="Accent.Stellar.Subtle">#1F4A5F</Color>     <!-- 15% Accent.Stellar ↔ 85% Bg.Outer 混合观感 -->
     <Color x:Key="Accent.Nebula">#B388FF</Color>
     <Color x:Key="Accent.Aurora">#4DD0E1</Color>
 
@@ -115,9 +120,11 @@
 
     <!-- 圆角 -->
     <CornerRadius x:Key="Radius.Small">4</CornerRadius>
-    <CornerRadius x:Key="Radius.Medium">8</CornerRadius>
-    <CornerRadius x:Key="Radius.Large">12</CornerRadius>
+    <CornerRadius x:Key="Radius.Medium">6</CornerRadius>
+    <CornerRadius x:Key="Radius.Large">8</CornerRadius>
+    <!-- v0.11 spec §2.2：segment 段控件外框与 count 椭圆胶囊复用的圆角 token。Pill 为椭圆观感，segment 由模板内 margin/padding 决定具体形状。 -->
     <CornerRadius x:Key="Radius.Pill">9999</CornerRadius>
+    <CornerRadius x:Key="Radius.Segment">6</CornerRadius>
 
     <!-- 动效时长 -->
     <x:Double x:Key="Duration.Fast">120</x:Double>

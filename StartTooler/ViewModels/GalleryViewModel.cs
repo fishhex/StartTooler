@@ -500,7 +500,8 @@ public partial class GalleryViewModel : ObservableObject
         CurrentMediaFiles.CollectionChanged += OnCurrentMediaFilesChanged;
         DateGroups.CollectionChanged += OnDateGroupsCollectionChanged;  // v0.11 spec/07
 
-        // v0.11 spec/15: 快捷时间刷选胶囊（今天 / 本周 / 本月 / 今年；默认不选中，单选语义）
+        // v0.11 spec/15: 快捷时间刷选胶囊（全部 / 今天 / 本周 / 本月 / 今年；默认不选中，单选语义）
+        QuickFilters.Add(new QuickFilterItem(TimelineQuickFilter.All, "全部"));
         QuickFilters.Add(new QuickFilterItem(TimelineQuickFilter.Today, "今天"));
         QuickFilters.Add(new QuickFilterItem(TimelineQuickFilter.ThisWeek, "本周"));
         QuickFilters.Add(new QuickFilterItem(TimelineQuickFilter.ThisMonth, "本月"));
@@ -919,15 +920,15 @@ public partial class GalleryViewModel : ObservableObject
     }
 
     /// <summary>
-    /// 应用快捷时间刷选（spec §4.3 / §2.2 截图）：ToggleButton 单选语义。
-    /// 点击一个胶囊：清空其它 IsSelected，自己 = !IsSelected；再激活 reload。
+    /// 应用快捷时间刷选（spec §4.3 / §2.2 截图）：按钮组下点击互斥由 VM 同步。
+    /// 单选：取消除自己外所有项的 IsSelected；自己切换（再点同一个 → 取消）。
     /// </summary>
     [RelayCommand]
     private async Task ApplyQuickFilter(QuickFilterItem? item)
     {
         if (item == null) return;
 
-        // 单选：取消除自己外所有项的 IsSelected；自己切换（再次点击同一个 → 取消）
+        // 单选：除自己外清掉，其它置为与新点击相反状态（再点同一项=取消）
         var newValue = !item.IsSelected;
         foreach (var q in QuickFilters)
             q.IsSelected = ReferenceEquals(q, item) && newValue;

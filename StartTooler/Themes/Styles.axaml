@@ -75,24 +75,51 @@
         <Setter Property="CornerRadius" Value="2"/>
     </Style>
 
-    <!-- v0.11 spec/15 §2.2：快捷时间胶囊（今天 / 本周 / 本月 / 今年）。单选语义 + 主题色 Accent.Stellar。 -->
-    <Style Selector="ToggleButton.quick-filter">
+    <!-- v0.11 spec/15 §2.2：快捷时间刷选 — 按钮组样式（spec §2.2 截图）。
+         一组独立 Button/ToggleButton，按内容自适应宽度，selected 项主题色实色覆盖。
+         显式替换 ControlTemplate，避免 Fluent/macOS 系统模板在 checked 态覆盖背景色。 -->
+    <Style Selector="ToggleButton.btn">
         <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="BorderBrush" Value="{DynamicResource Accent.Stellar}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Border.Subtle}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Foreground" Value="{DynamicResource Accent.Stellar}"/>
-        <Setter Property="FontSize" Value="12"/>
-        <Setter Property="Padding" Value="10,5"/>
-        <Setter Property="CornerRadius" Value="{DynamicResource Radius.Pill}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Text.Secondary}"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="Padding" Value="8,4"/>
+        <Setter Property="MinHeight" Value="24"/>
+        <Setter Property="CornerRadius" Value="{DynamicResource Radius.Segment}"/>
         <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Template">
+            <ControlTemplate TargetType="ToggleButton">
+                <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        Padding="{TemplateBinding Padding}">
+                    <ContentPresenter Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      FontSize="{TemplateBinding FontSize}"
+                                      FontWeight="{TemplateBinding FontWeight}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                </Border>
+            </ControlTemplate>
+        </Setter>
     </Style>
-    <Style Selector="ToggleButton.quick-filter:pointerover">
-        <Setter Property="Foreground" Value="{DynamicResource Text.Primary}"/>
-        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
+    <Style Selector="ToggleButton.btn /template/ ContentPresenter">
+        <Setter Property="Padding" Value="0"/>
     </Style>
-    <!-- 选中态：主题色（Accent.Stellar）实色底 + 反白文字（spec §2.2 截图）。 -->
-    <Style Selector="ToggleButton.quick-filter:checked,
-                    ToggleButton.quick-filter.selected">
+    <Style Selector="ToggleButton.btn:pointerover">
+        <Setter Property="BorderBrush" Value="{DynamicResource Accent.Stellar}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Accent.Stellar}"/>
+        <Setter Property="Background" Value="{DynamicResource Accent.Stellar.Subtle}"/>
+    </Style>
+    <!-- 选中态：主题色实色底 + 反白文字；按下态:hover 同步保持主题色 -->
+    <Style Selector="ToggleButton.btn:checked,
+                    ToggleButton.btn.selected,
+                    ToggleButton.btn:checked:pointerover">
         <Setter Property="Background" Value="{DynamicResource Accent.Stellar}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource Accent.Stellar}"/>
         <Setter Property="Foreground" Value="{DynamicResource Text.Inverse}"/>

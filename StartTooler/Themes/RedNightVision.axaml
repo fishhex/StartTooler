@@ -9,12 +9,16 @@
     <Color x:Key="Bg.Hover">#1F0000</Color>
     <Color x:Key="Bg.HoverSubtle">#3A0010</Color>
 
+    <Color x:Key="Border.Subtle">#5A0008</Color>
+    <Color x:Key="Border.Strong">#802020</Color>
+
     <Color x:Key="Text.Primary">#FFD0D0</Color>
     <Color x:Key="Text.Secondary">#B53030</Color>
     <Color x:Key="Text.Tertiary">#802020</Color>
     <Color x:Key="Text.Disabled">#4D0000</Color>
 
     <Color x:Key="Accent.Stellar">#FF3030</Color>
+    <Color x:Key="Accent.Stellar.Subtle">#5A0A0F</Color>     <!-- 红主题下的低饱和星点底色 -->
     <Color x:Key="Accent.Nebula">#FF6060</Color>
     <Color x:Key="Accent.Aurora">#FF8080</Color>
 
