@@ -30,12 +30,19 @@
         <!-- 通用：选中态视觉（标签列表 spec §15.4） -->
         <converters:BoolToAccentOrSecondaryConverter x:Key="BoolToAccentOrSecondary"/>
         <converters:BoolToFontWeightConverter x:Key="BoolToFontWeight"/>
+        <!-- v0.11 spec/15: 时间轴层级相关 Converter -->
+        <converters:BoolToInverseConverter x:Key="BoolToInverseConverter"/>
+        <converters:BoolToCaretConverter x:Key="BoolToCaretConverter"/>
+        <converters:LevelToMarginConverter x:Key="LevelToMarginConverter"/>
+        <converters:KindToDotSizeConverter x:Key="KindToDotSizeConverter"/>
+        <converters:KindToFontSizeConverter x:Key="KindToFontSizeConverter"/>
+        <converters:KindToNotDayConverter x:Key="KindToNotDayConverter"/>
     </UserControl.Resources>
 
     <!-- v2.3: 工具栏已移至 MainWindow 全局工具栏 -->
-    <!-- 页面结构：时间轴(180) + 照片网格(*) -->
-    <Grid ColumnDefinitions="180,*">
-        <!-- v0.6.1: 左栏 — 顶部 TabControl + 下方 Date/Tag 双视图 -->
+    <!-- 页面结构：时间轴(220) + 照片网格(*) — 220 给快捷胶囊（今天/本周/本月/今年4项）足够横向排布 -->
+    <Grid ColumnDefinitions="220,*">
+        <!-- v0.11 spec/15: 左栏 — 顶部 TabControl + 快捷胶囊 + 年/月/日 三级时间轴 -->
         <Border Grid.Column="0"
                 Background="{DynamicResource Bg.Outer}"
                 BorderBrush="{DynamicResource Bg.Divider}"
@@ -49,45 +56,85 @@
                     <TabItem Header="标签"/>
                 </TabControl>
 
-                <!-- 时间轴列表（GroupMode=Date 时显示） -->
+                <!-- v0.11: 快捷时间刷选胶囊（今天 / 本周 / 本月 / 今年；可多选，复用为时间窗收缩） -->
+                <Border DockPanel.Dock="Top" Padding="12,8,12,4">
+                    <ItemsControl ItemsSource="{Binding QuickFilters}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="6"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:QuickFilterItem">
+                                <ToggleButton Classes="quick-filter"
+                                              Classes.selected="{Binding IsSelected}"
+                                              IsChecked="{Binding IsSelected, Mode=OneWay}"
+                                              Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).ApplyQuickFilterCommand}"
+                                              CommandParameter="{Binding}">
+                                    <TextBlock Text="{Binding Label}" FontSize="12"/>
+                                </ToggleButton>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+
+                <!--
+                  层级时间轴（Year → Month → Day，spec §3）。
+                  ItemsControl 嵌套 + TreeDataTemplate 不可用（编译 binding 性能问题），
+                  采用自渲染方式：每个节点一个 Button，点击行为按 Kind 分发（Year/Month → 折叠，Day → 选中）。
+                -->
                 <ScrollViewer IsVisible="{Binding IsDateGroupMode}">
-                    <ItemsControl ItemsSource="{Binding DateGroups}" Margin="16,0,16,24">
+                    <ItemsControl ItemsSource="{Binding FlatTimelineNodes}" Margin="8,4,8,24">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Spacing="0"/>
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="models:TimelineEntry">
+                            <DataTemplate x:DataType="models:TimelineNode">
                                 <Button Classes="timeline-node"
-                                        Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).SelectCommand}"
+                                        HorizontalContentAlignment="Stretch"
+                                        Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).NodeClickCommand}"
                                         CommandParameter="{Binding}">
-                                    <Button.Template>
-                                        <ControlTemplate TargetType="Button">
-                                            <!-- v0.11: 高度 48→56 容纳日期+数量双行（spec §15.3） -->
-                                            <Canvas Width="150" Height="56">
-                                                <!-- 圆点 -->
-                                                <Ellipse Width="10" Height="10"
-                                                         Fill="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"
-                                                         Canvas.Left="8" Canvas.Top="22"/>
-                                                <!-- 连接线段 (下方) -->
-                                                <Border Width="2" Height="32"
-                                                        Background="{DynamicResource Timeline.Line}"
-                                                        Opacity="0.3"
-                                                        Canvas.Left="12" Canvas.Top="32"/>
-                                                <!-- 日期文字 + 数量（双行） -->
-                                                <StackPanel Canvas.Left="32" Canvas.Top="14" Spacing="2">
-                                                    <TextBlock Text="{Binding Date, StringFormat='{}{0:yyyy-MM-dd}'}"
-                                                               FontFamily="{DynamicResource Font.Mono}" FontSize="13"
-                                                               FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
-                                                               Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
-                                                    <TextBlock Text="{Binding PhotoCount, StringFormat='{}{0} 张'}"
-                                                               FontSize="10"
-                                                               Foreground="{DynamicResource Text.Tertiary}"/>
-                                                </StackPanel>
-                                            </Canvas>
-                                        </ControlTemplate>
-                                    </Button.Template>
+                                    <Grid Margin="{Binding Level, Converter={StaticResource LevelToMarginConverter}}"
+                                          ColumnDefinitions="Auto,*">
+                                        <!-- 折叠箭头（Year/Month 用，Day 隐藏） -->
+                                        <TextBlock Grid.Column="0"
+                                                   Classes="timeline-caret"
+                                                   Text="{Binding IsExpanded, Converter={StaticResource BoolToCaretConverter}}"
+                                                   IsVisible="{Binding Kind, Converter={StaticResource KindToNotDayConverter}}"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center"
+                                                   Width="14"/>
+                                        <!-- 圆点 -->
+                                        <Ellipse Grid.Column="0"
+                                                 Width="{Binding Kind, Converter={StaticResource KindToDotSizeConverter}}"
+                                                 Height="{Binding Kind, Converter={StaticResource KindToDotSizeConverter}}"
+                                                 Margin="0,0,8,0"
+                                                 VerticalAlignment="Center"
+                                                 Fill="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
+                                        <!-- 文字 + 数量 -->
+                                        <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding Label}"
+                                                       FontSize="{Binding Kind, Converter={StaticResource KindToFontSizeConverter}}"
+                                                       FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
+                                                       Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <Border Grid.Column="1"
+                                                    Classes="count-pill"
+                                                    Classes.selected="{Binding IsSelected}"
+                                                    VerticalAlignment="Center"
+                                                    Margin="6,0,0,0"
+                                                    Padding="8,2">
+                                                <TextBlock Text="{Binding Count}"
+                                                           FontSize="11"
+                                                           Foreground="{Binding IsSelected, Converter={StaticResource BoolToInverseConverter}}"
+                                                           FontFamily="{DynamicResource Font.Mono}"/>
+                                            </Border>
+                                        </Grid>
+                                    </Grid>
                                 </Button>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>

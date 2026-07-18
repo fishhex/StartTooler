@@ -214,7 +214,7 @@ public class MediaRepository : IMediaRepository
         // 规范化路径以匹配扫描时保存的格式
         var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
 
-        var startOfDay = new DateTime(date.Year, date.Month, date.Day, 0, 0, 0, DateTimeKind.Utc);
+        var startOfDay = new DateTime(date.Year, date.Month, date.Day, 0, 0, 0, DateTimeKind.Local);
         var endOfDay = startOfDay.AddDays(1);
 
         var startTimestamp = new DateTimeOffset(startOfDay).ToUnixTimeMilliseconds();

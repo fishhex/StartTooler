@@ -50,8 +50,22 @@ public partial class GalleryViewModel : ObservableObject
     private NotificationItem? _uploadNotification;
 
     // === 数据源 ===
-    public ObservableCollection<TimelineEntry> DateGroups { get; } = new();
+    /// <summary>
+    /// v0.11 spec/15：年 → 月 → 日 三级层级时间轴。顶层是 Year 节点，
+    /// 通过 Year.Children 找到 Month 节点，Month.Children 找到 Day 节点。
+    /// Day 节点 IsSelected = 当前 SelectedDate 的回显源。
+    /// </summary>
+    public ObservableCollection<TimelineNode> DateGroups { get; } = new();
     public ObservableCollection<MediaFile> CurrentMediaFiles { get; } = new();
+
+    /// <summary>
+    /// 扁平化的时间轴节点集合（spec §3）：根据每个 Year/Month 节点的 IsExpanded 动态平铺，
+    /// XAML 直接 ItemsControl 渲染，无需 TreeDataTemplate。
+    /// </summary>
+    public ObservableCollection<TimelineNode> FlatTimelineNodes { get; } = new();
+
+    /// <summary>v0.11 spec/15 §2.2：快捷胶囊过滤器（全部 / 今天 / 本周 / 本月 / 今年）。</summary>
+    public ObservableCollection<QuickFilterItem> QuickFilters { get; } = new();
 
     // === v0.12 标签变更 debouncer（spec doc/15-manual-tag-edit.md §6.4）===
     // 500ms 内连续多次 tag 变化合并成 1 次 LoadTagGroupsAsync 调用，避免连续编辑刷 N 次左栏。
@@ -60,7 +74,8 @@ public partial class GalleryViewModel : ObservableObject
     private readonly HashSet<MediaFile> _tagSubscribedFiles = new();
 
     // === 选中态（日期） ===
-    [ObservableProperty] private TimelineEntry? _selectedDate;
+    /// <summary>当前选中的日节点（spec/15 §3 仅 Day 节点可被选中；Year/Month 只控折叠）。</summary>
+    [ObservableProperty] private TimelineNode? _selectedDate;
 
     // === 加载状态 ===
     [ObservableProperty] private bool _isLoadingDateGroups;
@@ -289,6 +304,9 @@ public partial class GalleryViewModel : ObservableObject
     /// <summary>当前选中的标签名（Tag 视图下有效）。</summary>
     [ObservableProperty] private string? _selectedTag;
 
+    /// <summary>v0.11 spec/15 §4.3：当前激活的快捷过滤器（决定选中 Day 后展示限定范围）。</summary>
+    [ObservableProperty] private TimelineQuickFilter _activeQuickFilter = TimelineQuickFilter.All;
+
     /// <summary>TabControl SelectedIndex 桥接：0=Date, 1=Tag。</summary>
     public int GroupModeIndex
     {
@@ -481,6 +499,12 @@ public partial class GalleryViewModel : ObservableObject
         SelectedFiles.CollectionChanged += OnSelectedFilesChanged;
         CurrentMediaFiles.CollectionChanged += OnCurrentMediaFilesChanged;
         DateGroups.CollectionChanged += OnDateGroupsCollectionChanged;  // v0.11 spec/07
+
+        // v0.11 spec/15: 快捷时间刷选胶囊（今天 / 本周 / 本月 / 今年；默认不选中，单选语义）
+        QuickFilters.Add(new QuickFilterItem(TimelineQuickFilter.Today, "今天"));
+        QuickFilters.Add(new QuickFilterItem(TimelineQuickFilter.ThisWeek, "本周"));
+        QuickFilters.Add(new QuickFilterItem(TimelineQuickFilter.ThisMonth, "本月"));
+        QuickFilters.Add(new QuickFilterItem(TimelineQuickFilter.ThisYear, "今年"));
     }
 
     private void OnCurrentMediaFilesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -598,22 +622,8 @@ public partial class GalleryViewModel : ObservableObject
                 return;
             }
 
-            // 加载日期分组
-            var dateGroups = await _mediaRepo.GetDateGroupsAsync(ProjectPath, ct);
-            foreach (var group in dateGroups)
-            {
-                DateGroups.Add(new TimelineEntry(group.Date, group.Count));
-            }
-
-            IsLoadingDateGroups = false;
-
-            if (DateGroups.Count == 0)
-            {
-                return;
-            }
-
-            // 自动选中第一个日期
-            await SelectAsync(DateGroups[0]);
+            // 构建 TimelineNode 树 + 自动选中第一个 Day
+            await LoadTimelineAsync(ct);
         }
         catch (OperationCanceledException)
         {
@@ -627,10 +637,220 @@ public partial class GalleryViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
-    private async Task SelectAsync(TimelineEntry? entry)
+    /// <summary>
+    /// 实际从 _mediaRepo 拉分组数据并构建 TimelineNode 树。从 InitializeAsync 拆出方便复用 +
+    /// LocateAndScrollTo 触发重新加载（用户从垃圾筒切到 Gallery 时 DateGroups 可能还没数据）。
+    /// </summary>
+    private async Task LoadTimelineAsync(CancellationToken ct)
     {
-        if (entry == null) return;
+        try
+        {
+            // 加载日期分组（spec/15：年 → 月 → 日 三级层级）
+            var dateGroups = await _mediaRepo.GetDateGroupsAsync(ProjectPath!, ct);
+            var timelineRoots = BuildTimelineTree(dateGroups);
+
+            // 取消上次订阅
+            foreach (var oldRoot in DateGroups) UnsubscribeNodeExpansion(oldRoot);
+
+            DateGroups.Clear();
+            foreach (var node in timelineRoots) DateGroups.Add(node);
+
+            // 订阅所有节点的 IsExpanded
+            foreach (var root in DateGroups) SubscribeNodeExpansion(root);
+
+            // 默认展开：所有顶层 Year 展开，让用户一眼看到所有日期
+            foreach (var y in DateGroups) y.IsExpanded = true;
+            RefreshFlatTimeline();
+
+            IsLoadingDateGroups = false;
+
+            if (DateGroups.Count == 0)
+            {
+                return;
+            }
+
+            // 自动选中第一个日期节点（递归取第一个 Kind=Day）
+            var firstDay = FindFirstDayNode(DateGroups);
+            if (firstDay != null)
+            {
+                await SelectAsync(firstDay);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 忽略取消
+        }
+        catch (Exception ex)
+        {
+            LoadErrorMessage = $"加载失败：{ex.Message}";
+            IsLoadingDateGroups = false;
+            IsLoadingMedia = false;
+        }
+    }
+
+    // === TimelineNode 树辅助方法（spec/15） ===
+
+    /// <summary>
+    /// 重新生成 FlatTimelineNodes 列表：根据每个 Year/Month 节点的 IsExpanded 决定是否加入子节点。
+    /// 在 IsExpanded 变化、DateGroups 重置、子节点 IsExpanded 变化时调用。
+    /// </summary>
+    private void RefreshFlatTimeline()
+    {
+        FlatTimelineNodes.Clear();
+        foreach (var y in DateGroups)
+        {
+            FlatTimelineNodes.Add(y);
+            if (!y.IsExpanded) continue;
+            foreach (var m in y.Children)
+            {
+                FlatTimelineNodes.Add(m);
+                if (!m.IsExpanded) continue;
+                foreach (var d in m.Children)
+                {
+                    FlatTimelineNodes.Add(d);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 订阅所有节点（递归）的 PropertyChanged，监听 IsExpanded 变化 → 触发 RefreshFlatTimeline。
+    /// </summary>
+    private void SubscribeNodeExpansion(TimelineNode node)
+    {
+        // 注意：ObservableObject 已经在每个属性上有 PropertyChanged；递归订阅所有子节点。
+        node.PropertyChanged += OnTimelineNodePropertyChanged;
+        foreach (var c in node.Children) SubscribeNodeExpansion(c);
+    }
+
+    private void UnsubscribeNodeExpansion(TimelineNode node)
+    {
+        node.PropertyChanged -= OnTimelineNodePropertyChanged;
+        foreach (var c in node.Children) UnsubscribeNodeExpansion(c);
+    }
+
+    private void OnTimelineNodePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TimelineNode.IsExpanded))
+            RefreshFlatTimeline();
+    }
+
+    /// <summary>
+    /// 把扁平的 DateCount 列表构造成 year → month → day 的三层 TimelineNode 树。
+    /// 每个节点的 Count 是子树汇总（含所有子节点）。
+    /// </summary>
+    private static List<TimelineNode> BuildTimelineTree(IReadOnlyList<DateCount> dateGroups)
+    {
+        var byYear = dateGroups
+            .GroupBy(g => g.Date.Year)
+            .OrderByDescending(g => g.Key)
+            .ToList();
+
+        var roots = new List<TimelineNode>();
+        foreach (var yGroup in byYear)
+        {
+            var monthGroups = yGroup
+                .GroupBy(g => g.Date.Month)
+                .OrderByDescending(g => g.Key)
+                .ToList();
+
+            var monthNodes = new List<TimelineNode>(monthGroups.Count);
+            foreach (var mGroup in monthGroups)
+            {
+                var dayNodesRaw = mGroup
+                    .OrderByDescending(g => g.Date.Day)
+                    .Select(g => new TimelineNode(
+                        TimelineNodeKind.Day,
+                        key: g.Date.ToString("yyyy-MM-dd"),
+                        label: g.Date.ToString("MM-dd"),
+                        count: g.Count,
+                        date: g.Date))
+                    .ToList();
+
+                var monthCount = dayNodesRaw.Sum(d => d.Count);
+                var monthNode = new TimelineNode(
+                    TimelineNodeKind.Month,
+                    key: $"{yGroup.Key}-{mGroup.Key:D2}",
+                    label: $"{mGroup.Key:D2} 月",
+                    count: monthCount);
+                foreach (var d in dayNodesRaw) monthNode.Children.Add(d);
+
+                monthNodes.Add(monthNode);
+            }
+
+            var yearCount = monthNodes.Sum(m => m.Count);
+            var yearNode = new TimelineNode(
+                TimelineNodeKind.Year,
+                key: yGroup.Key.ToString(),
+                label: $"{yGroup.Key} 年",
+                count: yearCount);
+            foreach (var m in monthNodes) yearNode.Children.Add(m);
+
+            roots.Add(yearNode);
+        }
+        return roots;
+    }
+
+    /// <summary>
+    /// 找到整个树里第一个 Day 节点（深度优先，按 DateGroups 当前排序）。
+    /// InitializeAsync 自动选中用。
+    /// </summary>
+    private static TimelineNode? FindFirstDayNode(IEnumerable<TimelineNode> roots)
+    {
+        foreach (var root in roots)
+        {
+            var stack = new Stack<TimelineNode>();
+            stack.Push(root);
+            while (stack.Count > 0)
+            {
+                var n = stack.Pop();
+                if (n.Kind == TimelineNodeKind.Day) return n;
+                foreach (var c in n.Children) stack.Push(c);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 按 Key（如 "2026-07-16"）在树中递归查找 Day 节点。LocateAndScrollTo 用。
+    /// </summary>
+    private static TimelineNode? FindDayNodeByKey(IEnumerable<TimelineNode> roots, string key)
+    {
+        foreach (var root in roots)
+        {
+            var found = FindDayNodeByKeyCore(root, key);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static TimelineNode? FindDayNodeByKeyCore(TimelineNode node, string key)
+    {
+        if (node.Key == key) return node;
+        foreach (var c in node.Children)
+        {
+            var found = FindDayNodeByKeyCore(c, key);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static TimelineNode? FindParent(TimelineNode node, TimelineNode target)
+    {
+        foreach (var c in node.Children)
+        {
+            if (ReferenceEquals(c, target)) return node;
+            var deeper = FindParent(c, target);
+            if (deeper != null) return deeper;
+        }
+        return null;
+    }
+
+    [RelayCommand]
+    private async Task SelectAsync(TimelineNode? node)
+    {
+        if (node == null) return;
+        if (node.Kind != TimelineNodeKind.Day) return;  // 只 Day 节点可被选中
 
         // 取消之前的加载
         _cts?.Cancel();
@@ -640,17 +860,102 @@ public partial class GalleryViewModel : ObservableObject
         // 切日期时退出多选模式
         ExitMultiSelect();
 
-        // 更新选中态
+        // 更新选中态：清旧选中态（递归）
         if (SelectedDate != null)
             SelectedDate.IsSelected = false;
 
-        entry.IsSelected = true;
-        SelectedDate = entry;
+        node.IsSelected = true;
+        SelectedDate = node;
 
-        await LoadDateAsync(entry, ct);
+        // 自动展开到该 Day 节点的祖先（spec §4.4 让面板可见）。
+        // 通过 FindParent 找父 Month/Year，反向设置 IsExpanded；订阅链路会自动 RefreshFlatTimeline。
+        ExpandAncestorsOf(node);
+
+        await LoadDateAsync(node, ct);
     }
 
-    private async Task LoadDateAsync(TimelineEntry entry, CancellationToken ct)
+    private void ExpandAncestorsOf(TimelineNode day)
+    {
+        foreach (var root in DateGroups)
+        {
+            var parent = FindParent(root, day);
+            if (parent != null)
+            {
+                parent.IsExpanded = true;
+                var grand = FindParent(root, parent);
+                if (grand != null) grand.IsExpanded = true;
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 切换折叠态：年/月节点点击除「选中日期」之外的行为（spec §3）。
+    /// Day 节点直接走 SelectAsync（不切换折叠态）。
+    /// </summary>
+    [RelayCommand]
+    private void ToggleNodeExpand(TimelineNode? node)
+    {
+        if (node == null) return;
+        if (node.Kind == TimelineNodeKind.Day) return;
+        node.IsExpanded = !node.IsExpanded;
+    }
+
+    /// <summary>
+    /// 统一节点点击命令（spec §3）：Year/Month 切换折叠；Day 选中并加载媒体。
+    /// </summary>
+    [RelayCommand]
+    private async Task NodeClick(TimelineNode? node)
+    {
+        if (node == null) return;
+        if (node.Kind == TimelineNodeKind.Day)
+        {
+            await SelectAsync(node);
+        }
+        else
+        {
+            node.IsExpanded = !node.IsExpanded;
+        }
+    }
+
+    /// <summary>
+    /// 应用快捷时间刷选（spec §4.3 / §2.2 截图）：ToggleButton 单选语义。
+    /// 点击一个胶囊：清空其它 IsSelected，自己 = !IsSelected；再激活 reload。
+    /// </summary>
+    [RelayCommand]
+    private async Task ApplyQuickFilter(QuickFilterItem? item)
+    {
+        if (item == null) return;
+
+        // 单选：取消除自己外所有项的 IsSelected；自己切换（再次点击同一个 → 取消）
+        var newValue = !item.IsSelected;
+        foreach (var q in QuickFilters)
+            q.IsSelected = ReferenceEquals(q, item) && newValue;
+
+        ActiveQuickFilter = ComputeActiveQuickFilter();
+        if (SelectedDate != null)
+            await ReloadCurrentDateWithFilterAsync();
+    }
+
+    /// <summary>
+    /// 计算当前激活的 quickfilter：选中 + 优先级（Today > ThisWeek > ThisMonth > ThisYear）。
+    /// 全部未选中 → All（不过滤）。
+    /// </summary>
+    private TimelineQuickFilter ComputeActiveQuickFilter()
+    {
+        if (QuickFilters.Any(q => q.IsSelected && q.Key == TimelineQuickFilter.Today))
+            return TimelineQuickFilter.Today;
+        if (QuickFilters.Any(q => q.IsSelected && q.Key == TimelineQuickFilter.ThisWeek))
+            return TimelineQuickFilter.ThisWeek;
+        if (QuickFilters.Any(q => q.IsSelected && q.Key == TimelineQuickFilter.ThisMonth))
+            return TimelineQuickFilter.ThisMonth;
+        if (QuickFilters.Any(q => q.IsSelected && q.Key == TimelineQuickFilter.ThisYear))
+            return TimelineQuickFilter.ThisYear;
+        return TimelineQuickFilter.All;
+    }
+
+    /// <summary>（v0.11 spec/15：搜索已移除）保留为历史占位，避免线上 partial 方法误调用。</summary>
+    private async Task LoadDateAsync(TimelineNode dayNode, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(ProjectPath)) return;
 
@@ -658,7 +963,12 @@ public partial class GalleryViewModel : ObservableObject
         {
             IsLoadingMedia = true;
 
-            var files = await _mediaRepo.GetByDateAsync(ProjectPath, entry.Date, SortMode, ct);
+            var files = await _mediaRepo.GetByDateAsync(ProjectPath, dayNode.Date, SortMode, ct);
+
+            // v0.11 spec/15: quickfilter 在内存里做二次过滤（仅 shot_at 区间判断，搜索已在 UI 移除）。
+            // 设计妥协：单日内文件数小（全表 91 张，单日最大 49），内存过滤成本可控；
+            // 真正按 shot_at 区间精确召回由 SQL WHERE 完成（GetByDateAsync 提供 day 范围），quickfilter 仅用于「今天/本周/...」次级筛选。
+            files = ApplyQuickFilter(files, ActiveQuickFilter);
 
             // 反推 UploadStatus：upload_jobs 里有未完成 job 的 → Paused，否则按 IsUploaded
             // 单日最多几千条，直接全表扫成本可接受
@@ -707,6 +1017,61 @@ public partial class GalleryViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// 应用客户端 quickfilter：按 shot_at 区间过滤当前选中日期下的文件。
+    /// QuickFilter=All 时不缩窗口；Today/ThisWeek/ThisMonth/ThisYear 按 shot_at 区间判断。
+    /// </summary>
+    private static IReadOnlyList<MediaFile> ApplyQuickFilter(
+        IReadOnlyList<MediaFile> files,
+        TimelineQuickFilter filter)
+    {
+        if (filter == TimelineQuickFilter.All)
+            return files;
+
+        IEnumerable<MediaFile> q = files;
+        var now = DateTime.Now;
+        DateTime start;
+        DateTime end;
+        switch (filter)
+        {
+            case TimelineQuickFilter.Today:
+                start = now.Date;
+                end = start.AddDays(1);
+                break;
+            case TimelineQuickFilter.ThisWeek:
+                var dayOfWeek = (int)now.DayOfWeek;
+                var mondayDelta = dayOfWeek == 0 ? -6 : 1 - dayOfWeek;
+                start = now.Date.AddDays(mondayDelta);
+                end = start.AddDays(7);
+                break;
+            case TimelineQuickFilter.ThisMonth:
+                start = new DateTime(now.Year, now.Month, 1);
+                end = start.AddMonths(1);
+                break;
+            case TimelineQuickFilter.ThisYear:
+                start = new DateTime(now.Year, 1, 1);
+                end = start.AddYears(1);
+                break;
+            default:
+                return files;
+        }
+
+        return q.Where(f =>
+        {
+            if (!f.ShotAt.HasValue) return false;
+            var local = DateTimeOffset.FromUnixTimeMilliseconds(f.ShotAt.Value).ToLocalTime().DateTime;
+            return local >= start && local < end;
+        }).ToList();
+    }
+
+    /// <summary>用当前 SelectedDate 重新加载，过滤器（quickfilter + 搜索）立刻生效。</summary>
+    private async Task ReloadCurrentDateWithFilterAsync()
+    {
+        if (SelectedDate == null || string.IsNullOrEmpty(ProjectPath)) return;
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        await LoadDateAsync(SelectedDate, _cts.Token);
+    }
     // === v0.6.1 标签分类（spec doc/11-ai-tagging.md §5.6） ===
 
     /// <summary>
@@ -884,8 +1249,9 @@ public partial class GalleryViewModel : ObservableObject
                 await InitializeAsync();
             }
 
-            // 4) 在 DateGroups 里找匹配 date 的分组
-            var target = DateGroups.FirstOrDefault(g => g.Date.Date == fileDate);
+            // 4) 在 DateGroups 树里找匹配 date 的 Day 节点
+            var dateKey = fileDate.ToString("yyyy-MM-dd");
+            var target = FindDayNodeByKey(DateGroups, dateKey);
             if (target == null)
             {
                 Trace.WriteLine($"[Gallery] LocateAndScrollTo: fileDate={fileDate:yyyy-MM-dd} 不在当前 DateGroups，跳过切日期");
@@ -1007,7 +1373,7 @@ public partial class GalleryViewModel : ObservableObject
         }
     }
 
-    partial void OnSelectedDateChanged(TimelineEntry? value)
+    partial void OnSelectedDateChanged(TimelineNode? value)
     {
     }
 

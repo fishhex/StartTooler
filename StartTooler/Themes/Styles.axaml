@@ -55,13 +55,57 @@
     <Style Selector="Button.timeline-node">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Padding" Value="8,6"/>
         <Setter Property="HorizontalAlignment" Value="Stretch"/>
-        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         <Setter Property="Cursor" Value="Hand"/>
     </Style>
     <Style Selector="Button.timeline-node /template/ ContentPresenter">
         <Setter Property="Padding" Value="0"/>
+    </Style>
+    <!-- v0.11 spec/15 §3.4：timeline-node hover/selected 状态 -->
+    <Style Selector="Button.timeline-node:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
+    </Style>
+    <!-- 选中态用 Accent.Stellar 当左侧 2px 强调条（spec §3.4）。Element 摆不到 Button 模板外，
+         通过 Background tint + 圆角体现；强调条由 Border.BorderThickness/Brush 局部表现。 -->
+    <Style Selector="Border.timeline-selected-bar">
+        <Setter Property="Width" Value="3"/>
+        <Setter Property="Background" Value="{DynamicResource Accent.Stellar}"/>
+        <Setter Property="CornerRadius" Value="2"/>
+    </Style>
+
+    <!-- v0.11 spec/15 §2.2：快捷时间胶囊（今天 / 本周 / 本月 / 今年）。单选语义 + 主题色 Accent.Stellar。 -->
+    <Style Selector="ToggleButton.quick-filter">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Accent.Stellar}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="{DynamicResource Accent.Stellar}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Padding" Value="10,5"/>
+        <Setter Property="CornerRadius" Value="{DynamicResource Radius.Pill}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="ToggleButton.quick-filter:pointerover">
+        <Setter Property="Foreground" Value="{DynamicResource Text.Primary}"/>
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
+    </Style>
+    <!-- 选中态：主题色（Accent.Stellar）实色底 + 反白文字（spec §2.2 截图）。 -->
+    <Style Selector="ToggleButton.quick-filter:checked,
+                    ToggleButton.quick-filter.selected">
+        <Setter Property="Background" Value="{DynamicResource Accent.Stellar}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Accent.Stellar}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Text.Inverse}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <!-- v0.11 spec/15 §2.3：年份/月份/日计数胶囊（选中 = 反白） -->
+    <Style Selector="Border.count-pill">
+        <Setter Property="Background" Value="{DynamicResource Bg.SurfaceElevated}"/>
+        <Setter Property="CornerRadius" Value="{DynamicResource Radius.Pill}"/>
+    </Style>
+    <Style Selector="Border.count-pill.selected">
+        <Setter Property="Background" Value="{DynamicResource Timeline.Selected}"/>
     </Style>
 
     <!-- v0.6.1: 标签分类节点（左栏「标签」tab 列表项，视觉沿用 timeline-node） -->
