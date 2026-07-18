@@ -2,10 +2,12 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using StartTooler.Helpers;
 using StartTooler.Services;
 
 namespace StartTooler.ViewModels;
@@ -55,9 +57,9 @@ public partial class PublicRelayViewModel : ObservableObject, IDisposable
 
     // v0.11 分步向导：spec §4.1
     [ObservableProperty] private bool _step1Done;   // Save 成功后 = true；下次再改 dirty 时不变（RecomputeDirty 单独管）
-    [ObservableProperty] private bool _step2Done;   // Deploy 成功后 = true
+    [ObservableProperty] private bool _step2Done;   // Deploy 成功后 = true（仅作状态标记，不再阻塞 Start）
     [ObservableProperty] private bool _canDeploy;   // Step1Done && !IsBusy
-    [ObservableProperty] private bool _canStart;    // Step2Done && !IsBusy && IsProjectPathSet
+    [ObservableProperty] private bool _canStart;    // !IsBusy && IsProjectPathSet（允许直接启动，失败后再提示部署）
 
     // v0.11 多行日志：spec §4.3。保留最近 100 行（含时间戳）。
     [ObservableProperty] private string _logText = "";
@@ -306,16 +308,79 @@ public partial class PublicRelayViewModel : ObservableObject, IDisposable
             // 先解析 arch（auto 会 SSH uname -m）
             var arch = await _relayService.ResolveArchAsync(cfg, progress, default);
 
-            // 先保证部署了（失败也不阻塞启动 —— 允许 VPS 上已有二进制）
-            try { await _relayService.DeployAsync(cfg, arch, progress, default); }
-            catch (Exception ex) { AppendLog("部署步骤失败：" + ex.Message); }
+            // v0.11: 允许直接启动。若远端没有部署过 relay，StartRemoteAsync 会失败，
+            // 此时提示用户是否先部署；确认后自动部署并重试一次启动。
+            var startFailure = await TryStartRemoteAsync(cfg, arch, progress, default);
+            if (startFailure != null)
+            {
+                if (startFailure.Length == 0)
+                {
+                    // 已部署但启动失败（如端口占用、权限不足等），不再提示部署
+                    throw new InvalidOperationException("启动失败，请检查日志或远程环境。");
+                }
 
-            await _relayService.StartRemoteAsync(cfg, arch, progress, default);
+                var shouldDeploy = await ShowDeployConfirmAsync();
+                if (!shouldDeploy)
+                {
+                    StatusMessage = "启动已取消";
+                    return;
+                }
+
+                await _relayService.DeployAsync(cfg, arch, progress, default);
+                Step2Done = true;
+                startFailure = await TryStartRemoteAsync(cfg, arch, progress, default);
+                if (startFailure != null)
+                {
+                    throw new InvalidOperationException("部署后启动仍然失败，请检查日志或远程环境。");
+                }
+            }
+
             var projectPath = _gallery.ProjectPath ?? "";
             _relayService.StartClient(cfg, projectPath);
             StatusMessage = "公网代理已启动";
             UpdateRelayStateText();
         });
+    }
+
+    /// <summary>
+    /// 尝试启动远端 relay。
+    /// 返回 null=成功；字符串=失败原因（空字符串表示"已部署但启动失败，不需要再提示部署"）。
+    /// </summary>
+    private async Task<string?> TryStartRemoteAsync(PublicRelayConfig cfg, string arch, IProgress<string> progress, CancellationToken ct)
+    {
+        try
+        {
+            await _relayService.StartRemoteAsync(cfg, arch, progress, ct);
+            return null; // 成功
+        }
+        catch (Exception ex)
+        {
+            AppendLog("启动失败：" + ex.Message);
+
+            var msg = ex.Message ?? "";
+            var remoteBinName = $"upload-relay-linux-{arch}";
+            var notDeployed = msg.Contains("No such file", StringComparison.OrdinalIgnoreCase)
+                           || msg.Contains("command not found", StringComparison.OrdinalIgnoreCase)
+                           || msg.Contains(remoteBinName, StringComparison.OrdinalIgnoreCase);
+
+            return notDeployed ? "远端未部署 relay" : string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// 远端未部署时，询问用户是否立即部署。
+    /// </summary>
+    private static async Task<bool> ShowDeployConfirmAsync()
+    {
+        var window = DialogHelper.GetMainWindow();
+        if (window == null) return false;
+
+        return await DialogHelper.ShowConfirmAsync(
+            window,
+            title: "需要部署 relay",
+            message: "远端 VPS 上似乎没有部署 relay 二进制，直接启动失败。是否立即部署？",
+            primaryButtonText: "立即部署",
+            secondaryButtonText: "取消");
     }
 
     [RelayCommand(CanExecute = nameof(CanStop))]
@@ -370,13 +435,13 @@ public partial class PublicRelayViewModel : ObservableObject, IDisposable
     /// <summary>
     /// v0.11 按钮链启用条件：spec §4.1
     ///   CanDeploy = Step1Done && !IsBusy
-    ///   CanStart  = Step2Done && !IsBusy && IsProjectPathSet
+    ///   CanStart  = !IsBusy && IsProjectPathSet（允许直接启动，失败后再提示部署）
     /// 任何一边的状态变化都要重算（partial OnXxxChanged 钩子触发）。
     /// </summary>
     private void RecomputeStepEnables()
     {
         CanDeploy = Step1Done && !IsBusy;
-        CanStart = Step2Done && !IsBusy && IsProjectPathSet;
+        CanStart = !IsBusy && IsProjectPathSet;
         DeployCommand.NotifyCanExecuteChanged();
         StartCommand.NotifyCanExecuteChanged();
     }

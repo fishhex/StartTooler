@@ -183,18 +183,23 @@
                                      Text="{Binding UploadUrl}"
                                      IsReadOnly="True"
                                      FontSize="11"
-                                     TextWrapping="Wrap"
-                                     MaxWidth="220"/>
+                                     MinWidth="260"
+                                     VerticalAlignment="Center"
+                                     ToolTip.Tip="{Binding UploadUrl}"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                                     ScrollViewer.VerticalScrollBarVisibility="Disabled"/>
                             <!--
                               v0.11: 复制按钮默认显示 Icon.Copy，点击后 1.5s 显示 "已复制"（spec §13.1）。
                               XAML 端用 Grid 叠加：默认显示图标，点击后 CopyButtonText="已复制" 时显示文字。
+                              Button 设 MinWidth 避免文字切换时挤压 TextBox。
                             -->
                             <Button Grid.Column="1"
                                     Command="{Binding CopyUrlCommand}"
                                     Classes="secondary-button"
                                     Margin="4,0,0,0"
                                     Padding="8,4"
-                                    VerticalAlignment="Top"
+                                    MinWidth="64"
+                                    VerticalAlignment="Center"
                                     ToolTip.Tip="复制 URL">
                                 <Panel>
                                     <PathIcon Data="{StaticResource Icon.Copy}"
