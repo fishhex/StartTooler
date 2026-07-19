@@ -130,30 +130,68 @@
                             </StackPanel>
                         </StackPanel>
 
-                        <!-- 操作按钮：启动 / 停止 -->
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Button Content="启动服务"
-                                    Classes="primary-button"
-                                    Command="{Binding StartServerCommand}"
-                                    IsVisible="{Binding !IsRunning}"/>
-                            <Button Command="{Binding StopServerCommand}"
-                                    Classes="danger-button"
-                                    IsVisible="{Binding IsRunning}"
-                                    ToolTip.Tip="停止服务">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <Ellipse Width="6" Height="6"
-                                             VerticalAlignment="Center"
-                                             Fill="{DynamicResource State.Danger}"/>
-                                    <TextBlock Text="停止服务" FontSize="13"/>
-                                </StackPanel>
-                            </Button>
-                        </StackPanel>
+                        <!-- 服务控制 + URL 左右结构（spec §3.2 / §3.5） -->
+                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                            <!-- 左侧：服务启动/停止 + 状态 -->
+                            <StackPanel Grid.Column="0" Grid.Row="0" Grid.RowSpan="2"
+                                        Spacing="8"
+                                        VerticalAlignment="Center">
+                                <Button Content="启动服务"
+                                        Classes="primary-button"
+                                        Command="{Binding StartServerCommand}"
+                                        IsVisible="{Binding !IsRunning}"/>
+                                <Button Command="{Binding StopServerCommand}"
+                                        Classes="danger-button"
+                                        IsVisible="{Binding IsRunning}"
+                                        ToolTip.Tip="停止服务">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <Ellipse Width="6" Height="6"
+                                                 VerticalAlignment="Center"
+                                                 Fill="{DynamicResource State.Danger}"/>
+                                        <TextBlock Text="停止服务" FontSize="13"/>
+                                    </StackPanel>
+                                </Button>
+                                <TextBlock Text="{Binding StatusMessage}"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource State.Success}"
+                                           IsVisible="{Binding ShowSuccessStatus}"/>
+                            </StackPanel>
 
-                        <!-- 通用状态消息（非冲突态 Success 色） -->
-                        <TextBlock Text="{Binding StatusMessage}"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource State.Success}"
-                                   IsVisible="{Binding ShowSuccessStatus}"/>
+                            <!-- 右侧：URL 显示 + 复制 -->
+                            <Grid Grid.Column="1" Grid.Row="0" Grid.RowSpan="2"
+                                  ColumnDefinitions="*,Auto"
+                                  VerticalAlignment="Center"
+                                  Margin="16,0,0,0"
+                                  IsVisible="{Binding IsRunning}">
+                                <TextBox Grid.Column="0"
+                                         Text="{Binding UploadUrl}"
+                                         IsReadOnly="True"
+                                         FontSize="11"
+                                         MinWidth="200"
+                                         VerticalAlignment="Center"
+                                         ToolTip.Tip="{Binding UploadUrl}"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                                         ScrollViewer.VerticalScrollBarVisibility="Disabled"/>
+                                <Button Grid.Column="1"
+                                        Command="{Binding CopyUrlCommand}"
+                                        Classes="secondary-button"
+                                        Margin="8,0,0,0"
+                                        MinWidth="64"
+                                        VerticalAlignment="Center"
+                                        ToolTip.Tip="复制 URL">
+                                    <Panel>
+                                        <PathIcon Data="{StaticResource Icon.Copy}"
+                                                  Width="12" Height="12"
+                                                  Foreground="{DynamicResource Text.Secondary}"
+                                                  IsVisible="{Binding CopyButtonText, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
+                                        <TextBlock Text="{Binding CopyButtonText}"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource Text.Secondary}"
+                                                   IsVisible="{Binding CopyButtonText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    </Panel>
+                                </Button>
+                            </Grid>
+                        </Grid>
 
                         <!-- 上传历史（spec §3.1：最多 50 条 ScrollViewer 滚动；空时不显示） -->
                         <StackPanel Spacing="6"
@@ -256,37 +294,6 @@
                                    FontSize="12"
                                    Foreground="{DynamicResource Text.Secondary}"
                                    HorizontalAlignment="Center"/>
-
-                        <!-- URL：可读 TextBox + 复制按钮（spec §3.2） -->
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBox Grid.Column="0"
-                                     Text="{Binding UploadUrl}"
-                                     IsReadOnly="True"
-                                     FontSize="11"
-                                     MinWidth="200"
-                                     VerticalAlignment="Center"
-                                     ToolTip.Tip="{Binding UploadUrl}"
-                                     ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                                     ScrollViewer.VerticalScrollBarVisibility="Disabled"/>
-                            <Button Grid.Column="1"
-                                    Command="{Binding CopyUrlCommand}"
-                                    Classes="secondary-button"
-                                    Margin="8,0,0,0"
-                                    MinWidth="64"
-                                    VerticalAlignment="Center"
-                                    ToolTip.Tip="复制 URL">
-                                <Panel>
-                                    <PathIcon Data="{StaticResource Icon.Copy}"
-                                              Width="12" Height="12"
-                                              Foreground="{DynamicResource Text.Secondary}"
-                                              IsVisible="{Binding CopyButtonText, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
-                                    <TextBlock Text="{Binding CopyButtonText}"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource Text.Secondary}"
-                                               IsVisible="{Binding CopyButtonText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                </Panel>
-                            </Button>
-                        </Grid>
 
                         <!-- 最近一次上传的瞬时提示 -->
                         <TextBlock Text="{Binding RecentUploadMessage}"
