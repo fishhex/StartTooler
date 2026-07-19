@@ -46,19 +46,6 @@
                                    Foreground="{DynamicResource Text.Secondary}"
                                    TextWrapping="Wrap"/>
 
-                        <!-- PORT：标签在上、数值在下的垂直布局 -->
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="PORT"
-                                       FontSize="11"
-                                       Foreground="{DynamicResource Text.Tertiary}"/>
-                            <NumericUpDown Value="{Binding Port}"
-                                           Minimum="1024"
-                                           Maximum="65535"
-                                           Width="120"
-                                           IsEnabled="{Binding !IsRunning}"
-                                           VerticalAlignment="Center"/>
-                        </StackPanel>
-
                         <!-- 端口冲突时的建议端口（spec §3.3） -->
                         <StackPanel Spacing="6"
                                     IsVisible="{Binding IsPortConflict}">
@@ -90,68 +77,118 @@
                             </StackPanel>
                         </StackPanel>
 
-                        <!-- 服务控制 + URL 左右结构（spec §3.2 / §3.5） -->
-                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
-                            <!-- 左侧：服务启动/停止 + 状态 -->
-                            <StackPanel Grid.Column="0" Grid.Row="0" Grid.RowSpan="2"
-                                        Spacing="8"
-                                        VerticalAlignment="Center">
-                                <Button Content="启动服务"
-                                        Classes="primary-button"
-                                        Command="{Binding StartServerCommand}"
-                                        IsVisible="{Binding !IsRunning}"/>
-                                <Button Command="{Binding StopServerCommand}"
-                                        Classes="danger-button"
-                                        IsVisible="{Binding IsRunning}"
-                                        ToolTip.Tip="停止服务">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <Ellipse Width="6" Height="6"
-                                                 VerticalAlignment="Center"
-                                                 Fill="{DynamicResource State.Danger}"/>
-                                        <TextBlock Text="停止服务" FontSize="13"/>
-                                    </StackPanel>
-                                </Button>
-                                <TextBlock Text="{Binding StatusMessage}"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource State.Success}"
-                                           IsVisible="{Binding ShowSuccessStatus}"/>
-                            </StackPanel>
-
-                            <!-- 右侧：URL 显示 + 复制 -->
-                            <Grid Grid.Column="1" Grid.Row="0" Grid.RowSpan="2"
-                                  ColumnDefinitions="*,Auto"
-                                  VerticalAlignment="Center"
-                                  Margin="16,0,0,0"
-                                  IsVisible="{Binding IsRunning}">
-                                <TextBox Grid.Column="0"
-                                         Text="{Binding UploadUrl}"
-                                         IsReadOnly="True"
-                                         FontSize="11"
-                                         MinWidth="200"
-                                         VerticalAlignment="Center"
-                                         ToolTip.Tip="{Binding UploadUrl}"
-                                         ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                                         ScrollViewer.VerticalScrollBarVisibility="Disabled"/>
-                                <Button Grid.Column="1"
-                                        Command="{Binding CopyUrlCommand}"
-                                        Classes="secondary-button"
-                                        Margin="8,0,0,0"
-                                        MinWidth="64"
-                                        VerticalAlignment="Center"
-                                        ToolTip.Tip="复制 URL">
-                                    <Panel>
-                                        <PathIcon Data="{StaticResource Icon.Copy}"
-                                                  Width="12" Height="12"
-                                                  Foreground="{DynamicResource Text.Secondary}"
-                                                  IsVisible="{Binding CopyButtonText, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
-                                        <TextBlock Text="{Binding CopyButtonText}"
+                        <!-- PORT + URL 横向入口条（图片布局） -->
+                        <Grid ColumnDefinitions="Auto,*">
+                            <!-- 左侧：PORT 面板 -->
+                            <Border Grid.Column="0"
+                                    Background="{DynamicResource Bg.SurfaceElevated}"
+                                    CornerRadius="{DynamicResource Radius.Medium}"
+                                    Padding="16,12"
+                                    VerticalAlignment="Center">
+                                <Grid ColumnDefinitions="Auto,Auto">
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                        <TextBlock Text="PORT"
                                                    FontSize="11"
-                                                   Foreground="{DynamicResource Text.Secondary}"
-                                                   IsVisible="{Binding CopyButtonText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                    </Panel>
-                                </Button>
-                            </Grid>
+                                                   Foreground="{DynamicResource Text.Tertiary}"/>
+                                        <TextBlock Text="{Binding Port}"
+                                                   FontSize="28"
+                                                   FontWeight="Bold"
+                                                   Foreground="{DynamicResource Text.Primary}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                        <Button Classes="toolbar-button"
+                                                Padding="6,2"
+                                                Command="{Binding IncreasePortCommand}"
+                                                IsEnabled="{Binding !IsRunning}"
+                                                ToolTip.Tip="增加端口">
+                                            <TextBlock Text="▲" FontSize="8" Foreground="{DynamicResource Text.Secondary}"/>
+                                        </Button>
+                                        <Button Classes="toolbar-button"
+                                                Padding="6,2"
+                                                Command="{Binding DecreasePortCommand}"
+                                                IsEnabled="{Binding !IsRunning}"
+                                                ToolTip.Tip="减少端口">
+                                            <TextBlock Text="▼" FontSize="8" Foreground="{DynamicResource Text.Secondary}"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- 右侧：URL 访问条 -->
+                            <StackPanel Grid.Column="1"
+                                        Margin="16,0,0,0"
+                                        VerticalAlignment="Center"
+                                        IsVisible="{Binding IsRunning}">
+                                <TextBlock Text="用手机扫码立即访问"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource Text.Secondary}"
+                                           Margin="0,0,0,6"/>
+                                <Border Background="{DynamicResource Bg.SurfaceElevated}"
+                                        CornerRadius="{DynamicResource Radius.Pill}"
+                                        Padding="4">
+                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                        <Button Grid.Column="0"
+                                                Content="复制"
+                                                Command="{Binding CopyUrlCommand}"
+                                                Classes="secondary-button"
+                                                Padding="12,6"
+                                                Foreground="{DynamicResource Accent.Stellar}"/>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding DisplayUploadUrl}"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource Accent.Stellar}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="12,0"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip.Tip="{Binding DisplayUploadUrl}"/>
+                                        <Button Grid.Column="2"
+                                                Command="{Binding PreviousAddressCommand}"
+                                                Classes="toolbar-button"
+                                                Padding="8,6"
+                                                IsEnabled="{Binding CanShiftAddress}"
+                                                ToolTip.Tip="上一个地址">
+                                            <PathIcon Data="{StaticResource Icon.ChevronLeft}"
+                                                      Width="12" Height="12"
+                                                      Foreground="{DynamicResource Text.Secondary}"/>
+                                        </Button>
+                                        <Button Grid.Column="3"
+                                                Command="{Binding NextAddressCommand}"
+                                                Classes="toolbar-button"
+                                                Padding="8,6"
+                                                IsEnabled="{Binding CanShiftAddress}"
+                                                ToolTip.Tip="下一个地址">
+                                            <PathIcon Data="{StaticResource Icon.ChevronRight}"
+                                                      Width="12" Height="12"
+                                                      Foreground="{DynamicResource Text.Secondary}"/>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
                         </Grid>
+
+                        <!-- 服务控制 / 状态 -->
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Content="启动服务"
+                                    Classes="primary-button"
+                                    Command="{Binding StartServerCommand}"
+                                    IsVisible="{Binding !IsRunning}"/>
+                            <Button Command="{Binding StopServerCommand}"
+                                    Classes="danger-button"
+                                    IsVisible="{Binding IsRunning}"
+                                    ToolTip.Tip="停止服务">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Ellipse Width="6" Height="6"
+                                             VerticalAlignment="Center"
+                                             Fill="{DynamicResource State.Danger}"/>
+                                    <TextBlock Text="停止服务" FontSize="13"/>
+                                </StackPanel>
+                            </Button>
+                            <TextBlock Text="{Binding StatusMessage}"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource State.Success}"
+                                       VerticalAlignment="Center"
+                                       IsVisible="{Binding ShowSuccessStatus}"/>
+                        </StackPanel>
 
                         <!-- 上传历史（spec §3.1：最多 50 条 ScrollViewer 滚动；空时不显示） -->
                         <StackPanel Spacing="6"

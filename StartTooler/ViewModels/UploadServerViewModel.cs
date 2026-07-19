@@ -43,6 +43,10 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     [NotifyCanExecuteChangedFor(nameof(StopServerCommand))]
     private bool _isRunning;
     [ObservableProperty] private string? _uploadUrl;
+    /// <summary>v0.11: 当前选中的本机地址索引，用于 URL 条左右切换。</summary>
+    [ObservableProperty] private int _addressIndex;
+    /// <summary>v0.11: URL 条实际显示的 URL，可根据 AddressIndex 切换 host。</summary>
+    public string DisplayUploadUrl => BuildDisplayUrl();
     [ObservableProperty] private Bitmap? _qrCodeImage;
     [ObservableProperty] private string? _statusMessage;
     [ObservableProperty] private string? _errorMessage;
@@ -86,12 +90,15 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         publicRelayViewModel.PropertyChanged += OnPublicRelayPropertyChanged;
         // 监听项目目录变化：切项目时停服（路径已变，上传的文件会落错位置）
         _gallery.PropertyChanged += OnGalleryPropertyChanged;
-        // v0.11: 集合增删要通知 HasXxx 派生属性
+        // v0.11: 集合增删要通知 HasXxx / DisplayUploadUrl / CanShiftAddress 派生属性
         UploadHistory.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasUploadHistory));
         LocalAddresses.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(HasLocalAddresses));
             OnPropertyChanged(nameof(PreferredLocalAddress));
+            OnPropertyChanged(nameof(DisplayUploadUrl));
+            OnPropertyChanged(nameof(CanShiftAddress));
+            if (AddressIndex >= LocalAddresses.Count) AddressIndex = 0;
         };
     }
 
@@ -110,6 +117,12 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     // v0.11: 状态消息/冲突态变化时通知 ShowSuccessStatus
     partial void OnStatusMessageChanged(string? value) => OnPropertyChanged(nameof(ShowSuccessStatus));
     partial void OnIsPortConflictChanged(bool value) => OnPropertyChanged(nameof(ShowSuccessStatus));
+
+    // v0.11: URL 显示随地址索引 / 端口 / 基础 URL / 公网模式变化而刷新
+    partial void OnAddressIndexChanged(int value) => OnPropertyChanged(nameof(DisplayUploadUrl));
+    partial void OnUploadUrlChanged(string? value) => OnPropertyChanged(nameof(DisplayUploadUrl));
+    partial void OnPortChanged(int value) => OnPropertyChanged(nameof(DisplayUploadUrl));
+    partial void OnIsPublicModeChanged(bool value) => OnPropertyChanged(nameof(DisplayUploadUrl));
 
     [RelayCommand(CanExecute = nameof(CanStart))]
     private async Task StartServer()
@@ -178,6 +191,9 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
             foreach (var a in addrs) LocalAddresses.Add(a);
             Trace.WriteLine($"[UploadServerVM] LocalAddresses: {string.Join(",", LocalAddresses)}");
 
+            // 默认展示第一个地址，触发 DisplayUploadUrl 刷新
+            AddressIndex = 0;
+
             // 决定 QR 用哪个 URL：公网 relay 在跑就用公网，否则用局域网
             UpdateQrForMode();
         }
@@ -243,6 +259,18 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         return ports;
     }
 
+    [RelayCommand]
+    private void IncreasePort()
+    {
+        if (Port < 65535) Port++;
+    }
+
+    [RelayCommand]
+    private void DecreasePort()
+    {
+        if (Port > 1024) Port--;
+    }
+
     [RelayCommand(CanExecute = nameof(CanStart))]
     private void UseRandomPort(int? pickPort = null)
     {
@@ -268,6 +296,7 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
 
         IsRunning = false;
         UploadUrl = null;
+        AddressIndex = 0;
         QrCodeImage?.Dispose();
         QrCodeImage = null;
         IsPublicMode = false;
@@ -279,7 +308,7 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// 复制 UploadUrl 到剪贴板，按钮短暂变 "已复制" 反馈。spec §3.2。
+    /// 复制 DisplayUploadUrl 到剪贴板，按钮短暂变 "已复制" 反馈。spec §3.2。
     /// 走 <see cref="ClipboardService"/>（启动时 App 把 MainWindow.Clipboard 绑进来）。
     /// v0.11: 默认 CopyButtonText="已复制" 占位（XAML 端 IsNullOrEmpty 才显示 Icon.Copy）；
     /// 点击后设 "已复制" 显示文字 → 1.5s 后清空回 Icon。
@@ -287,12 +316,44 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task CopyUrl()
     {
-        if (string.IsNullOrEmpty(UploadUrl)) return;
-        await ClipboardService.SetTextAsync(UploadUrl);
+        var url = DisplayUploadUrl;
+        if (string.IsNullOrEmpty(url)) return;
+        await ClipboardService.SetTextAsync(url);
         CopyButtonText = "已复制";
         await Task.Delay(1500);
         CopyButtonText = "";  // v0.11: 清空让 XAML 重新显示 Icon.Copy
     }
+
+    /// <summary>
+    /// 根据 AddressIndex 重新构造显示 URL，便于在多网卡 IP 间切换。
+    /// 公网模式下直接返回 UploadUrl，不做 host 替换。
+    /// </summary>
+    private string BuildDisplayUrl()
+    {
+        if (!IsRunning || string.IsNullOrEmpty(UploadUrl)) return string.Empty;
+        if (IsPublicMode || LocalAddresses.Count == 0) return UploadUrl;
+        var idx = AddressIndex;
+        if (idx < 0 || idx >= LocalAddresses.Count) idx = 0;
+        try
+        {
+            var baseUri = new Uri(UploadUrl);
+            var builder = new UriBuilder(baseUri) { Host = LocalAddresses[idx] };
+            return builder.Uri.ToString().TrimEnd('/');
+        }
+        catch
+        {
+            return UploadUrl;
+        }
+    }
+
+    /// <summary>多网卡地址超过 1 个时才允许左右切换。</summary>
+    public bool CanShiftAddress => LocalAddresses.Count > 1;
+
+    [RelayCommand(CanExecute = nameof(CanShiftAddress))]
+    private void PreviousAddress() => AddressIndex--;
+
+    [RelayCommand(CanExecute = nameof(CanShiftAddress))]
+    private void NextAddress() => AddressIndex++;
 
     /// <summary>
     /// 复制单个 IP（多网卡列表里每行一个复制按钮）。CommandParameter 传 IP 字符串。
