@@ -1,0 +1,37 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="StartTooler.Views.TextInputDialog"
+        xmlns:views="clr-namespace:StartTooler.Views"
+        x:DataType="views:TextInputDialogViewModel"
+        Title="输入"
+        Width="360"
+        Height="180"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+    <Border Padding="24,20"
+            Background="{DynamicResource Bg.Surface}">
+        <Grid RowDefinitions="Auto,*,Auto">
+            <TextBlock Grid.Row="0"
+                       Text="{Binding Prompt}"
+                       FontSize="14"
+                       Foreground="{DynamicResource Text.Primary}"
+                       Margin="0,0,0,12"/>
+            <TextBox Grid.Row="1"
+                     Text="{Binding Input, Mode=TwoWay}"
+                     Watermark="{Binding Watermark}"
+                     VerticalAlignment="Center"/>
+            <StackPanel Grid.Row="2"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Spacing="12"
+                        Margin="0,16,0,0">
+                <Button Content="取消"
+                        Classes="secondary"
+                        Click="OnCancelClick"/>
+                <Button Content="确认"
+                        Classes="accent"
+                        Click="OnConfirmClick"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

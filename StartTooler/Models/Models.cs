@@ -135,8 +135,23 @@ public sealed class ScanProgress
 /// 取代 v0.6 用的 (string Tag, int Count) tuple，XAML x:DataType 写起来更顺。
 /// init-only 防 VM 误改字段（构造后不可变）。
 /// </summary>
+
+/// <summary>
+/// 标签字典表（方案 B：media_files.tags 存 tag id 数组）。
+/// project_path + name 唯一，支持跨项目同名标签独立管理。
+/// </summary>
+public sealed class Tag
+{
+    public long Id { get; init; }
+    public string ProjectPath { get; init; } = "";
+    public string Name { get; init; } = "";
+}
+
 public sealed partial class TagGroupItem : ObservableObject
 {
+    /// <summary>标签 ID（v0.11 tag 表主键，用于右键重命名/删除）。</summary>
+    public long TagId { get; init; }
+
     public string Tag { get; init; } = "";
     public int Count { get; init; }
 

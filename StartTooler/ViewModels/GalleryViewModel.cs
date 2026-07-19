@@ -1325,6 +1325,94 @@ public partial class GalleryViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// v0.11: 左侧标签面板右键 → 重命名标签。
+    /// 若目标标签已存在则合并；重命名后刷新 TagGroups 与当前文件列表。
+    /// </summary>
+    [RelayCommand]
+    private async Task RenameTagAsync(TagGroupItem? group)
+    {
+        if (group == null || string.IsNullOrEmpty(ProjectPath)) return;
+
+        var dialog = new Views.TextInputDialog(
+            $"重命名标签 \"{group.Tag}\"",
+            group.Tag,
+            "新标签名称");
+        var owner = GetMainWindow();
+        await dialog.ShowDialog(owner!);
+
+        var newName = dialog.Result;
+        if (string.IsNullOrWhiteSpace(newName) || newName == group.Tag) return;
+
+        try
+        {
+            await _mediaRepo.RenameTagAsync(ProjectPath, group.Tag, newName);
+            ShowToast($"标签已重命名为 {newName}");
+
+            // 如果当前正在看该 tag，同步 SelectedTag 并刷新文件列表
+            var wasSelected = SelectedTag == group.Tag;
+            if (wasSelected)
+            {
+                SelectedTag = newName;
+            }
+
+            _ = LoadTagGroupsAsync(_cts?.Token ?? default);
+
+            if (wasSelected)
+            {
+                var renamedGroup = TagGroups.FirstOrDefault(g => g.Tag == newName);
+                if (renamedGroup != null) _ = SelectTagAsync(renamedGroup);
+            }
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[Gallery] RenameTagAsync 失败: {ex.Message}");
+            ShowToast($"重命名失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// v0.11: 左侧标签面板右键 → 删除标签（从所有文件移除）。
+    /// </summary>
+    [RelayCommand]
+    private async Task RemoveTagAsync(TagGroupItem? group)
+    {
+        if (group == null || string.IsNullOrEmpty(ProjectPath)) return;
+
+        var confirmDialog = new Views.TextInputDialog(
+            $"删除标签 \"{group.Tag}\"",
+            "删除",
+            "输入“删除”以确认");
+        var owner = GetMainWindow();
+        await confirmDialog.ShowDialog(owner!);
+
+        if (confirmDialog.Result != "删除")
+        {
+            ShowToast("已取消删除");
+            return;
+        }
+
+        try
+        {
+            await _mediaRepo.RemoveTagAsync(ProjectPath, group.Tag);
+            ShowToast($"已删除标签 {group.Tag}");
+
+            // 如果当前正在看这个 tag，清空列表
+            if (SelectedTag == group.Tag)
+            {
+                SelectedTag = null;
+                CurrentMediaFiles.Clear();
+            }
+
+            _ = LoadTagGroupsAsync(_cts?.Token ?? default);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[Gallery] RemoveTagAsync 失败: {ex.Message}");
+            ShowToast($"删除标签失败：{ex.Message}");
+        }
+    }
+
     [RelayCommand]
     private async Task ReloadAsync()
     {

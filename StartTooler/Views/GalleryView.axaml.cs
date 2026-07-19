@@ -9,6 +9,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using StartTooler.Data;
+using StartTooler.Models;
 using StartTooler.ViewModels;
 
 namespace StartTooler.Views;
@@ -140,6 +141,36 @@ public partial class GalleryView : UserControl
         });
 
         return menu;
+    }
+
+    /// <summary>
+    /// 右键点击左侧标签节点：弹出重命名 / 删除菜单。
+    /// </summary>
+    private void TagNode_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(this);
+        if (!point.Properties.IsRightButtonPressed) return;
+        if (sender is not Control c || c.DataContext is not TagGroupItem group) return;
+        if (DataContext is not GalleryViewModel vm) return;
+
+        var menu = new MenuFlyout();
+
+        menu.Items.Add(new MenuItem
+        {
+            Header = "重命名",
+            Command = vm.RenameTagCommand,
+            CommandParameter = group,
+        });
+
+        menu.Items.Add(new MenuItem
+        {
+            Header = "删除标签",
+            Command = vm.RemoveTagCommand,
+            CommandParameter = group,
+        });
+
+        menu.ShowAt(c, true);
+        e.Handled = true;
     }
 
     // ============================================================

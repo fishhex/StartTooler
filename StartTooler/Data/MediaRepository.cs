@@ -35,6 +35,13 @@ public class MediaRepository : IMediaRepository
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
+    // === v0.11 tag 字典缓存（方案 B）===
+    // project_path -> tag_id -> tag_name
+    private readonly Dictionary<string, Dictionary<long, string>> _tagNameCache = new();
+    // project_path -> tag_name -> tag_id
+    private readonly Dictionary<string, Dictionary<string, long>> _tagIdCache = new();
+    private readonly ReaderWriterLockSlim _tagCacheLock = new();
+
     private void EnsureDatabase()
     {
         using var connection = new SqliteConnection(_connectionString);
@@ -113,10 +120,33 @@ public class MediaRepository : IMediaRepository
             idxCmd.ExecuteNonQuery();
         }
 
+        // === v0.11: 标签字典表（方案 B：media_files.tags 存 tag id 数组）===
+        EnsureTagsTable(connection);
+
         // 一次性迁移：把老数据里被 JavaScriptEncoder.Default 转义的 \uXXXX 中文 tag
         // 反序列化 + 用 UnsafeRelaxedJsonEscaping 重新写回。新数据用 s_writeTagsOptions 直接写原始中文。
         // 幂等：跑过一次后 tags 列已无 \u 转义，第二次不会命中 LIKE 模式。
         MigrateEscapedTagsToRaw(connection);
+
+        // 一次性迁移：把 media_files.tags 从字符串数组 ["行星","月亮"] 转成 tag id 数组 [1,2]。
+        // 幂等：转换后的列只含数字 / 中括号 / 逗号，不再匹配下面的 json_type='text'。
+        MigrateTagsToIdArray(connection);
+    }
+
+    private static void EnsureTagsTable(SqliteConnection connection)
+    {
+        using var cmd = new SqliteCommand(@"
+            CREATE TABLE IF NOT EXISTS tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_path TEXT NOT NULL,
+                name TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                UNIQUE(project_path, name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_tags_project ON tags(project_path);
+        ", connection);
+        cmd.ExecuteNonQuery();
     }
 
     /// <summary>
@@ -159,6 +189,128 @@ public class MediaRepository : IMediaRepository
         }
         tx.Commit();
         Trace.WriteLine($"[MediaRepository] MigrateEscapedTagsToRaw: 完成");
+    }
+
+    /// <summary>
+    /// v0.11 一次性迁移：把 media_files.tags 从字符串数组 ["行星","月亮"] 转成 tag id 数组 [1,2]。
+    /// 步骤：
+    ///   1. 在 C# 中读取 media_files.tags（过滤有效 JSON 字符串数组）。
+    ///   2. 把所有字符串 tag 插入 tags 表（幂等：INSERT OR IGNORE）。
+    ///   3. 在 C# 中把 name 映射成 id，写回 JSON id 数组。
+    /// 幂等：已转换的 tags 列不含字符串，ParseTags 返回空/数字，不会再被处理。
+    /// </summary>
+    private static void MigrateTagsToIdArray(SqliteConnection connection)
+    {
+        // 1. 读取所有需要迁移的行（有效 JSON 字符串数组）。
+        const string selectSql = "SELECT id, project_path, tags FROM media_files WHERE tags IS NOT NULL AND tags != '[]'";
+        var candidateRows = new List<(long Id, string ProjectPath, string Tags)>();
+        using (var cmd = new SqliteCommand(selectSql, connection))
+        using (var reader = cmd.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                candidateRows.Add((reader.GetInt64(0), reader.GetString(1), reader.GetString(2)));
+            }
+        }
+
+        // 2. 只保留还能解析成字符串数组的行；已是 id 数组的行自然返回空 names。
+        var rows = new List<(long Id, string ProjectPath, List<string> Names)>();
+        var uniqueTags = new HashSet<(string ProjectPath, string Name)>();
+        foreach (var (id, projectPath, json) in candidateRows)
+        {
+            var names = SafeParseStringArray(json);
+            if (names.Count == 0) continue; // 空或已迁移
+            rows.Add((id, projectPath, names));
+            foreach (var name in names)
+            {
+                if (!string.IsNullOrWhiteSpace(name))
+                    uniqueTags.Add((projectPath, name));
+            }
+        }
+
+        if (rows.Count == 0)
+        {
+            Trace.WriteLine("[MediaRepository] MigrateTagsToIdArray: 无需迁移");
+            return;
+        }
+
+        Trace.WriteLine($"[MediaRepository] MigrateTagsToIdArray: 命中 {rows.Count} 行待转换，共 {uniqueTags.Count} 个唯一标签");
+
+        // 3. 插入所有唯一标签。
+        const string insertTagSql = "INSERT OR IGNORE INTO tags (project_path, name) VALUES (@projectPath, @name)";
+        foreach (var (projectPath, name) in uniqueTags)
+        {
+            using var cmd = new SqliteCommand(insertTagSql, connection);
+            cmd.Parameters.AddWithValue("@projectPath", projectPath);
+            cmd.Parameters.AddWithValue("@name", name);
+            cmd.ExecuteNonQuery();
+        }
+
+        // 4. 批量查询 tag id 映射。
+        var tagIdsByName = new Dictionary<(string ProjectPath, string Name), long>();
+        const string mapSql = "SELECT project_path, name, id FROM tags";
+        using (var cmd = new SqliteCommand(mapSql, connection))
+        using (var reader = cmd.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                var key = (reader.GetString(0), reader.GetString(1));
+                tagIdsByName[key] = reader.GetInt64(2);
+            }
+        }
+
+        // 5. 更新 media_files.tags 为 id 数组。
+        using var tx = connection.BeginTransaction();
+        const string updateSql = "UPDATE media_files SET tags = @tags, updated_at = @updatedAt WHERE id = @id";
+        foreach (var (id, projectPath, names) in rows)
+        {
+            var ids = new List<long>();
+            foreach (var name in names)
+            {
+                if (tagIdsByName.TryGetValue((projectPath, name), out var tagId))
+                    ids.Add(tagId);
+            }
+            var newJson = ids.Count == 0 ? "[]" : JsonSerializer.Serialize(ids, s_writeTagsOptions);
+
+            using var cmd = new SqliteCommand(updateSql, connection, tx);
+            cmd.Parameters.AddWithValue("@tags", newJson);
+            cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.ExecuteNonQuery();
+        }
+        tx.Commit();
+        Trace.WriteLine($"[MediaRepository] MigrateTagsToIdArray: 完成");
+    }
+
+    /// <summary>
+    /// 仅当 JSON 是字符串数组时返回元素列表；其他情况（已迁移的 id 数组、无效 JSON、null、[]）返回空列表。
+    /// </summary>
+    private static List<string> SafeParseStringArray(string? json)
+    {
+        if (string.IsNullOrEmpty(json) || json == "[]") return new List<string>();
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return new List<string>();
+            var result = new List<string>();
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                if (el.ValueKind == JsonValueKind.String)
+                {
+                    result.Add(el.GetString() ?? "");
+                }
+                else
+                {
+                    // 任一元素不是字符串 → 认为已迁移或格式不符，整体丢弃。
+                    return new List<string>();
+                }
+            }
+            return result;
+        }
+        catch (JsonException)
+        {
+            return new List<string>();
+        }
     }
 
     public async Task<IReadOnlyList<DateCount>> GetDateGroupsAsync(string projectPath, CancellationToken ct = default)
@@ -212,6 +364,8 @@ public class MediaRepository : IMediaRepository
         await connection.OpenAsync(ct);
 
         var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        await LoadTagCacheAsync(connection, normalizedPath, ct);
+
         var startTimestamp = startTime.ToUnixTimeMilliseconds();
         var endTimestamp = endTime.ToUnixTimeMilliseconds();
 
@@ -261,6 +415,7 @@ public class MediaRepository : IMediaRepository
 
         // 规范化路径以匹配扫描时保存的格式
         var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        await LoadTagCacheAsync(connection, normalizedPath, ct);
 
         var startOfDay = new DateTime(date.Year, date.Month, date.Day, 0, 0, 0, DateTimeKind.Local);
         var endOfDay = startOfDay.AddDays(1);
@@ -544,15 +699,19 @@ public class MediaRepository : IMediaRepository
 
     public async Task UpdateTagAsync(long fileId, IEnumerable<string> tags, IEnumerable<string> qualityTags, int score, long taggedAt, string? tagError, CancellationToken ct = default)
     {
-        // tags / qualityTags 序列化为 JSON 数组字符串（例 ["星空","银河"] / ["欠曝","噪点"]）。
-        // 用 UnsafeRelaxedJsonEscaping 让中文原样写入，避免被转义成 \uXXXX。
-        var tagsList = tags.ToList();
-        var tagsJson = JsonSerializer.Serialize(tagsList, s_writeTagsOptions);
-        var qualityTagsList = qualityTags.ToList();
-        var qualityTagsJson = JsonSerializer.Serialize(qualityTagsList, s_writeTagsOptions);
-
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(ct);
+
+        // v0.11: tags 列改存 tag id 数组；需要先拿到文件的 project_path 再映射 name -> id。
+        var projectPath = await GetProjectPathAsync(connection, fileId, ct);
+        if (projectPath == null) throw new InvalidOperationException($"找不到文件 id={fileId} 对应的项目路径");
+
+        var tagsList = tags.ToList();
+        var tagIds = await ResolveTagNamesToIdsAsync(connection, projectPath, tagsList, createIfMissing: true, ct);
+        var tagsJson = JsonSerializer.Serialize(tagIds, s_writeTagsOptions);
+
+        var qualityTagsList = qualityTags.ToList();
+        var qualityTagsJson = JsonSerializer.Serialize(qualityTagsList, s_writeTagsOptions);
 
         var sql = @"
             UPDATE media_files
@@ -586,13 +745,18 @@ public class MediaRepository : IMediaRepository
     /// </summary>
     public async Task UpdateTagsOnlyAsync(long fileId, IEnumerable<string> tags, long taggedAt, CancellationToken ct = default)
     {
-        var tagsList = tags.ToList();
-        var tagsJson = JsonSerializer.Serialize(tagsList, s_writeTagsOptions);
-
-        Trace.WriteLine($"[MediaRepository] step 1/3 UpdateTagsOnlyAsync: fileId={fileId}, tags={tagsList.Count}, taggedAt={taggedAt}");
-
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(ct);
+
+        // v0.11: tags 列改存 tag id 数组；需要先拿到文件的 project_path 再映射 name -> id。
+        var projectPath = await GetProjectPathAsync(connection, fileId, ct);
+        if (projectPath == null) throw new InvalidOperationException($"找不到文件 id={fileId} 对应的项目路径");
+
+        var tagsList = tags.ToList();
+        var tagIds = await ResolveTagNamesToIdsAsync(connection, projectPath, tagsList, createIfMissing: true, ct);
+        var tagsJson = JsonSerializer.Serialize(tagIds, s_writeTagsOptions);
+
+        Trace.WriteLine($"[MediaRepository] step 1/3 UpdateTagsOnlyAsync: fileId={fileId}, tags={tagsList.Count}, taggedAt={taggedAt}");
 
         var sql = @"
             UPDATE media_files
@@ -615,19 +779,25 @@ public class MediaRepository : IMediaRepository
     public async Task<IReadOnlyList<TagGroupItem>> GetTagGroupsAsync(string projectPath, CancellationToken ct = default)
     {
         var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
-        var tagCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        var results = new List<TagGroupItem>();
 
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(ct);
+        await LoadTagCacheAsync(connection, normalizedPath, ct);
 
-        // 只取非空、非 [] 的 tags 列，全量加载到内存后聚合。
-        // 项目级标签量级小（几千文件 × 几个标签），全内存聚合比 SQL JSON 函数可读性更好。
-        var sql = @"
-            SELECT tags FROM media_files
-            WHERE project_path = @projectPath
-              AND tags IS NOT NULL
-              AND tags != '[]'
-              AND deleted_at IS NULL";
+        // v0.11: 通过 tags 表 + json_each(id 数组) 统计每个标签的文件数。
+        const string sql = @"
+            SELECT t.id, t.name, COUNT(*) AS count
+            FROM tags t
+            JOIN media_files m ON m.project_path = t.project_path
+            WHERE t.project_path = @projectPath
+              AND m.deleted_at IS NULL
+              AND EXISTS (
+                  SELECT 1 FROM json_each(m.tags)
+                  WHERE json_each.value = t.id
+              )
+            GROUP BY t.id, t.name
+            ORDER BY count DESC, t.name";
 
         await using var cmd = new SqliteCommand(sql, connection);
         cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
@@ -635,21 +805,15 @@ public class MediaRepository : IMediaRepository
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
-            var tagsJson = reader.GetString(0);
-            var tags = ParseTags(tagsJson);
-            foreach (var tag in tags)
+            results.Add(new TagGroupItem
             {
-                if (string.IsNullOrWhiteSpace(tag)) continue;
-                tagCounts[tag] = tagCounts.GetValueOrDefault(tag) + 1;
-            }
+                TagId = reader.GetInt64(0),
+                Tag = reader.GetString(1),
+                Count = reader.GetInt32(2)
+            });
         }
 
-        // v0.6.1: 返回 TagGroupItem class（取代 v0.6 的 (string, int) tuple，XAML 更顺）
-        return tagCounts
-            .OrderByDescending(kv => kv.Value)
-            .ThenBy(kv => kv.Key, StringComparer.Ordinal)
-            .Select(kv => new TagGroupItem { Tag = kv.Key, Count = kv.Value })
-            .ToList();
+        return results;
     }
 
     public async Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath, string tag, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default)
@@ -659,6 +823,7 @@ public class MediaRepository : IMediaRepository
 
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(ct);
+        await LoadTagCacheAsync(connection, normalizedPath, ct);
 
         // v0.6.1: 跟 GetByDateAsync 对齐 ORDER BY 分支。
         // sortMode 是硬编码常量（无用户输入），SQL 拼接安全。
@@ -668,8 +833,10 @@ public class MediaRepository : IMediaRepository
             _ => "ORDER BY shot_at DESC, file_name ASC",
         };
 
-        // LIKE '%"标签"%' 匹配 JSON 数组里的标签项（数组里标签都是 "标签" 形式）。
-        // 假设 AI 返回的标签不含双引号（实测模型输出安全）；如果将来发现误匹配，切到 SQLite JSON1 函数。
+        // v0.11: 先解析 tag name -> id，再用 JSON1 匹配 media_files.tags 数组中的 id。
+        var tagId = await GetTagIdAsync(connection, normalizedPath, tag, createIfMissing: false, ct);
+        if (tagId == null) return results;
+
         var sql = $@"
             SELECT
                 id, project_path, relative_path, file_name, media_type,
@@ -681,14 +848,17 @@ public class MediaRepository : IMediaRepository
                 deleted_at
             FROM media_files
             WHERE project_path = @projectPath
-              AND tags LIKE @tagPattern
               AND deleted_at IS NULL
+              AND EXISTS (
+                  SELECT 1 FROM json_each(media_files.tags)
+                  WHERE json_each.value = @tagId
+              )
             {orderBy}
             LIMIT 1000";
 
         await using var cmd = new SqliteCommand(sql, connection);
         cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
-        cmd.Parameters.AddWithValue("@tagPattern", $"%\"{tag}\"%");
+        cmd.Parameters.AddWithValue("@tagId", tagId.Value);
 
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
@@ -697,6 +867,339 @@ public class MediaRepository : IMediaRepository
         }
 
         return results;
+    }
+
+    // === v0.11 标签字典管理（方案 B）===
+
+    private async Task<string?> GetProjectPathAsync(SqliteConnection connection, long fileId, CancellationToken ct)
+    {
+        const string sql = "SELECT project_path FROM media_files WHERE id = @id LIMIT 1";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@id", fileId);
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return result is string s ? s : null;
+    }
+
+    private async Task<List<long>> ResolveTagNamesToIdsAsync(SqliteConnection connection, string projectPath, IReadOnlyList<string> tagNames, bool createIfMissing, CancellationToken ct)
+    {
+        var ids = new List<long>(tagNames.Count);
+        foreach (var name in tagNames)
+        {
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            var tagId = await GetTagIdAsync(connection, projectPath, name, createIfMissing, ct);
+            if (tagId.HasValue)
+            {
+                ids.Add(tagId.Value);
+            }
+        }
+        return ids;
+    }
+
+    private async Task<List<string>> ResolveTagIdsToNamesAsync(SqliteConnection connection, string projectPath, IReadOnlyList<long> tagIds, CancellationToken ct)
+    {
+        var names = new List<string>(tagIds.Count);
+        await LoadTagCacheAsync(connection, projectPath, ct);
+
+        _tagCacheLock.EnterReadLock();
+        try
+        {
+            if (_tagNameCache.TryGetValue(projectPath, out var nameById))
+            {
+                foreach (var id in tagIds)
+                {
+                    if (nameById.TryGetValue(id, out var name))
+                    {
+                        names.Add(name);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            _tagCacheLock.ExitReadLock();
+        }
+
+        return names;
+    }
+
+    private async Task LoadTagCacheAsync(SqliteConnection connection, string projectPath, CancellationToken ct)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+
+        _tagCacheLock.EnterUpgradeableReadLock();
+        try
+        {
+            if (_tagNameCache.ContainsKey(normalizedPath)) return;
+
+            _tagCacheLock.EnterWriteLock();
+            try
+            {
+                if (_tagNameCache.ContainsKey(normalizedPath)) return;
+
+                var nameById = new Dictionary<long, string>();
+                var idByName = new Dictionary<string, long>(StringComparer.Ordinal);
+
+                const string sql = "SELECT id, name FROM tags WHERE project_path = @projectPath";
+                await using var cmd = new SqliteCommand(sql, connection);
+                cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    var id = reader.GetInt64(0);
+                    var name = reader.GetString(1);
+                    nameById[id] = name;
+                    idByName[name] = id;
+                }
+
+                _tagNameCache[normalizedPath] = nameById;
+                _tagIdCache[normalizedPath] = idByName;
+            }
+            finally
+            {
+                _tagCacheLock.ExitWriteLock();
+            }
+        }
+        finally
+        {
+            _tagCacheLock.ExitUpgradeableReadLock();
+        }
+    }
+
+    private void InvalidateTagCache(string projectPath)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        _tagCacheLock.EnterWriteLock();
+        try
+        {
+            _tagNameCache.Remove(normalizedPath);
+            _tagIdCache.Remove(normalizedPath);
+        }
+        finally
+        {
+            _tagCacheLock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// 在指定连接上把 tag name 解析成 id；createIfMissing=true 时自动创建。
+    /// </summary>
+    private async Task<long?> GetTagIdAsync(SqliteConnection connection, string projectPath, string name, bool createIfMissing, CancellationToken ct)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        await LoadTagCacheAsync(connection, normalizedPath, ct);
+
+        _tagCacheLock.EnterReadLock();
+        try
+        {
+            if (_tagIdCache.TryGetValue(normalizedPath, out var idByName)
+                && idByName.TryGetValue(name, out var cachedId))
+            {
+                return cachedId;
+            }
+        }
+        finally
+        {
+            _tagCacheLock.ExitReadLock();
+        }
+
+        if (!createIfMissing) return null;
+
+        // 缓存未命中且允许创建：INSERT OR IGNORE 后重新加载缓存。
+        const string insertSql = @"
+            INSERT OR IGNORE INTO tags (project_path, name, updated_at)
+            VALUES (@projectPath, @name, @updatedAt);
+            SELECT id FROM tags WHERE project_path = @projectPath AND name = @name;";
+        await using var cmd = new SqliteCommand(insertSql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+        cmd.Parameters.AddWithValue("@name", name);
+        cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
+
+        var result = await cmd.ExecuteScalarAsync(ct);
+        if (result is null or DBNull) return null;
+
+        var tagId = Convert.ToInt64(result);
+
+        _tagCacheLock.EnterWriteLock();
+        try
+        {
+            if (_tagNameCache.TryGetValue(normalizedPath, out var nameById))
+                nameById[tagId] = name;
+            if (_tagIdCache.TryGetValue(normalizedPath, out var idByName))
+                idByName[name] = tagId;
+        }
+        finally
+        {
+            _tagCacheLock.ExitWriteLock();
+        }
+
+        return tagId;
+    }
+
+    public async Task<IReadOnlyList<Tag>> GetTagsAsync(string projectPath, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var results = new List<Tag>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        await LoadTagCacheAsync(connection, normalizedPath, ct);
+
+        _tagCacheLock.EnterReadLock();
+        try
+        {
+            if (_tagNameCache.TryGetValue(normalizedPath, out var nameById))
+            {
+                foreach (var kv in nameById)
+                {
+                    results.Add(new Tag { Id = kv.Key, ProjectPath = normalizedPath, Name = kv.Value });
+                }
+            }
+        }
+        finally
+        {
+            _tagCacheLock.ExitReadLock();
+        }
+
+        return results;
+    }
+
+    public async Task<Tag> EnsureTagAsync(string projectPath, string name, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var tagId = await GetTagIdAsync(connection, normalizedPath, name, createIfMissing: true, ct);
+        if (tagId == null) throw new InvalidOperationException($"无法创建或获取标签: {name}");
+
+        return new Tag { Id = tagId.Value, ProjectPath = normalizedPath, Name = name };
+    }
+
+    public async Task RenameTagAsync(string projectPath, string oldName, string newName, CancellationToken ct = default)
+    {
+        if (oldName == newName) return;
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        using var tx = connection.BeginTransaction();
+
+        try
+        {
+            // 1. 确保目标标签存在，获取其 id。
+            var newTagId = await GetTagIdAsync(connection, normalizedPath, newName, createIfMissing: true, ct);
+            if (newTagId == null) throw new InvalidOperationException($"无法创建目标标签: {newName}");
+
+            // 2. 获取旧标签 id。
+            var oldTagId = await GetTagIdAsync(connection, normalizedPath, oldName, createIfMissing: false, ct);
+            if (oldTagId == null || oldTagId == newTagId) return;
+
+            // 3. 把所有旧 id 替换为新 id，同时避免重复 id（SQLite JSON 数组去重）。
+            const string updateSql = @"
+                UPDATE media_files
+                SET tags = (
+                    SELECT json_group_array(DISTINCT value)
+                    FROM (
+                        SELECT json_each.value
+                        FROM json_each(media_files.tags)
+                        WHERE json_each.value != @oldTagId
+                        UNION ALL
+                        SELECT @newTagId
+                    )
+                ),
+                updated_at = @updatedAt
+                WHERE project_path = @projectPath
+                  AND EXISTS (
+                      SELECT 1 FROM json_each(media_files.tags)
+                      WHERE json_each.value = @oldTagId
+                  )";
+            await using (var cmd = new SqliteCommand(updateSql, connection, tx))
+            {
+                cmd.Parameters.AddWithValue("@oldTagId", oldTagId.Value);
+                cmd.Parameters.AddWithValue("@newTagId", newTagId.Value);
+                cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
+                cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
+
+            // 4. 删除旧标签行。
+            const string deleteSql = "DELETE FROM tags WHERE project_path = @projectPath AND name = @oldName";
+            await using (var cmd = new SqliteCommand(deleteSql, connection, tx))
+            {
+                cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+                cmd.Parameters.AddWithValue("@oldName", oldName);
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
+
+            tx.Commit();
+        }
+        catch
+        {
+            tx.Rollback();
+            throw;
+        }
+        finally
+        {
+            InvalidateTagCache(normalizedPath);
+        }
+    }
+
+    public async Task RemoveTagAsync(string projectPath, string name, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        using var tx = connection.BeginTransaction();
+
+        try
+        {
+            var tagId = await GetTagIdAsync(connection, normalizedPath, name, createIfMissing: false, ct);
+            if (tagId == null) return;
+
+            // 1. 从所有文件的 tags 数组中移除该 id。
+            const string updateSql = @"
+                UPDATE media_files
+                SET tags = (
+                    SELECT json_group_array(value)
+                    FROM json_each(media_files.tags)
+                    WHERE value != @tagId
+                ),
+                updated_at = @updatedAt
+                WHERE project_path = @projectPath
+                  AND EXISTS (
+                      SELECT 1 FROM json_each(media_files.tags)
+                      WHERE value = @tagId
+                  )";
+            await using (var cmd = new SqliteCommand(updateSql, connection, tx))
+            {
+                cmd.Parameters.AddWithValue("@tagId", tagId.Value);
+                cmd.Parameters.AddWithValue("@updatedAt", SqliteDateTime.ToDb(DateTime.UtcNow));
+                cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
+
+            // 2. 删除标签行。
+            const string deleteSql = "DELETE FROM tags WHERE project_path = @projectPath AND name = @name";
+            await using (var cmd = new SqliteCommand(deleteSql, connection, tx))
+            {
+                cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+                cmd.Parameters.AddWithValue("@name", name);
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
+
+            tx.Commit();
+        }
+        catch
+        {
+            tx.Rollback();
+            throw;
+        }
+        finally
+        {
+            InvalidateTagCache(normalizedPath);
+        }
     }
 
     // === v0.8 软删除 / 恢复 / 永久删除 / 垃圾筒 / 释放本地空间 ===
@@ -764,6 +1267,7 @@ public class MediaRepository : IMediaRepository
         await connection.OpenAsync(ct);
 
         var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        await LoadTagCacheAsync(connection, normalizedPath, ct);
 
         // 按 deleted_at DESC 排序（最新删除在前）。
         // 这里不加 WHERE deleted_at IS NULL —— 垃圾筒列表就是要看已删除的。
@@ -840,6 +1344,13 @@ public class MediaRepository : IMediaRepository
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(ct);
 
+        // v0.11: 先取 project_path 加载 tag 缓存，ReadMediaFileRow 才能把 tags id 数组解析为 name。
+        var projectPath = await GetProjectPathAsync(connection, fileId, ct);
+        if (projectPath != null)
+        {
+            await LoadTagCacheAsync(connection, projectPath, ct);
+        }
+
         // 不加 deleted_at 过滤——垃圾筒撤销场景需要读到刚被改回 deleted_at 的行。
         var sql = @"
             SELECT
@@ -870,13 +1381,15 @@ public class MediaRepository : IMediaRepository
     /// <summary>
     /// SELECT 列序：16 基础列 + 5 AI 列（tags/score/tagged_at/tag_error/quality_tags）+ 1 删除列（deleted_at），共 22 列。
     /// SELECT 模板见 GetByDateAsync / GetByTagAsync / GetDeletedAsync 的 sql 字符串。
+    /// v0.11: tags 列存 id 数组，ReadMediaFileRow 通过 tag 缓存把 id 解析为 name。
     /// </summary>
-    private static MediaFile ReadMediaFileRow(SqliteDataReader reader)
+    private MediaFile ReadMediaFileRow(SqliteDataReader reader)
     {
+        var projectPath = reader.GetString(1);
         return new MediaFile
         {
             Id = reader.GetInt64(0),
-            ProjectPath = reader.GetString(1),
+            ProjectPath = projectPath,
             RelativePath = reader.GetString(2),
             FileName = reader.GetString(3),
             MediaType = (MediaType)reader.GetInt32(4),
@@ -891,7 +1404,7 @@ public class MediaRepository : IMediaRepository
             ScannedAt = reader.GetInt64(13),
             CreatedAt = SqliteDateTime.FromDb(reader.GetString(14)),
             UpdatedAt = SqliteDateTime.FromDb(reader.GetString(15)),
-            Tags = ParseTags(reader.IsDBNull(16) ? null : reader.GetString(16)),
+            Tags = ParseTagIds(reader.IsDBNull(16) ? null : reader.GetString(16), projectPath),
             Score = reader.IsDBNull(17) ? null : reader.GetInt32(17),
             TaggedAt = reader.IsDBNull(18) ? null : reader.GetInt64(18),
             TagError = reader.IsDBNull(19) ? null : reader.GetString(19),
@@ -900,7 +1413,7 @@ public class MediaRepository : IMediaRepository
         };
     }
 
-    /// <summary>JSON 数组字符串 → List&lt;string&gt;。空/损坏 → 空 list。</summary>
+    /// <summary>JSON 字符串数组 → List&lt;string&gt;。空/损坏 → 空 list。（quality_tags 仍用）</summary>
     private static List<string> ParseTags(string? json)
     {
         if (string.IsNullOrEmpty(json) || json == "[]") return new List<string>();
@@ -911,6 +1424,50 @@ public class MediaRepository : IMediaRepository
         catch (JsonException)
         {
             return new List<string>();
+        }
+    }
+
+    /// <summary>JSON id 数组 → 通过缓存解析为 name 列表。空/损坏 → 空 list。</summary>
+    private List<string> ParseTagIds(string? json, string projectPath)
+    {
+        var ids = ParseTagIdsRaw(json);
+        if (ids.Count == 0) return new List<string>();
+
+        var names = new List<string>(ids.Count);
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+
+        _tagCacheLock.EnterReadLock();
+        try
+        {
+            if (_tagNameCache.TryGetValue(normalizedPath, out var nameById))
+            {
+                foreach (var id in ids)
+                {
+                    if (nameById.TryGetValue(id, out var name))
+                    {
+                        names.Add(name);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            _tagCacheLock.ExitReadLock();
+        }
+
+        return names;
+    }
+
+    private static List<long> ParseTagIdsRaw(string? json)
+    {
+        if (string.IsNullOrEmpty(json) || json == "[]") return new List<long>();
+        try
+        {
+            return JsonSerializer.Deserialize<List<long>>(json) ?? new List<long>();
+        }
+        catch (JsonException)
+        {
+            return new List<long>();
         }
     }
 }

@@ -154,7 +154,8 @@
                             <DataTemplate x:DataType="models:TagGroupItem">
                                 <Button Classes="tag-node"
                                         Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).SelectTagCommand}"
-                                        CommandParameter="{Binding}">
+                                        CommandParameter="{Binding}"
+                                        PointerPressed="TagNode_PointerPressed">
                                     <Grid>
                                         <!-- v0.11: 选中态文字变色 / 加粗（spec §15.4） -->
                                         <TextBlock Text="{Binding Tag, Converter={StaticResource EmptyTagToUntitled}}"

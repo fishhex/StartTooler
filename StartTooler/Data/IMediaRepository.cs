@@ -49,11 +49,33 @@ public interface IMediaRepository
 
     /// <summary>
     /// 按标签筛选文件 + 按 SortMode 排序。
-    /// 用 LIKE '%"标签"%' 匹配 JSON 数组里的标签项（假设标签名不含双引号）。
-    /// v0.6.1 加 SortMode 参数：切「评分↓」时 tag 视图也按评分排序。
+    /// v0.11: 先通过 tag 表把 name 解析成 id，再匹配 media_files.tags 中的 id 数组。
     /// v0.8 加 deleted_at IS NULL 过滤：已移入垃圾筒的文件不出现在 Gallery。
     /// </summary>
     Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath, string tag, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default);
+
+    // === v0.11 标签字典管理（方案 B：media_files.tags 存 tag id 数组）===
+
+    /// <summary>
+    /// 获取项目下所有标签（id + name）。左侧标签面板右键菜单等场景用。
+    /// </summary>
+    Task<IReadOnlyList<Tag>> GetTagsAsync(string projectPath, CancellationToken ct = default);
+
+    /// <summary>
+    /// 根据名称获取或创建标签。写 tags 列前统一走这里，保证 name 与 id 映射存在。
+    /// </summary>
+    Task<Tag> EnsureTagAsync(string projectPath, string name, CancellationToken ct = default);
+
+    /// <summary>
+    /// 重命名标签：把所有文件中该 name 的 tag id 替换为目标 name 的 tag id（目标不存在则创建）。
+    /// 若目标 name 已存在则等价于合并两个标签。
+    /// </summary>
+    Task RenameTagAsync(string projectPath, string oldName, string newName, CancellationToken ct = default);
+
+    /// <summary>
+    /// 删除标签：从 tags 表中移除该标签，并把所有 media_files.tags 中对应的 tag id 移除。
+    /// </summary>
+    Task RemoveTagAsync(string projectPath, string name, CancellationToken ct = default);
 
     // === v0.8 删除与垃圾筒方法（spec doc/14-delete-and-trash.md §2.3） ===
 
