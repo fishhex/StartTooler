@@ -34,10 +34,8 @@
                                 <TextBlock Text="局域网上传"
                                            FontSize="16"
                                            FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Text.Primary}"/>
-                                <TextBlock Text="LAN Transfer · 同一网络下点对点直传"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource Text.Secondary}"/>
+                                           Foreground="{DynamicResource Text.Primary}"
+                                           VerticalAlignment="Center"/>
                             </StackPanel>
                             <Border Grid.Column="2" Classes="status-badge">
                                 <Ellipse Width="6" Height="6"
