@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Markup.Xaml;
 
 namespace StartTooler.Components;
 
@@ -19,15 +20,22 @@ public partial class LoadingOverlay : UserControl
     public string LoadingMessage
     {
         get => GetValue(LoadingMessageProperty);
-        set
-        {
-            SetValue(LoadingMessageProperty, value);
-            if (MessageText != null) MessageText.Text = value;
-        }
+        set => SetValue(LoadingMessageProperty, value);
     }
 
     public LoadingOverlay()
     {
-        InitializeComponent();
+        AvaloniaXamlLoader.Load(this);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == LoadingMessageProperty)
+        {
+            var messageText = this.Get<TextBlock>("MessageText");
+            if (messageText != null)
+                messageText.Text = change.GetNewValue<string>();
+        }
     }
 }
