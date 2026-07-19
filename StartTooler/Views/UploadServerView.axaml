@@ -40,15 +40,9 @@
                                            Foreground="{DynamicResource Text.Secondary}"/>
                             </StackPanel>
                             <Border Grid.Column="2" Classes="status-badge">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <Ellipse Width="6" Height="6"
-                                             VerticalAlignment="Center"
-                                             Fill="{DynamicResource State.Success}"/>
-                                    <TextBlock Text="{Binding LanStatusText}"
-                                               FontSize="11"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource State.Success}"/>
-                                </StackPanel>
+                                <Ellipse Width="6" Height="6"
+                                         VerticalAlignment="Center"
+                                         Fill="{DynamicResource State.Success}"/>
                             </Border>
                         </Grid>
 
@@ -203,15 +197,9 @@
                                            Foreground="{DynamicResource Text.Secondary}"/>
                             </StackPanel>
                             <Border Grid.Column="1" Classes="status-badge">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <Ellipse Width="6" Height="6"
-                                             VerticalAlignment="Center"
-                                             Fill="{DynamicResource Accent.Stellar}"/>
-                                    <TextBlock Text="{Binding QrStatusText}"
-                                               FontSize="11"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource Accent.Stellar}"/>
-                                </StackPanel>
+                                <Ellipse Width="6" Height="6"
+                                         VerticalAlignment="Center"
+                                         Fill="{DynamicResource Accent.Stellar}"/>
                             </Border>
                         </Grid>
 
