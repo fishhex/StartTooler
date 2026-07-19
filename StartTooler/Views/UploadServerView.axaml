@@ -19,8 +19,8 @@
                         Padding="24"
                         Margin="0,0,12,0">
                     <StackPanel Spacing="16">
-                        <!-- 头部：图标 + 标题 + 副标题 + Running 徽章 -->
-                        <Grid ColumnDefinitions="Auto,*,Auto">
+                        <!-- 头部：图标 + 标题 -->
+                        <Grid ColumnDefinitions="Auto,*">
                             <Border Grid.Column="0"
                                     Width="32" Height="32"
                                     CornerRadius="{DynamicResource Radius.Medium}"
@@ -37,11 +37,6 @@
                                            Foreground="{DynamicResource Text.Primary}"
                                            VerticalAlignment="Center"/>
                             </StackPanel>
-                            <Border Grid.Column="2" Classes="status-badge">
-                                <Ellipse Width="6" Height="6"
-                                         VerticalAlignment="Center"
-                                         Fill="{DynamicResource State.Success}"/>
-                            </Border>
                         </Grid>
 
                         <TextBlock Text="在同一网络下打开链接，上传图片或视频。文件会自动按日期归档到当前项目目录。"
@@ -183,23 +178,16 @@
                         Padding="24"
                         Margin="12,0,0,0">
                     <StackPanel Spacing="16">
-                        <!-- 头部：标题 + 副标题 + Live QR 徽章 -->
-                        <Grid ColumnDefinitions="*,Auto">
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="扫码上传"
-                                           FontSize="16"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Text.Primary}"/>
-                                <TextBlock Text="QR · 扫码即可访问上传页"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource Text.Secondary}"/>
-                            </StackPanel>
-                            <Border Grid.Column="1" Classes="status-badge">
-                                <Ellipse Width="6" Height="6"
-                                         VerticalAlignment="Center"
-                                         Fill="{DynamicResource Accent.Stellar}"/>
-                            </Border>
-                        </Grid>
+                        <!-- 头部：标题 + 副标题 -->
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="扫码上传"
+                                       FontSize="16"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text.Primary}"/>
+                            <TextBlock Text="QR · 扫码即可访问上传页"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Text.Secondary}"/>
+                        </StackPanel>
 
                         <!-- 公网中转小标记（保留 v0.10 行为） -->
                         <Border Background="{DynamicResource Accent.Stellar}"

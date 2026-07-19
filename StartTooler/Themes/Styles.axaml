@@ -553,15 +553,6 @@
          v0.11 spec/17: UploadServerView 双卡片新增样式
          ============================================================ -->
 
-    <!-- 状态徽章容器（胶囊）：用 Border 叠 Ellipse + TextBlock，
-         颜色由使用方指定 Foreground/Fill 实现「同色文字+圆点」语义 -->
-    <Style Selector="Border.status-badge">
-        <Setter Property="Background" Value="{DynamicResource Bg.SurfaceElevated}"/>
-        <Setter Property="CornerRadius" Value="{DynamicResource Radius.Pill}"/>
-        <Setter Property="Padding" Value="8,3"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-    </Style>
-
     <!-- 危险描边按钮：停止服务等场景。前景 State.Danger，
          hover 用 State.Danger 颜色 + Opacity 0.12 叠加，禁止硬编码色值 -->
     <Style Selector="Button.danger-button">
