@@ -42,7 +42,7 @@ public class TagDiffEntry
 /// Apply 时：
 ///   1. 乐观更新每张 file.Tags = ComputeNewTags(file.Tags)
 ///   2. 批量写库（每张调 UpdateTagsOnlyAsync）
-///   3. 失败时整批 toast + Reload 当前视图（spec §5.5 简单回滚方案）
+///   3. 任一文件失败时，把已经成功写库的文件回滚到原 tags，保持整批一致
 /// </summary>
 public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditorHost
 {
@@ -73,8 +73,11 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     [ObservableProperty]
     private bool _isApplying;
 
-    /// <summary>true = 用户成功 Apply（可由调用方读此值决定是否 Reload）。</summary>
+    /// <summary>true = 全部成功 Apply（可由调用方读此值决定是否 Reload）。</summary>
     public bool Applied { get; private set; }
+
+    /// <summary>全部成功后请求关闭弹窗。</summary>
+    public event EventHandler? RequestClose;
 
     public EditTagsBatchDialogViewModel(
         IReadOnlyList<MediaFile> files,
@@ -88,6 +91,10 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
         AddTagCommand = new RelayCommand(AddTag);
         RemoveTagCommand = new RelayCommand<string>(RemoveTag);
 
+        // CanApply 依赖 Tags.Count，订阅集合变化自动刷新 ApplyCommand 的 CanExecute。
+        // 防止 AddTagFromInputRaw / RemoveTag 任何分支漏通知。
+        Tags.CollectionChanged += (_, _) => ApplyCommand.NotifyCanExecuteChanged();
+
         Trace.WriteLine($"[EditTagsBatch] ctor: fileCount={_files.Count}, scope={_scope}");
 
         // 初始 preview（空 chip = 无 diff）
@@ -99,6 +106,11 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     {
         Trace.WriteLine($"[EditTagsBatch] scope changed → {value}");
         RefreshDiffPreview();
+        OnPropertyChanged(nameof(CanApply));
+    }
+
+    partial void OnIsApplyingChanged(bool value)
+    {
         OnPropertyChanged(nameof(CanApply));
     }
 
@@ -200,51 +212,80 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     {
         if (Tags.Count == 0 || _files.Count == 0) return;
         IsApplying = true;
+
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var originalSnapshots = new Dictionary<long, List<string>>();
+        var succeededFiles = new List<MediaFile>();
+        Exception? firstFailure = null;
+        int fail = 0;
+
         try
         {
-            var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var originalSnapshots = new Dictionary<long, List<string>>();
-            int ok = 0, fail = 0;
-
-            // 1. 乐观更新 + 写库（spec §5.5 简单方案：失败时整批 toast + Reload，不做精细回滚）
+            // 1. 逐文件乐观更新 + 写库；失败时立即恢复该文件内存态
             foreach (var file in _files)
             {
                 var original = file.Tags?.ToList() ?? new List<string>();
                 originalSnapshots[file.Id] = original;
                 var newList = ComputeNewTags(original);
 
-                // 乐观更新内存
                 file.Tags = newList;
 
                 try
                 {
                     await _mediaRepo.UpdateTagsOnlyAsync(file.Id, newList, nowMs);
-                    ok++;
+                    succeededFiles.Add(file);
                 }
                 catch (Exception ex)
                 {
                     fail++;
+                    if (firstFailure == null) firstFailure = ex;
+                    // 失败文件立即恢复内存态
+                    file.Tags = original;
                     Trace.WriteLine($"[EditTagsBatch] Apply failed for fileId={file.Id}: {ex.GetType().Name}: {ex.Message}");
                 }
             }
 
-            // 2. 通知 GalleryVM 刷新左栏 TagGroups（多次 file 变化走 debouncer 内部聚合）
+            if (fail > 0)
+            {
+                // 2. 回滚已经成功写库的文件（内存 + DB）
+                int rollbackOk = 0, rollbackFail = 0;
+                foreach (var file in succeededFiles)
+                {
+                    if (!originalSnapshots.TryGetValue(file.Id, out var original))
+                        continue;
+
+                    try
+                    {
+                        file.Tags = original;
+                        await _mediaRepo.UpdateTagsOnlyAsync(file.Id, original, nowMs);
+                        rollbackOk++;
+                    }
+                    catch (Exception rbEx)
+                    {
+                        rollbackFail++;
+                        Trace.WriteLine($"[EditTagsBatch] Rollback failed for fileId={file.Id}: {rbEx.GetType().Name}: {rbEx.Message}");
+                    }
+                }
+
+                Applied = false;
+                var message = rollbackFail == 0
+                    ? $"批量保存失败：{firstFailure?.Message}（{fail} 个文件未保存，已回滚其余 {rollbackOk} 个文件）"
+                    : $"批量保存失败：{firstFailure?.Message}（{fail} 个文件未保存，回滚 {rollbackOk} 个，另有 {rollbackFail} 个回滚失败，请刷新视图）";
+                _galleryVm.ShowToastPublic(message);
+                Trace.WriteLine($"[EditTagsBatch] Apply aborted: fail={fail}, rollbackOk={rollbackOk}, rollbackFail={rollbackFail}");
+                return;
+            }
+
+            // 3. 全部成功：通知 GalleryVM 刷新左栏 TagGroups，关闭弹窗
+            Applied = true;
             foreach (var file in _files)
             {
                 _galleryVm.OnFileTagsChanged(file);
             }
 
-            Applied = true;
-            Trace.WriteLine($"[EditTagsBatch] Apply done: ok={ok}, fail={fail}, total={_files.Count}");
-
-            if (fail == 0)
-            {
-                _galleryVm.ShowToastPublic($"已更新 {_files.Count} 个文件的标签");
-            }
-            else
-            {
-                _galleryVm.ShowToastPublic($"批量保存部分失败：成功 {ok}，失败 {fail}，请刷新视图确认");
-            }
+            _galleryVm.ShowToastPublic($"已更新 {_files.Count} 个文件的标签");
+            Trace.WriteLine($"[EditTagsBatch] Apply done: total={_files.Count}");
+            RequestClose?.Invoke(this, EventArgs.Empty);
         }
         finally
         {

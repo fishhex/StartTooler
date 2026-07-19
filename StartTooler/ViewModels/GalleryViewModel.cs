@@ -120,6 +120,8 @@ public partial class GalleryViewModel : ObservableObject
     partial void OnIsUploadingChanged(bool value)
     {
         OnPropertyChanged(nameof(UploadProgressText));
+        OnPropertyChanged(nameof(IsBatchActionEnabled));
+        EditTagsBatchCommand.NotifyCanExecuteChanged();
         // v0.12: 通知钩子（spec doc/16-notify-progress.md §3.1）
         if (value)
         {
@@ -179,6 +181,7 @@ public partial class GalleryViewModel : ObservableObject
         // IsTagging 影响：进度文本、批量操作可用性、多选/全选/反选命令的可用性
         OnPropertyChanged(nameof(TagProgressText));
         OnPropertyChanged(nameof(IsBatchActionEnabled));
+        EditTagsBatchCommand.NotifyCanExecuteChanged();
         SelectAllCommand.NotifyCanExecuteChanged();
         InvertSelectionCommand.NotifyCanExecuteChanged();
         // v0.12: 通知钩子（spec doc/16-notify-progress.md §3.2）
@@ -495,8 +498,6 @@ public partial class GalleryViewModel : ObservableObject
         SelectedFiles.CollectionChanged += OnSelectedFilesChanged;
         _uploadJobRepo = uploadJobRepo;
         _aiTagger = aiTagger;
-        _onOssNotConfigured = onOssNotConfigured;
-        SelectedFiles.CollectionChanged += OnSelectedFilesChanged;
         CurrentMediaFiles.CollectionChanged += OnCurrentMediaFilesChanged;
         DateGroups.CollectionChanged += OnDateGroupsCollectionChanged;  // v0.11 spec/07
 
@@ -597,6 +598,7 @@ public partial class GalleryViewModel : ObservableObject
         }
         OnPropertyChanged(nameof(SelectedCount));
         OnPropertyChanged(nameof(IsBatchActionEnabled));
+        EditTagsBatchCommand.NotifyCanExecuteChanged();
     }
 
     public async Task InitializeAsync()
@@ -1627,6 +1629,8 @@ public partial class GalleryViewModel : ObservableObject
         {
             SelectedFiles.Clear();
         }
+        OnPropertyChanged(nameof(IsBatchActionEnabled));
+        EditTagsBatchCommand.NotifyCanExecuteChanged();
         SelectAllCommand.NotifyCanExecuteChanged();
         InvertSelectionCommand.NotifyCanExecuteChanged();
     }

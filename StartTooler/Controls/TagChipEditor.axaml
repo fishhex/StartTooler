@@ -74,8 +74,8 @@
             <Setter Property="MinHeight" Value="20" />
         </Style>
         <Style Selector="Button.EditingChipButton:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#E63946" />
-            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="Background" Value="{DynamicResource Chip.DeleteHover}" />
+            <Setter Property="Foreground" Value="{DynamicResource Chip.DeleteHoverFg}" />
         </Style>
     </UserControl.Styles>
 </UserControl>

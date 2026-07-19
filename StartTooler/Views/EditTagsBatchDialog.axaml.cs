@@ -23,6 +23,7 @@ public partial class EditTagsBatchDialog : Window
     {
         ViewModel = vm;
         DataContext = vm;
+        vm.RequestClose += (_, _) => Close();
     }
 
     private void OnCancelClick(object? sender, RoutedEventArgs e)

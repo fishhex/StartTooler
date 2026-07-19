@@ -83,9 +83,16 @@
     <!-- ============ v0.11: Chip 用色（spec §15.2） ============ -->
     <Color x:Key="Chip.DeleteHover">#E63946</Color>
     <Color x:Key="Chip.DeleteHoverLight">#66FF6666</Color>
+    <Color x:Key="Chip.DeleteHoverFg">#FFFFFF</Color>
     <Color x:Key="Chip.ActionBg">#33FFFFFF</Color>
     <Color x:Key="Chip.ActionBgHover">#66FFFFFF</Color>
     <Color x:Key="Chip.ActionDangerFg">#FFCC6666</Color>
+
+    <!-- 批量标签编辑 diff 预览用色 -->
+    <Color x:Key="Tag.DiffAddedBg">#CC1E5B3A</Color>
+    <Color x:Key="Tag.DiffAddedFg">#90EE90</Color>
+    <Color x:Key="Tag.DiffRemovedBg">#CC5B1E1E</Color>
+    <Color x:Key="Tag.DiffRemovedFg">#FF8888</Color>
 
     <!-- ============ v0.11: 选择边框（多选/键盘焦点/选中态） ============ -->
     <Color x:Key="Select.CheckBg">#AA000000</Color>
