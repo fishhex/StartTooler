@@ -43,7 +43,7 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     [NotifyCanExecuteChangedFor(nameof(StopServerCommand))]
     private bool _isRunning;
     [ObservableProperty] private string? _uploadUrl;
-    /// <summary>v0.11: 当前选中的本机地址索引，用于 URL 条左右切换。</summary>
+    /// <summary>v0.11: 当前选中的本机地址索引，左右箭头切换。</summary>
     [ObservableProperty] private int _addressIndex;
     /// <summary>v0.11: URL 条实际显示的 URL，可根据 AddressIndex 切换 host。</summary>
     public string DisplayUploadUrl => BuildDisplayUrl();
@@ -99,6 +99,7 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(DisplayUploadUrl));
             OnPropertyChanged(nameof(CanShiftAddress));
             if (AddressIndex >= LocalAddresses.Count) AddressIndex = 0;
+            RefreshQrForCurrentAddress();
         };
     }
 
@@ -118,11 +119,19 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     partial void OnStatusMessageChanged(string? value) => OnPropertyChanged(nameof(ShowSuccessStatus));
     partial void OnIsPortConflictChanged(bool value) => OnPropertyChanged(nameof(ShowSuccessStatus));
 
-    // v0.11: URL 显示随地址索引 / 端口 / 基础 URL / 公网模式变化而刷新
-    partial void OnAddressIndexChanged(int value) => OnPropertyChanged(nameof(DisplayUploadUrl));
-    partial void OnUploadUrlChanged(string? value) => OnPropertyChanged(nameof(DisplayUploadUrl));
+    // v0.11: URL 显示随地址索引 / 基础 URL / 端口 / 运行状态变化而刷新，并同步刷新二维码
+    partial void OnAddressIndexChanged(int value)
+    {
+        OnPropertyChanged(nameof(DisplayUploadUrl));
+        RefreshQrForCurrentAddress();
+    }
+    partial void OnUploadUrlChanged(string? value)
+    {
+        OnPropertyChanged(nameof(DisplayUploadUrl));
+        RefreshQrForCurrentAddress();
+    }
     partial void OnPortChanged(int value) => OnPropertyChanged(nameof(DisplayUploadUrl));
-    partial void OnIsPublicModeChanged(bool value) => OnPropertyChanged(nameof(DisplayUploadUrl));
+    partial void OnIsRunningChanged(bool value) => OnPropertyChanged(nameof(DisplayUploadUrl));
 
     [RelayCommand(CanExecute = nameof(CanStart))]
     private async Task StartServer()
@@ -191,11 +200,11 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
             foreach (var a in addrs) LocalAddresses.Add(a);
             Trace.WriteLine($"[UploadServerVM] LocalAddresses: {string.Join(",", LocalAddresses)}");
 
-            // 默认展示第一个地址，触发 DisplayUploadUrl 刷新
-            AddressIndex = 0;
-
             // 决定 QR 用哪个 URL：公网 relay 在跑就用公网，否则用局域网
             UpdateQrForMode();
+
+            // 默认展示第一个地址
+            AddressIndex = 0;
         }
         catch (Exception ex)
         {
@@ -310,8 +319,6 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     /// <summary>
     /// 复制 DisplayUploadUrl 到剪贴板，按钮短暂变 "已复制" 反馈。spec §3.2。
     /// 走 <see cref="ClipboardService"/>（启动时 App 把 MainWindow.Clipboard 绑进来）。
-    /// v0.11: 默认 CopyButtonText="已复制" 占位（XAML 端 IsNullOrEmpty 才显示 Icon.Copy）；
-    /// 点击后设 "已复制" 显示文字 → 1.5s 后清空回 Icon。
     /// </summary>
     [RelayCommand]
     private async Task CopyUrl()
@@ -354,6 +361,13 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
 
     [RelayCommand(CanExecute = nameof(CanShiftAddress))]
     private void NextAddress() => AddressIndex++;
+
+    /// <summary>用当前 DisplayUploadUrl 重新生成二维码。</summary>
+    private void RefreshQrForCurrentAddress()
+    {
+        var url = DisplayUploadUrl;
+        if (!string.IsNullOrEmpty(url)) GenerateQrCode(url);
+    }
 
     /// <summary>
     /// 复制单个 IP（多网卡列表里每行一个复制按钮）。CommandParameter 传 IP 字符串。

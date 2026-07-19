@@ -130,8 +130,10 @@
                                         <Button Grid.Column="0"
                                                 Content="复制"
                                                 Command="{Binding CopyUrlCommand}"
-                                                Classes="secondary-button"
+                                                Classes="toolbar-button"
                                                 Padding="12,6"
+                                                Background="Transparent"
+                                                BorderThickness="0"
                                                 Foreground="{DynamicResource Accent.Stellar}"/>
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding DisplayUploadUrl}"
