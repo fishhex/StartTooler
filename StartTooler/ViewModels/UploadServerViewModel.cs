@@ -98,10 +98,6 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(PreferredLocalAddress));
             OnPropertyChanged(nameof(DisplayUploadUrl));
             OnPropertyChanged(nameof(CanShiftAddress));
-            // v0.11: CanShiftAddress 是计算属性非 [ObservableProperty]，需手动通知
-            // [RelayCommand(CanExecute)] 的 CanExecuteChanged
-            PreviousAddressCommand.NotifyCanExecuteChanged();
-            NextAddressCommand.NotifyCanExecuteChanged();
             if (AddressIndex >= LocalAddresses.Count) AddressIndex = 0;
             RefreshQrForCurrentAddress();
         };
@@ -366,10 +362,10 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     /// <summary>多网卡地址超过 1 个时才允许左右切换。</summary>
     public bool CanShiftAddress => LocalAddresses.Count > 1;
 
-    [RelayCommand(CanExecute = nameof(CanShiftAddress))]
+    [RelayCommand]
     private void PreviousAddress() => AddressIndex--;
 
-    [RelayCommand(CanExecute = nameof(CanShiftAddress))]
+    [RelayCommand]
     private void NextAddress() => AddressIndex++;
 
     /// <summary>用当前 DisplayUploadUrl 重新生成二维码。</summary>
