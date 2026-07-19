@@ -191,10 +191,12 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
             StatusMessage = "服务已启动";
 
             // 拉取所有本机 IPv4（多网卡 / VPN / 虚拟机都可能给多个 IP；loopback 也包含便于本地调试）
+            // 127.0.0.1 排到最后，优先展示局域网 IP 给扫码用户
             var addrs = Dns.GetHostEntry(Dns.GetHostName())
                 .AddressList
                 .Where(ip => ip.AddressFamily == AddressFamily.InterNetwork)
                 .Select(ip => ip.ToString())
+                .OrderBy(ip => ip == "127.0.0.1" ? 1 : 0)
                 .ToList();
             LocalAddresses.Clear();
             foreach (var a in addrs) LocalAddresses.Add(a);
@@ -203,8 +205,9 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
             // 决定 QR 用哪个 URL：公网 relay 在跑就用公网，否则用局域网
             UpdateQrForMode();
 
-            // 默认展示第一个地址
+            // 默认展示第一个地址，并确保二维码与 URL 栏一致
             AddressIndex = 0;
+            RefreshQrForCurrentAddress();
         }
         catch (Exception ex)
         {
