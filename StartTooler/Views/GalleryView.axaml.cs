@@ -66,14 +66,14 @@ public partial class GalleryView : UserControl
     }
 
     /// <summary>
-    /// 构建 photo tile 右键菜单（5 项：AI 打标 / 编辑标签 / 删除 / 释放本地空间 / 下载到本地）。
+    /// 构建 photo tile 右键菜单。
     /// 直接挂 VM 实例的 ICommand 属性，跳过 binding 解析。
-    /// v0.12: 加「编辑标签」菜单项在 AI 打标下方（spec doc/15-manual-tag-edit.md §4）。
     /// </summary>
     private static MenuFlyout BuildPhotoContextMenu(MediaFile file, GalleryViewModel vm)
     {
         var menu = new MenuFlyout();
 
+        // ── 标签 ──
         menu.Items.Add(new MenuItem
         {
             Header = "AI 打标",
@@ -81,8 +81,6 @@ public partial class GalleryView : UserControl
             CommandParameter = file,
         });
 
-        // v0.12: 手动编辑标签（spec §4）— AI 打标下方紧邻。
-        // IsEnabled 同步 CanEditTagsSingle 状态（AI 打标中 / 软删除时灰显）。
         menu.Items.Add(new MenuItem
         {
             Header = "编辑标签",
@@ -91,29 +89,54 @@ public partial class GalleryView : UserControl
             IsEnabled = vm.CanEditTagsSingleForMenu(file),
         });
 
+        menu.Items.Add(new Separator());
+
+        // ── 选择 ──
         menu.Items.Add(new MenuItem
         {
-            Header = "删除",
-            Command = vm.DeleteSingleCommand,
+            Header = "选择",
+            Command = vm.SelectSingleCommand,
             CommandParameter = file,
         });
 
+        menu.Items.Add(new Separator());
+
+        // ── 云端同步 ──
+        // 上传到云端：仅本地存在 + 云端未上传
         menu.Items.Add(new MenuItem
         {
-            Header = "释放本地空间",
-            Command = vm.FreeUpSpaceCommand,
+            Header = "上传到云端",
+            Command = vm.UploadSingleCommand,
             CommandParameter = file,
-            // 仅云端已备份 + 本地存在的文件可见（spec §5.3）
-            IsVisible = file.IsUploaded && file.LocalExists,
+            IsVisible = file.LocalExists && !file.IsUploaded,
         });
 
+        // 下载到本地：仅云端已上传 + 本地不存在
         menu.Items.Add(new MenuItem
         {
             Header = "下载到本地",
             Command = vm.DownloadSingleCommand,
             CommandParameter = file,
-            // 仅云端已备份的文件可见；LocalExists 在命令内二次判断（spec §5.3）
-            IsVisible = file.IsUploaded,
+            IsVisible = file.IsUploaded && !file.LocalExists,
+        });
+
+        // 释放本地空间：仅云端已备份 + 本地存在
+        menu.Items.Add(new MenuItem
+        {
+            Header = "释放本地空间",
+            Command = vm.FreeUpSpaceCommand,
+            CommandParameter = file,
+            IsVisible = file.IsUploaded && file.LocalExists,
+        });
+
+        menu.Items.Add(new Separator());
+
+        // ── 删除 ──
+        menu.Items.Add(new MenuItem
+        {
+            Header = "删除",
+            Command = vm.DeleteSingleCommand,
+            CommandParameter = file,
         });
 
         return menu;

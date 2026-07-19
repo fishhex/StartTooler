@@ -1557,6 +1557,21 @@ public partial class GalleryViewModel : ObservableObject
         IsMultiSelectMode = false;
     }
 
+    /// <summary>右键菜单「选择」：进入多选并选中当前文件。</summary>
+    [RelayCommand]
+    private void SelectSingle(MediaFile? file)
+    {
+        if (file == null) return;
+        if (!IsMultiSelectMode)
+        {
+            IsMultiSelectMode = true;
+        }
+        if (!SelectedFiles.Contains(file))
+        {
+            SelectedFiles.Add(file);
+        }
+    }
+
     /// <summary>v0.11: 供 MainWindowViewModel 切页时调用（spec §10 边界：切页时退出多选）。</summary>
     public void ExitMultiSelectPublic() => ExitMultiSelectCommand.Execute(null);
 
