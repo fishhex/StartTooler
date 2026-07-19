@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -536,16 +537,24 @@ public partial class PublicRelayViewModel : ObservableObject, IDisposable
     ///   过渡态（Deploying/Starting/Stopping）→ 橙
     ///   Error → 红
     ///   Idle/Stopped → 灰
+    ///   颜色全部来自 Colors.axaml design tokens，禁止硬编码。
     /// </summary>
     public IBrush RelayStateColor => _relayService.State switch
     {
-        PublicRelayService.RelayState.Running => Brushes.LimeGreen,
-        PublicRelayService.RelayState.Deploying => Brushes.Orange,
-        PublicRelayService.RelayState.Starting => Brushes.Orange,
-        PublicRelayService.RelayState.Stopping => Brushes.Orange,
-        PublicRelayService.RelayState.Error => Brushes.Red,
-        _ => Brushes.Gray,
+        PublicRelayService.RelayState.Running => GetTokenBrush("State.Success"),
+        PublicRelayService.RelayState.Deploying => GetTokenBrush("State.Warning"),
+        PublicRelayService.RelayState.Starting => GetTokenBrush("State.Warning"),
+        PublicRelayService.RelayState.Stopping => GetTokenBrush("State.Warning"),
+        PublicRelayService.RelayState.Error => GetTokenBrush("State.Danger"),
+        _ => GetTokenBrush("State.Quiet"),
     };
+
+    private static IBrush GetTokenBrush(string key)
+    {
+        if (Application.Current?.Resources.TryGetResource(key, null, out var res) == true && res is Color color)
+            return new SolidColorBrush(color);
+        return Brushes.Gray;
+    }
 
     /// <summary>
     /// 拼出公网上传 URL（用于二维码显示）。
