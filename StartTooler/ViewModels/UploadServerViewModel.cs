@@ -98,6 +98,10 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(PreferredLocalAddress));
             OnPropertyChanged(nameof(DisplayUploadUrl));
             OnPropertyChanged(nameof(CanShiftAddress));
+            // v0.11: CanShiftAddress 是计算属性非 [ObservableProperty]，需手动通知
+            // [RelayCommand(CanExecute)] 的 CanExecuteChanged
+            PreviousAddressCommand.NotifyCanExecuteChanged();
+            NextAddressCommand.NotifyCanExecuteChanged();
             if (AddressIndex >= LocalAddresses.Count) AddressIndex = 0;
             RefreshQrForCurrentAddress();
         };
@@ -206,7 +210,10 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
             UpdateQrForMode();
 
             // 默认展示第一个地址，并确保二维码与 URL 栏一致
+            // AddressIndex 在 StopServer() 中已重置为 0，此处不会触发 OnAddressIndexChanged
+            // 因此显式刷新 DisplayUploadUrl 绑定和二维码
             AddressIndex = 0;
+            OnPropertyChanged(nameof(DisplayUploadUrl));
             RefreshQrForCurrentAddress();
         }
         catch (Exception ex)
