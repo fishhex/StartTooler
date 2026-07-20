@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using StartTooler.Controls;
@@ -13,36 +14,16 @@ using StartTooler.Data;
 namespace StartTooler.ViewModels;
 
 /// <summary>
-/// 批量编辑标签 scope（spec doc/15-manual-tag-edit.md §5.3）。
-/// </summary>
-public enum EditTagScope
-{
-    /// <summary>替换为：用 editorTags 完全替换原 tags（原 tags 全删）</summary>
-    Replace,
-    /// <summary>追加：editorTags ∪ file.Tags 去重</summary>
-    Append,
-    /// <summary>删除：file.Tags - editorTags</summary>
-    Remove,
-}
-
-/// <summary>
-/// 单文件的 diff 预览条目（spec doc/15-manual-tag-edit.md §5.4）。
-/// </summary>
-public class TagDiffEntry
-{
-    public string FileName { get; set; } = "";
-    public IReadOnlyList<string> Added { get; set; } = Array.Empty<string>();
-    public IReadOnlyList<string> Removed { get; set; } = Array.Empty<string>();
-    public bool HasDiff => Added.Count > 0 || Removed.Count > 0;
-}
-
-/// <summary>
-/// 批量编辑标签模态弹窗 VM（spec doc/15-manual-tag-edit.md §5 / §6.3）。
-/// 接收 N 张文件 + scope，编辑器里维护 chip 列表，预览区实时算每张文件的 diff。
-/// Apply 时：
-///   1. 乐观更新每张 file.Tags = ComputeNewTags(file.Tags)
-///   2. 批量写库（每张调 UpdateTagsOnlyAsync）
-///   3. 任一文件失败时，把已经成功写库的文件回滚到原 tags，保持整批一致
+/// 批量编辑标签模态弹窗 VM（v0.11 重写）。
+///
+/// 提供两个互不影响的操作：
+///   1. 清除所有标签 — 二次确认后将选中文件的所有标签清空
+///   2. 添加标签     — 把 chip 列表合并追加到选中文件已有标签中
+///
+/// 设计要点：
+///   - 移除原 EditTagScope 单选 + Diff 预览（认知负担大于收益）
+///   - 两个操作分别走独立的乐观更新 + 失败回滚路径
+///   - 操作期间 IsApplying=true，禁用其余入口
 /// </summary>
 public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditorHost
 {
@@ -53,13 +34,11 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     public int FileCount => _files.Count;
     public string Title => $"编辑标签 — 选中 {_files.Count} 个文件";
 
+    /// <summary>待追加的 tag chip 集合。</summary>
     public ObservableCollection<string> Tags { get; } = new();
 
     [ObservableProperty]
     private string _newTagInput = "";
-
-    [ObservableProperty]
-    private EditTagScope _scope = EditTagScope.Append;
 
     public int MaxTagLength => 20;
     public string Watermark => "输入标签后回车添加";
@@ -67,16 +46,16 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     public ICommand AddTagCommand { get; }
     public ICommand RemoveTagCommand { get; }
 
-    /// <summary>实时 diff 预览（每张文件一行）。</summary>
-    public ObservableCollection<TagDiffEntry> DiffPreview { get; } = new();
-
     [ObservableProperty]
     private bool _isApplying;
 
-    /// <summary>true = 全部成功 Apply（可由调用方读此值决定是否 Reload）。</summary>
+    [ObservableProperty]
+    private bool _isConfirmingClear;
+
+    /// <summary>true = 任一操作成功 Apply（调用方据此刷新）。</summary>
     public bool Applied { get; private set; }
 
-    /// <summary>全部成功后请求关闭弹窗。</summary>
+    /// <summary>操作成功后请求关闭弹窗。</summary>
     public event EventHandler? RequestClose;
 
     public EditTagsBatchDialogViewModel(
@@ -91,30 +70,37 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
         AddTagCommand = new RelayCommand(AddTag);
         RemoveTagCommand = new RelayCommand<string>(RemoveTag);
 
-        // CanApply 依赖 Tags.Count，订阅集合变化自动刷新 ApplyCommand 的 CanExecute。
-        // 防止 AddTagFromInputRaw / RemoveTag 任何分支漏通知。
-        Tags.CollectionChanged += (_, _) => ApplyCommand.NotifyCanExecuteChanged();
+        // chip 变化时刷新 ApplyAddTagsCommand 的可用性
+        Tags.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(CanApplyAddTags));
+            ApplyAddTagsCommand.NotifyCanExecuteChanged();
+        };
 
-        Trace.WriteLine($"[EditTagsBatch] ctor: fileCount={_files.Count}, scope={_scope}");
-
-        // 初始 preview（空 chip = 无 diff）
-        RefreshDiffPreview();
-    }
-
-    /// <summary>scope 变化时刷新 preview。</summary>
-    partial void OnScopeChanged(EditTagScope value)
-    {
-        Trace.WriteLine($"[EditTagsBatch] scope changed → {value}");
-        RefreshDiffPreview();
-        OnPropertyChanged(nameof(CanApply));
+        Trace.WriteLine($"[EditTagsBatch] ctor: fileCount={_files.Count}");
     }
 
     partial void OnIsApplyingChanged(bool value)
     {
-        OnPropertyChanged(nameof(CanApply));
+        OnPropertyChanged(nameof(CanApplyAddTags));
+        OnPropertyChanged(nameof(CanClearAllTags));
     }
 
-    partial void OnNewTagInputChanged(string value) { }
+    partial void OnIsConfirmingClearChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ClearButtonText));
+    }
+
+    /// <summary>清除按钮显示文案：确认中切换为「确认清除？」。</summary>
+    public string ClearButtonText => IsConfirmingClear ? "确认清除？" : "清除所有标签";
+
+    /// <summary>添加按钮可用条件：chip 非空 + 无正在执行。</summary>
+    public bool CanApplyAddTags => Tags.Count > 0 && !IsApplying && _files.Count > 0;
+
+    /// <summary>清除按钮可用条件：任意时候都可点（无前置条件，自身走二次确认防误触）。</summary>
+    public bool CanClearAllTags => !IsApplying && _files.Count > 0;
+
+    // --- 内部 TagChipEditor 事件 ---
 
     private void AddTag()
     {
@@ -128,11 +114,7 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     private void RemoveTag(string? tag)
     {
         if (string.IsNullOrEmpty(tag)) return;
-        if (Tags.Remove(tag))
-        {
-            RefreshDiffPreview();
-            OnPropertyChanged(nameof(CanApply));
-        }
+        Tags.Remove(tag);
     }
 
     private bool AddTagFromInputRaw(string? raw)
@@ -142,76 +124,44 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
         if (text.Length == 0 || text.Length > MaxTagLength) return false;
         if (Tags.Any(t => string.Equals(t, text, StringComparison.OrdinalIgnoreCase))) return false;
         Tags.Add(text);
-        RefreshDiffPreview();
-        OnPropertyChanged(nameof(CanApply));
         Trace.WriteLine($"[EditTagsBatch] AddTag: added='{text}', total={Tags.Count}");
         return true;
     }
 
-    /// <summary>根据 scope + Tags + 原 tags 算新 tags（spec §5.3）。</summary>
-    private List<string> ComputeNewTags(IReadOnlyList<string> original)
-    {
-        var editor = Tags.ToList();
-        switch (Scope)
-        {
-            case EditTagScope.Replace:
-                return editor.ToList();
-            case EditTagScope.Append:
-                return original.Concat(editor.Where(t => !original.Any(o => string.Equals(o, t, StringComparison.OrdinalIgnoreCase)))).ToList();
-            case EditTagScope.Remove:
-                return original.Where(o => !editor.Any(t => string.Equals(t, o, StringComparison.OrdinalIgnoreCase))).ToList();
-            default:
-                return original.ToList();
-        }
-    }
+    // --- 二次确认清除流程 ---
 
-    /// <summary>重新计算每张文件的 diff（spec §5.4）。</summary>
-    private void RefreshDiffPreview()
+    /// <summary>
+    /// 点击「清除所有标签」按钮：
+    ///   - 第一次点击：进入确认态，按钮文字切换为「确认清除？」；3 秒内未再次点击则自动回滚
+    ///   - 第二次点击（确认态）：执行 ClearAllTagsAsync
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanClearAllTags))]
+    private async Task ClearAllTagsAsync()
     {
-        DiffPreview.Clear();
-        if (Tags.Count == 0)
+        if (!IsConfirmingClear)
         {
+            IsConfirmingClear = true;
+
+            // 3 秒后自动撤销确认态
+            await Task.Delay(3000);
+            if (IsConfirmingClear)
+            {
+                IsConfirmingClear = false;
+            }
             return;
         }
 
-        var editor = Tags.ToList();
-        foreach (var file in _files)
-        {
-            var original = file.Tags ?? new List<string>();
-            var (added, removed) = Scope switch
-            {
-                EditTagScope.Replace => (
-                    editor.Except(original, StringComparer.OrdinalIgnoreCase).ToList(),
-                    original.Except(editor, StringComparer.OrdinalIgnoreCase).ToList()),
-                EditTagScope.Append => (
-                    editor.Except(original, StringComparer.OrdinalIgnoreCase).ToList(),
-                    new List<string>()),
-                EditTagScope.Remove => (
-                    new List<string>(),
-                    original.Intersect(editor, StringComparer.OrdinalIgnoreCase).ToList()),
-                _ => (new List<string>(), new List<string>()),
-            };
-
-            if (added.Count > 0 || removed.Count > 0)
-            {
-                DiffPreview.Add(new TagDiffEntry
-                {
-                    FileName = file.FileName,
-                    Added = added,
-                    Removed = removed,
-                });
-            }
-        }
+        IsConfirmingClear = false;
+        await DoClearAllTagsAsync();
     }
 
-    /// <summary>Apply 按钮 IsEnabled：editor 非空 + 没有正在 apply + 文件数 > 0。</summary>
-    public bool CanApply => Tags.Count > 0 && !IsApplying && _files.Count > 0;
+    // --- 操作 1：清除所有标签 ---
 
-    [RelayCommand(CanExecute = nameof(CanApply))]
-    private async Task ApplyAsync()
+    private async Task DoClearAllTagsAsync()
     {
-        if (Tags.Count == 0 || _files.Count == 0) return;
+        if (_files.Count == 0) return;
         IsApplying = true;
+        Applied = false;
 
         var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var originalSnapshots = new Dictionary<long, List<string>>();
@@ -221,39 +171,32 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
 
         try
         {
-            // 1. 逐文件乐观更新 + 写库；失败时立即恢复该文件内存态
             foreach (var file in _files)
             {
                 var original = file.Tags?.ToList() ?? new List<string>();
                 originalSnapshots[file.Id] = original;
-                var newList = ComputeNewTags(original);
-
-                file.Tags = newList;
+                file.Tags = new List<string>();
 
                 try
                 {
-                    await _mediaRepo.UpdateTagsOnlyAsync(file.Id, newList, nowMs);
+                    await _mediaRepo.UpdateTagsOnlyAsync(file.Id, new List<string>(), nowMs);
                     succeededFiles.Add(file);
                 }
                 catch (Exception ex)
                 {
                     fail++;
                     if (firstFailure == null) firstFailure = ex;
-                    // 失败文件立即恢复内存态
                     file.Tags = original;
-                    Trace.WriteLine($"[EditTagsBatch] Apply failed for fileId={file.Id}: {ex.GetType().Name}: {ex.Message}");
+                    Trace.WriteLine($"[EditTagsBatch] ClearAll failed for fileId={file.Id}: {ex.GetType().Name}: {ex.Message}");
                 }
             }
 
             if (fail > 0)
             {
-                // 2. 回滚已经成功写库的文件（内存 + DB）
                 int rollbackOk = 0, rollbackFail = 0;
                 foreach (var file in succeededFiles)
                 {
-                    if (!originalSnapshots.TryGetValue(file.Id, out var original))
-                        continue;
-
+                    if (!originalSnapshots.TryGetValue(file.Id, out var original)) continue;
                     try
                     {
                         file.Tags = original;
@@ -263,28 +206,120 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
                     catch (Exception rbEx)
                     {
                         rollbackFail++;
-                        Trace.WriteLine($"[EditTagsBatch] Rollback failed for fileId={file.Id}: {rbEx.GetType().Name}: {rbEx.Message}");
+                        Trace.WriteLine($"[EditTagsBatch] ClearAll rollback failed for fileId={file.Id}: {rbEx.GetType().Name}: {rbEx.Message}");
                     }
                 }
 
-                Applied = false;
                 var message = rollbackFail == 0
-                    ? $"批量保存失败：{firstFailure?.Message}（{fail} 个文件未保存，已回滚其余 {rollbackOk} 个文件）"
-                    : $"批量保存失败：{firstFailure?.Message}（{fail} 个文件未保存，回滚 {rollbackOk} 个，另有 {rollbackFail} 个回滚失败，请刷新视图）";
+                    ? $"批量清除失败：{firstFailure?.Message}（{fail} 个文件未清除，已回滚 {rollbackOk} 个文件）"
+                    : $"批量清除失败：{firstFailure?.Message}（{fail} 个文件未清除，回滚 {rollbackOk} 个，另有 {rollbackFail} 个回滚失败，请刷新视图）";
                 _galleryVm.ShowToastPublic(message);
-                Trace.WriteLine($"[EditTagsBatch] Apply aborted: fail={fail}, rollbackOk={rollbackOk}, rollbackFail={rollbackFail}");
                 return;
             }
 
-            // 3. 全部成功：通知 GalleryVM 刷新左栏 TagGroups，关闭弹窗
             Applied = true;
             foreach (var file in _files)
             {
                 _galleryVm.OnFileTagsChanged(file);
             }
 
-            _galleryVm.ShowToastPublic($"已更新 {_files.Count} 个文件的标签");
-            Trace.WriteLine($"[EditTagsBatch] Apply done: total={_files.Count}");
+            _galleryVm.ShowToastPublic($"已清除 {_files.Count} 个文件的所有标签");
+            Trace.WriteLine($"[EditTagsBatch] ClearAll done: total={_files.Count}");
+            RequestClose?.Invoke(this, EventArgs.Empty);
+        }
+        finally
+        {
+            IsApplying = false;
+        }
+    }
+
+    // --- 操作 2：添加标签 ---
+
+    [RelayCommand(CanExecute = nameof(CanApplyAddTags))]
+    private async Task ApplyAddTagsAsync()
+    {
+        if (Tags.Count == 0 || _files.Count == 0) return;
+        IsApplying = true;
+        Applied = false;
+
+        var editor = Tags.ToList();
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var originalSnapshots = new Dictionary<long, List<string>>();
+        var succeededFiles = new List<MediaFile>();
+        Exception? firstFailure = null;
+        int fail = 0;
+
+        try
+        {
+            foreach (var file in _files)
+            {
+                var original = file.Tags?.ToList() ?? new List<string>();
+                originalSnapshots[file.Id] = original;
+
+                // 追加 + 去重（大小写不敏感）
+                var merged = original
+                    .Concat(editor.Where(t => !original.Any(o => string.Equals(o, t, StringComparison.OrdinalIgnoreCase))))
+                    .ToList();
+
+                // 没有任何新增则跳过该文件
+                if (editor.All(t => original.Any(o => string.Equals(o, t, StringComparison.OrdinalIgnoreCase))))
+                {
+                    continue;
+                }
+
+                file.Tags = merged;
+
+                try
+                {
+                    await _mediaRepo.UpdateTagsOnlyAsync(file.Id, merged, nowMs);
+                    succeededFiles.Add(file);
+                }
+                catch (Exception ex)
+                {
+                    fail++;
+                    if (firstFailure == null) firstFailure = ex;
+                    file.Tags = original;
+                    Trace.WriteLine($"[EditTagsBatch] AddTags failed for fileId={file.Id}: {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+
+            if (fail > 0)
+            {
+                int rollbackOk = 0, rollbackFail = 0;
+                foreach (var file in succeededFiles)
+                {
+                    if (!originalSnapshots.TryGetValue(file.Id, out var original)) continue;
+                    try
+                    {
+                        file.Tags = original;
+                        await _mediaRepo.UpdateTagsOnlyAsync(file.Id, original, nowMs);
+                        rollbackOk++;
+                    }
+                    catch (Exception rbEx)
+                    {
+                        rollbackFail++;
+                        Trace.WriteLine($"[EditTagsBatch] AddTags rollback failed for fileId={file.Id}: {rbEx.GetType().Name}: {rbEx.Message}");
+                    }
+                }
+
+                var message = rollbackFail == 0
+                    ? $"批量添加标签失败：{firstFailure?.Message}（{fail} 个文件未保存，已回滚 {rollbackOk} 个文件）"
+                    : $"批量添加标签失败：{firstFailure?.Message}（{fail} 个文件未保存，回滚 {rollbackOk} 个，另有 {rollbackFail} 个回滚失败，请刷新视图）";
+                _galleryVm.ShowToastPublic(message);
+                return;
+            }
+
+            Applied = true;
+            foreach (var file in succeededFiles)
+            {
+                _galleryVm.OnFileTagsChanged(file);
+            }
+
+            _galleryVm.ShowToastPublic(
+                succeededFiles.Count == 0
+                    ? "所选文件已包含所有标签，无变化"
+                    : $"已为 {succeededFiles.Count} 个文件添加标签");
+            Trace.WriteLine($"[EditTagsBatch] AddTags done: applied={succeededFiles.Count}, total={_files.Count}");
             RequestClose?.Invoke(this, EventArgs.Empty);
         }
         finally

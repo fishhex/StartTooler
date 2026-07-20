@@ -3,9 +3,8 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:StartTooler.ViewModels"
-        xmlns:conv="using:StartTooler.Converters"
         xmlns:controls="using:StartTooler.Controls"
-        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="560"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="540"
         x:Class="StartTooler.Views.EditTagsBatchDialog"
         x:DataType="vm:EditTagsBatchDialogViewModel"
         Title="{Binding Title}"
@@ -13,112 +12,95 @@
         SystemDecorations="BorderOnly"
         CanResize="False"
         SizeToContent="WidthAndHeight"
-        MinWidth="480" MinHeight="480"
+        MinWidth="480" MinHeight="500"
         MaxHeight="640"
         Background="{DynamicResource Bg.Outer}">
 
     <!--
-      批量编辑标签模态弹窗（spec doc/15-manual-tag-edit.md §5.2）。
+      批量编辑标签模态弹窗（v0.11 重写）。
+
       布局：
-        - 顶部 scope 单选 (替换/追加/删除)
-        - 中部通用 TagChipEditor
-        - 下部 diff 预览区（每张文件 + / - 标签）
-        - 底部"应用到 N 个文件"按钮
+        - 顶部标题
+        - 操作区 1：清除所有标签（红色二次确认按钮）
+        - 操作区 2：添加标签（chip 编辑器 + 应用按钮）
+        - 底部：取消 + 全局说明文案
     -->
 
     <Border Padding="20" Background="{DynamicResource Bg.Surface}"
             BorderBrush="{DynamicResource Bg.Divider}" BorderThickness="1" CornerRadius="8">
-        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="16">
 
             <!-- 标题 -->
             <TextBlock Grid.Row="0" Text="{Binding Title}" FontSize="14" FontWeight="SemiBold"
-                       Foreground="{DynamicResource Text.Primary}" Margin="0,0,0,12" />
+                       Foreground="{DynamicResource Text.Primary}" />
 
-            <!-- scope 单选 -->
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="20" Margin="0,0,0,12">
-                <RadioButton Content="替换为" GroupName="Scope"
-                             IsChecked="{Binding Scope, Converter={x:Static conv:EditTagScopeConverter.ToReplace}, Mode=TwoWay}" />
-                <RadioButton Content="追加" GroupName="Scope"
-                             IsChecked="{Binding Scope, Converter={x:Static conv:EditTagScopeConverter.ToAppend}, Mode=TwoWay}" />
-                <RadioButton Content="删除" GroupName="Scope"
-                             IsChecked="{Binding Scope, Converter={x:Static conv:EditTagScopeConverter.ToRemove}, Mode=TwoWay}" />
-            </StackPanel>
-
-            <!-- 通用 tag chip 编辑器 -->
-            <controls:TagChipEditor Grid.Row="2" DataContext="{Binding}" />
-
-            <!-- 提示 -->
-            <TextBlock Grid.Row="3" Text="提示：AI 重新打标将覆盖手动修改"
-                       FontSize="11"
-                       Foreground="{DynamicResource Text.Tertiary}"
-                       Margin="0,4,0,12" />
-
-            <!-- diff 预览区 -->
-            <Border Grid.Row="4" Background="{DynamicResource Bg.SurfaceElevated}"
-                    BorderBrush="{DynamicResource Bg.Divider}" BorderThickness="1" CornerRadius="4"
-                    Padding="8" MinHeight="120">
-                <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="预览" FontSize="11" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource Text.Secondary}" Margin="0,0,0,4" />
-                        <TextBlock Text="（无 diff）" FontSize="11"
-                                   Foreground="{DynamicResource Text.Disabled}"
-                                   IsVisible="{Binding DiffPreview.Count, Converter={x:Static conv:ZeroToVisibleConverter.Instance}}" />
-                        <ItemsControl ItemsSource="{Binding DiffPreview}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:TagDiffEntry">
-                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2">
-                                        <TextBlock Text="{Binding FileName}" FontSize="11"
-                                                   Foreground="{DynamicResource Text.Primary}"
-                                                   TextTrimming="CharacterEllipsis" MaxWidth="160" />
-                                        <ItemsControl ItemsSource="{Binding Added}">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <WrapPanel Orientation="Horizontal" />
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border Background="{DynamicResource Tag.DiffAddedBg}" CornerRadius="3" Padding="4,1" Margin="2,0">
-                                                        <TextBlock FontSize="10" Foreground="{DynamicResource Tag.DiffAddedFg}">
-                                                            <Run Text="+" /><Run Text="{Binding}" />
-                                                        </TextBlock>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        <ItemsControl ItemsSource="{Binding Removed}">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <WrapPanel Orientation="Horizontal" />
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border Background="{DynamicResource Tag.DiffRemovedBg}" CornerRadius="3" Padding="4,1" Margin="2,0">
-                                                        <TextBlock FontSize="10" Foreground="{DynamicResource Tag.DiffRemovedFg}">
-                                                            <Run Text="-" /><Run Text="{Binding}" />
-                                                        </TextBlock>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+            <!-- ============ 操作区 1：清除所有标签 ============ -->
+            <Border Grid.Row="1"
+                    Background="{DynamicResource Bg.SurfaceElevated}"
+                    BorderBrush="{DynamicResource Bg.Divider}" BorderThickness="1"
+                    CornerRadius="6" Padding="14">
+                <Grid RowDefinitions="Auto,Auto" RowSpacing="10">
+                    <StackPanel Grid.Row="0" Spacing="4">
+                        <TextBlock Text="清除所有标签" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}" />
+                        <TextBlock FontSize="11" Foreground="{DynamicResource Text.Tertiary}"
+                                   TextWrapping="Wrap">
+                            <Run Text="将此" />
+                            <Run Text="{Binding FileCount, Mode=OneWay}" FontWeight="SemiBold" />
+                            <Run Text="个文件的所有标签一次性清空（不影响 AI 评分与质量标签）。" />
+                        </TextBlock>
                     </StackPanel>
-                </ScrollViewer>
+                    <Button Grid.Row="1"
+                            Classes="danger-button"
+                            HorizontalAlignment="Left"
+                            Padding="14,6"
+                            Command="{Binding ClearAllTagsCommand}"
+                            IsEnabled="{Binding CanClearAllTags}">
+                        <TextBlock Text="{Binding ClearButtonText}" FontWeight="SemiBold" />
+                    </Button>
+                </Grid>
             </Border>
 
-            <!-- 底部按钮 -->
-            <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="8"
-                        HorizontalAlignment="Right" Margin="0,12,0,0">
-                <Button Content="取消" Click="OnCancelClick"
+            <!-- ============ 操作区 2：添加标签 ============ -->
+            <Border Grid.Row="2"
+                    Background="{DynamicResource Bg.SurfaceElevated}"
+                    BorderBrush="{DynamicResource Bg.Divider}" BorderThickness="1"
+                    CornerRadius="6" Padding="14">
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="10">
+                    <StackPanel Grid.Row="0" Spacing="4">
+                        <TextBlock Text="添加标签" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}" />
+                        <TextBlock FontSize="11" Foreground="{DynamicResource Text.Tertiary}"
+                                   TextWrapping="Wrap">
+                            <Run Text="将下方 chip 追加到这" />
+                            <Run Text="{Binding FileCount, Mode=OneWay}" FontWeight="SemiBold" />
+                            <Run Text="个文件中（保留已有标签，去重合并）。" />
+                        </TextBlock>
+                    </StackPanel>
+
+                    <!-- 通用 tag chip 编辑器 -->
+                    <controls:TagChipEditor Grid.Row="1" DataContext="{Binding}" />
+
+                    <!-- AI 打标提示 -->
+                    <TextBlock Grid.Row="2" Text="提示：AI 重新打标将覆盖手动修改"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text.Tertiary}" />
+                </Grid>
+            </Border>
+
+            <!-- 占位行（填充中间弹性空间） -->
+            <Border Grid.Row="3" />
+
+            <!-- 底部按钮（应用 + 取消） -->
+            <Grid Grid.Row="4" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <!-- 占位以保证右侧对齐 -->
+                <Border Grid.Column="0" />
+                <Button Grid.Column="1" Content="取消" Click="OnCancelClick"
                         Classes="secondary-button" Padding="14,8" />
-                <Button Classes="primary-button"
-                        Command="{Binding ApplyCommand}"
-                        IsEnabled="{Binding CanApply}"
+                <Button Grid.Column="2"
+                        Classes="primary-button"
+                        Command="{Binding ApplyAddTagsCommand}"
+                        IsEnabled="{Binding CanApplyAddTags}"
                         Padding="14,8">
                     <TextBlock>
                         <Run Text="应用到" />
@@ -126,7 +108,7 @@
                         <Run Text="个文件" />
                     </TextBlock>
                 </Button>
-            </StackPanel>
+            </Grid>
         </Grid>
     </Border>
 </Window>
