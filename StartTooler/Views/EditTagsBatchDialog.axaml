@@ -4,7 +4,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:StartTooler.ViewModels"
         xmlns:controls="using:StartTooler.Controls"
-        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="540"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="720"
         x:Class="StartTooler.Views.EditTagsBatchDialog"
         x:DataType="vm:EditTagsBatchDialogViewModel"
         Title="{Binding Title}"
@@ -12,27 +12,51 @@
         SystemDecorations="BorderOnly"
         CanResize="False"
         SizeToContent="WidthAndHeight"
-        MinWidth="480" MinHeight="500"
-        MaxHeight="640"
+        MinWidth="480" MinHeight="600"
+        MaxHeight="800"
         Background="{DynamicResource Bg.Outer}">
 
     <!--
       批量编辑标签模态弹窗（v0.11 重写）。
 
       布局：
-        - 顶部标题
-        - 操作区 1：清除所有标签（红色二次确认按钮）
-        - 操作区 2：添加标签（chip 编辑器 + 应用按钮）
-        - 底部：取消 + 全局说明文案
+        - 顶部标题 + 已有标签上下文
+        - 操作区 1：清除所有标签
+        - 操作区 2：添加标签（chip 编辑器 + 标签建议云 + 应用按钮）
+        - 操作区 3：删除标签（chip 编辑器 + 应用按钮）
+        - 进度条（IsApplying 时显示）
+        - 底部取消按钮
     -->
 
     <Border Padding="20" Background="{DynamicResource Bg.Surface}"
             BorderBrush="{DynamicResource Bg.Divider}" BorderThickness="1" CornerRadius="8">
-        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="16">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" RowSpacing="12">
 
-            <!-- 标题 -->
-            <TextBlock Grid.Row="0" Text="{Binding Title}" FontSize="14" FontWeight="SemiBold"
-                       Foreground="{DynamicResource Text.Primary}" />
+            <!-- ============ 标题 + 已有标签上下文 ============ -->
+            <StackPanel Grid.Row="0" Spacing="6">
+                <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text.Primary}" />
+
+                <!-- 已有标签上下文 -->
+                <Border Background="{DynamicResource Bg.SurfaceElevated}"
+                        CornerRadius="4" Padding="8,6"
+                        IsVisible="{Binding HasExistingTags}">
+                    <StackPanel Spacing="2">
+                        <TextBlock FontSize="11" Foreground="{DynamicResource Text.Tertiary}"
+                                   TextWrapping="Wrap">
+                            <Run Text="已选文件标签：" />
+                            <Run Text="{Binding ExistingTagsText}" FontWeight="SemiBold"
+                                 Foreground="{DynamicResource Text.Secondary}" />
+                        </TextBlock>
+                        <TextBlock FontSize="11" Foreground="{DynamicResource Text.Tertiary}"
+                                   TextWrapping="Wrap">
+                            <Run Text="共同标签：" />
+                            <Run Text="{Binding CommonTagsText}" FontWeight="SemiBold"
+                                 Foreground="{DynamicResource Accent.Stellar}" />
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
 
             <!-- ============ 操作区 1：清除所有标签 ============ -->
             <Border Grid.Row="1"
@@ -51,7 +75,6 @@
                         </TextBlock>
                     </StackPanel>
 
-                    <!-- 初始态：「清除所有标签」大按钮 -->
                     <Button Grid.Row="1"
                             IsVisible="{Binding ShouldShowClearInitialButton}"
                             Classes="danger-button"
@@ -62,7 +85,6 @@
                         <TextBlock Text="清除所有标签" FontWeight="SemiBold" />
                     </Button>
 
-                    <!-- 确认态：「确认清除」+「取消」两个按钮 -->
                     <StackPanel Grid.Row="1"
                                 Orientation="Horizontal" Spacing="8"
                                 IsVisible="{Binding ShouldShowClearConfirmRow}">
@@ -86,7 +108,7 @@
                     Background="{DynamicResource Bg.SurfaceElevated}"
                     BorderBrush="{DynamicResource Bg.Divider}" BorderThickness="1"
                     CornerRadius="6" Padding="14">
-                <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="10">
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
                     <StackPanel Grid.Row="0" Spacing="4">
                         <TextBlock Text="添加标签" FontSize="13" FontWeight="SemiBold"
                                    Foreground="{DynamicResource Text.Primary}" />
@@ -98,37 +120,138 @@
                         </TextBlock>
                     </StackPanel>
 
-                    <!-- 通用 tag chip 编辑器 -->
+                    <!-- chip 编辑器 -->
                     <controls:TagChipEditor Grid.Row="1" DataContext="{Binding}" />
 
-                    <!-- AI 打标提示 -->
-                    <TextBlock Grid.Row="2" Text="提示：AI 重新打标将覆盖手动修改"
-                               FontSize="11"
-                               Foreground="{DynamicResource Text.Tertiary}" />
+                    <!-- 输入提示 -->
+                    <TextBlock Grid.Row="2" Text="提示：按 Enter 添加标签，点击 chip 删除"
+                               FontSize="10" Foreground="{DynamicResource Text.Disabled}" />
+
+                    <!-- 标签建议云 -->
+                    <Border Grid.Row="3"
+                            IsVisible="{Binding HasSuggestedTags}"
+                            Background="{DynamicResource Bg.Surface}" CornerRadius="4" Padding="8,6">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="项目标签（点击快速添加）" FontSize="10"
+                                       Foreground="{DynamicResource Text.Tertiary}" />
+                            <ItemsControl ItemsSource="{Binding SuggestedTags}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Classes="suggestion-chip"
+                                                Command="{Binding $parent[Window].DataContext.AddSuggestedTagCommand}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip.Tip="点击添加">
+                                            <TextBlock Text="{Binding}" FontSize="11"
+                                                       Foreground="{DynamicResource Text.Secondary}" />
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
                 </Grid>
             </Border>
 
-            <!-- 占位行（填充中间弹性空间） -->
-            <Border Grid.Row="3" />
+            <!-- ============ 操作区 3：删除标签 ============ -->
+            <Border Grid.Row="3"
+                    Background="{DynamicResource Bg.SurfaceElevated}"
+                    BorderBrush="{DynamicResource Bg.Divider}" BorderThickness="1"
+                    CornerRadius="6" Padding="14">
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="10">
+                    <StackPanel Grid.Row="0" Spacing="4">
+                        <TextBlock Text="删除标签" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}" />
+                        <TextBlock FontSize="11" Foreground="{DynamicResource Text.Tertiary}"
+                                   TextWrapping="Wrap">
+                            <Run Text="从这" />
+                            <Run Text="{Binding FileCount, Mode=OneWay}" FontWeight="SemiBold" />
+                            <Run Text="个文件中移除指定标签。输入标签名后按 Enter 添加。" />
+                        </TextBlock>
+                    </StackPanel>
 
-            <!-- 底部按钮（应用 + 取消） -->
-            <Grid Grid.Row="4" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                <!-- 占位以保证右侧对齐 -->
-                <Border Grid.Column="0" />
-                <Button Grid.Column="1" Content="取消" Click="OnCancelClick"
-                        Classes="secondary-button" Padding="14,8" />
-                <Button Grid.Column="2"
-                        Classes="primary-button"
-                        Command="{Binding ApplyAddTagsCommand}"
-                        IsEnabled="{Binding CanApplyAddTags}"
-                        Padding="14,8">
-                    <TextBlock>
-                        <Run Text="应用到" />
-                        <Run Text="{Binding FileCount, Mode=OneWay}" />
-                        <Run Text="个文件" />
-                    </TextBlock>
-                </Button>
-            </Grid>
+                    <!-- chip 编辑器（绑定 RemoveHost） -->
+                    <controls:TagChipEditor Grid.Row="1" DataContext="{Binding RemoveHost}" />
+
+                    <!-- 提示 + 应用按钮 -->
+                    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                        <TextBlock Grid.Column="0" Text="提示：按 Enter 添加标签，点击 chip 删除"
+                                   FontSize="10" Foreground="{DynamicResource Text.Disabled}"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="2"
+                                Classes="danger-button"
+                                Padding="14,6"
+                                Command="{Binding ApplyRemoveTagsCommand}"
+                                IsEnabled="{Binding CanApplyRemoveTags}">
+                            <TextBlock>
+                                <Run Text="从" />
+                                <Run Text="{Binding RemoveAffectedCount}" FontWeight="SemiBold" />
+                                <Run Text="个文件删除" />
+                            </TextBlock>
+                        </Button>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- ============ 进度条 + 底部按钮 ============ -->
+            <StackPanel Grid.Row="4" Spacing="8" VerticalAlignment="Bottom">
+                <!-- 进度条 -->
+                <Border IsVisible="{Binding IsApplying}"
+                        Background="{DynamicResource Bg.SurfaceElevated}"
+                        CornerRadius="4" Padding="10,8">
+                    <Grid RowDefinitions="Auto,Auto" RowSpacing="6">
+                        <TextBlock Grid.Row="0" Text="{Binding ApplyProgressText}"
+                                   FontSize="11" Foreground="{DynamicResource Text.Secondary}" />
+                        <ProgressBar Grid.Row="1"
+                                     Minimum="0"
+                                     Maximum="{Binding ApplyProgressTotal}"
+                                     Value="{Binding ApplyProgressCurrent}"
+                                     Height="4"
+                                     Foreground="{DynamicResource Accent.Stellar}"
+                                     Background="{DynamicResource Bg.Divider}" />
+                    </Grid>
+                </Border>
+
+                <!-- 底部按钮 -->
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                    <!-- 添加标签「应用到 N 个文件」按钮 -->
+                    <Button Grid.Column="0"
+                            Classes="primary-button"
+                            Command="{Binding ApplyAddTagsCommand}"
+                            IsEnabled="{Binding CanApplyAddTags}"
+                            Padding="14,8">
+                        <TextBlock>
+                            <Run Text="应用到" />
+                            <Run Text="{Binding AddAffectedCount}" FontWeight="SemiBold" />
+                            <Run Text="个文件" />
+                        </TextBlock>
+                    </Button>
+                    <Border Grid.Column="1" />
+                    <Button Grid.Column="2" Content="取消" Click="OnCancelClick"
+                            Classes="secondary-button" Padding="14,8" />
+                </Grid>
+            </StackPanel>
         </Grid>
     </Border>
+
+    <!-- 建议标签 chip 样式 -->
+    <Window.Styles>
+        <Style Selector="Button.suggestion-chip">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Bg.Divider}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="Margin" Value="0,2,4,2" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.suggestion-chip:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Accent.Stellar.Subtle}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Accent.Stellar}" />
+        </Style>
+    </Window.Styles>
 </Window>

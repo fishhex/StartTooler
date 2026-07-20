@@ -16,35 +16,91 @@ namespace StartTooler.ViewModels;
 /// <summary>
 /// 批量编辑标签模态弹窗 VM（v0.11 重写）。
 ///
-/// 提供两个互不影响的操作：
-///   1. 清除所有标签 — 二次确认后将选中文件的所有标签清空
-///   2. 添加标签     — 把 chip 列表合并追加到选中文件已有标签中
+/// 三个操作：
+///   1. 清除所有标签 — 二次确认
+///   2. 添加标签     — chip 追加合并
+///   3. 删除标签     — 从选中文件移除指定标签
 ///
-/// 设计要点：
-///   - 移除原 EditTagScope 单选 + Diff 预览（认知负担大于收益）
-///   - 两个操作分别走独立的乐观更新 + 失败回滚路径
-///   - 操作期间 IsApplying=true，禁用其余入口
+/// 增强：
+///   - 顶部显示选中文件的已有标签上下文
+///   - 标签建议云（项目已有标签，点击快速添加）
+///   - 应用进度条
+///   - 输入提示
 /// </summary>
 public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditorHost
 {
     private readonly IReadOnlyList<MediaFile> _files;
     private readonly IMediaRepository _mediaRepo;
     private readonly GalleryViewModel _galleryVm;
+    private readonly string _projectPath;
 
     public int FileCount => _files.Count;
     public string Title => $"编辑标签 — 选中 {_files.Count} 个文件";
 
-    /// <summary>待追加的 tag chip 集合。</summary>
+    // ============ 已有标签上下文 ============
+
+    /// <summary>选中文件已有的全部标签（去重），用于顶部展示。</summary>
+    public string ExistingTagsText { get; }
+
+    /// <summary>选中文件的共同标签，用于顶部展示。</summary>
+    public string CommonTagsText { get; }
+
+    /// <summary>是否有已有标签可展示。</summary>
+    public bool HasExistingTags { get; }
+
+    // ============ 标签建议云 ============
+
+    /// <summary>项目已有标签，点击快速添加到 chip 列表。</summary>
+    public ObservableCollection<string> SuggestedTags { get; } = new();
+
+    /// <summary>是否有建议标签可展示。</summary>
+    public bool HasSuggestedTags => SuggestedTags.Count > 0;
+
+    // ============ 操作 2：添加标签 ============
+
     public ObservableCollection<string> Tags { get; } = new();
 
     [ObservableProperty]
     private string _newTagInput = "";
 
     public int MaxTagLength => 20;
-    public string Watermark => "输入标签后回车添加";
+    public string Watermark => "输入标签后按 Enter 添加";
     public bool ShowInputBox => true;
     public ICommand AddTagCommand { get; }
     public ICommand RemoveTagCommand { get; }
+
+    /// <summary>添加标签 — 将影响的文件数（排除已有该标签的文件）。</summary>
+    public int AddAffectedCount => ComputeAffectedCount(Tags, AddMode: true);
+
+    /// <summary>添加按钮可用条件：chip 非空 + 无正在执行。</summary>
+    public bool CanApplyAddTags => Tags.Count > 0 && !IsApplying && _files.Count > 0;
+
+    // ============ 操作 3：删除标签 ============
+
+    /// <summary>待删除的标签 chip 集合。</summary>
+    public ObservableCollection<string> RemoveTags { get; } = new();
+
+    [ObservableProperty]
+    private string _removeTagInput = "";
+
+    /// <summary>删除标签 — 将影响的文件数（至少包含一个待删标签的文件）。</summary>
+    public int RemoveAffectedCount => ComputeAffectedCount(RemoveTags, AddMode: false);
+
+    /// <summary>删除按钮可用条件：chip 非空 + 无正在执行。</summary>
+    public bool CanApplyRemoveTags => RemoveTags.Count > 0 && !IsApplying && _files.Count > 0;
+
+    // ============ 进度 ============
+
+    [ObservableProperty]
+    private int _applyProgressCurrent;
+
+    [ObservableProperty]
+    private int _applyProgressTotal;
+
+    [ObservableProperty]
+    private string _applyProgressText = "";
+
+    // ============ 状态 ============
 
     [ObservableProperty]
     private bool _isApplying;
@@ -52,14 +108,24 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     [ObservableProperty]
     private bool _isConfirmingClear;
 
-    /// <summary>用于取消自动撤销确认态的计时器，避免上一次的 await 干扰新点击。</summary>
     private CancellationTokenSource? _clearConfirmCts;
 
-    /// <summary>true = 任一操作成功 Apply（调用方据此刷新）。</summary>
     public bool Applied { get; private set; }
 
-    /// <summary>操作成功后请求关闭弹窗。</summary>
     public event EventHandler? RequestClose;
+
+    // ============ 清除确认态 UI 切换 ============
+
+    public bool ShouldShowClearInitialButton => !IsConfirmingClear;
+    public bool ShouldShowClearConfirmRow => IsConfirmingClear;
+    public bool CanClearAllTags => !IsApplying && _files.Count > 0;
+
+    // ============ 移除标签的 ITagEditorHost（内部委托） ============
+
+    /// <summary>内部移除标签宿主，供第二个 TagChipEditor 绑定。</summary>
+    public RemoveTagEditorHost RemoveHost { get; }
+
+    // ============ 构造 ============
 
     public EditTagsBatchDialogViewModel(
         IReadOnlyList<MediaFile> files,
@@ -69,23 +135,56 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
         _files = files ?? throw new ArgumentNullException(nameof(files));
         _mediaRepo = mediaRepo ?? throw new ArgumentNullException(nameof(mediaRepo));
         _galleryVm = galleryVm ?? throw new ArgumentNullException(nameof(galleryVm));
+        _projectPath = _files.FirstOrDefault()?.ProjectPath ?? "";
+
+        // 已有标签上下文
+        var allTags = _files
+            .SelectMany(f => f.Tags ?? Enumerable.Empty<string>())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t)
+            .ToList();
+        HasExistingTags = allTags.Count > 0;
+        ExistingTagsText = allTags.Count > 0 ? string.Join("、", allTags) : "（无）";
+
+        var common = _files
+            .Select(f => f.Tags as IEnumerable<string> ?? Enumerable.Empty<string>())
+            .Aggregate((a, b) => a.Intersect(b, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(t => t)
+            .ToList();
+        CommonTagsText = common.Count > 0 ? string.Join("、", common) : "（无）";
+
+        // 标签建议云（异步加载，不阻塞构造）
+        _ = LoadSuggestedTagsAsync();
+
+        SuggestedTags.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasSuggestedTags));
 
         AddTagCommand = new RelayCommand(AddTag);
         RemoveTagCommand = new RelayCommand<string>(RemoveTag);
 
-        // chip 变化时刷新 ApplyAddTagsCommand 的可用性
         Tags.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(CanApplyAddTags));
+            OnPropertyChanged(nameof(AddAffectedCount));
             ApplyAddTagsCommand.NotifyCanExecuteChanged();
         };
 
-        Trace.WriteLine($"[EditTagsBatch] ctor: fileCount={_files.Count}");
+        RemoveTags.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(CanApplyRemoveTags));
+            OnPropertyChanged(nameof(RemoveAffectedCount));
+            ApplyRemoveTagsCommand.NotifyCanExecuteChanged();
+        };
+
+        // 内部移除标签宿主
+        RemoveHost = new RemoveTagEditorHost(this);
+
+        Trace.WriteLine($"[EditTagsBatch] ctor: fileCount={_files.Count}, existingTags={allTags.Count}, commonTags={common.Count}");
     }
 
     partial void OnIsApplyingChanged(bool value)
     {
         OnPropertyChanged(nameof(CanApplyAddTags));
+        OnPropertyChanged(nameof(CanApplyRemoveTags));
         OnPropertyChanged(nameof(CanClearAllTags));
         RequestClearTagsCommand.NotifyCanExecuteChanged();
         ConfirmClearTagsCommand.NotifyCanExecuteChanged();
@@ -97,27 +196,55 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
         OnPropertyChanged(nameof(ShouldShowClearInitialButton));
     }
 
-    /// <summary>初始态显示「清除所有标签」大按钮。</summary>
-    public bool ShouldShowClearInitialButton => !IsConfirmingClear;
+    partial void OnApplyProgressCurrentChanged(int value) => UpdateProgressText();
+    partial void OnApplyProgressTotalChanged(int value) => UpdateProgressText();
 
-    /// <summary>确认态显示「确认清除」+「取消」两个按钮。</summary>
-    public bool ShouldShowClearConfirmRow => IsConfirmingClear;
+    private void UpdateProgressText()
+    {
+        ApplyProgressText = ApplyProgressTotal > 0
+            ? $"正在处理 {ApplyProgressCurrent}/{ApplyProgressTotal}..."
+            : "";
+    }
 
-    /// <summary>添加按钮可用条件：chip 非空 + 无正在执行。</summary>
-    public bool CanApplyAddTags => Tags.Count > 0 && !IsApplying && _files.Count > 0;
+    // ============ 标签建议云 ============
 
-    /// <summary>清除按钮可用条件：任意时候都可点（无前置条件，自身走二次确认防误触）。</summary>
-    public bool CanClearAllTags => !IsApplying && _files.Count > 0;
+    private async Task LoadSuggestedTagsAsync()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(_projectPath)) return;
+            var tags = await _mediaRepo.GetTagsAsync(_projectPath);
+            // 排除已在选中文件中的共同标签，避免重复建议
+            var commonSet = new HashSet<string>(CommonTagsText.Split("、", StringSplitOptions.RemoveEmptyEntries), StringComparer.OrdinalIgnoreCase);
+            foreach (var t in tags)
+            {
+                if (!commonSet.Contains(t.Name))
+                    SuggestedTags.Add(t.Name);
+            }
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[EditTagsBatch] LoadSuggestedTags failed: {ex.Message}");
+        }
+    }
 
-    // --- 内部 TagChipEditor 事件 ---
+    /// <summary>点击建议标签 → 添加到添加 chip 列表。</summary>
+    [RelayCommand]
+    private void AddSuggestedTag(string tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag)) return;
+        if (Tags.Any(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase))) return;
+        if (tag.Length > MaxTagLength) return;
+        Tags.Add(tag);
+    }
+
+    // ============ 内部 TagChipEditor（添加） ============
 
     private void AddTag()
     {
         var raw = NewTagInput;
         if (AddTagFromInputRaw(raw))
-        {
             NewTagInput = "";
-        }
     }
 
     private void RemoveTag(string? tag)
@@ -133,27 +260,46 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
         if (text.Length == 0 || text.Length > MaxTagLength) return false;
         if (Tags.Any(t => string.Equals(t, text, StringComparison.OrdinalIgnoreCase))) return false;
         Tags.Add(text);
-        Trace.WriteLine($"[EditTagsBatch] AddTag: added='{text}', total={Tags.Count}");
+        Trace.WriteLine($"[EditTagsBatch] AddTag: '{text}', total={Tags.Count}");
         return true;
     }
 
-    // --- 二次确认清除流程（双按钮方案） ---
+    // ============ 影响文件数计算 ============
 
-    /// <summary>
-    /// 「清除所有标签」按钮第一次点击后进入 IsConfirmingClear=true 状态，
-    /// 此时 UI 切为「确认清除」+ 「取消」两个独立按钮，避免「点同一个按钮两次」的歧义。
-    /// 5 秒内未点确认则自动撤销，CancellationTokenSource 控制计时器生命周期。
-    /// </summary>
+    private int ComputeAffectedCount(ObservableCollection<string> chips, bool AddMode)
+    {
+        if (chips.Count == 0) return 0;
+        var chipSet = new HashSet<string>(chips, StringComparer.OrdinalIgnoreCase);
+        int count = 0;
+        foreach (var file in _files)
+        {
+            var fileTags = file.Tags ?? new List<string>();
+            if (AddMode)
+            {
+                // 添加模式：文件至少缺少一个 chip → 会被影响
+                if (chipSet.Any(c => !fileTags.Any(f => string.Equals(f, c, StringComparison.OrdinalIgnoreCase))))
+                    count++;
+            }
+            else
+            {
+                // 删除模式：文件至少包含一个 chip → 会被影响
+                if (fileTags.Any(f => chipSet.Contains(f)))
+                    count++;
+            }
+        }
+        return count;
+    }
+
+    // ============ 二次确认清除 ============
+
     [RelayCommand(CanExecute = nameof(CanClearAllTags))]
     private async Task RequestClearTagsAsync()
     {
-        // 首次点击：进入确认态，并启动 5 秒自动撤销计时器
         IsConfirmingClear = true;
         ArmAutoCancelClear();
         await Task.CompletedTask;
     }
 
-    /// <summary>「确认清除」按钮：取消计时器，立即执行真正的清除。</summary>
     [RelayCommand(CanExecute = nameof(CanClearAllTags))]
     private async Task ConfirmClearTagsAsync()
     {
@@ -162,7 +308,6 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
         await DoClearAllTagsAsync();
     }
 
-    /// <summary>「取消」按钮：撤销确认态。</summary>
     [RelayCommand]
     private void CancelClearTags()
     {
@@ -173,51 +318,40 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     private void ArmAutoCancelClear()
     {
         CancelAutoCancelClear();
-        _clearConfirmCts = new System.Threading.CancellationTokenSource();
+        _clearConfirmCts = new CancellationTokenSource();
         var ct = _clearConfirmCts.Token;
-
         _ = Task.Run(async () =>
         {
-            try
-            {
-                await Task.Delay(5000, ct);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-
+            try { await Task.Delay(5000, ct); }
+            catch (OperationCanceledException) { return; }
             if (ct.IsCancellationRequested) return;
-
-            // 自动撤销确认态（切回 UI 线程刷新绑定）
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
-                if (IsConfirmingClear)
-                {
-                    IsConfirmingClear = false;
-                }
+                if (IsConfirmingClear) IsConfirmingClear = false;
             });
         });
     }
 
     private void CancelAutoCancelClear()
     {
-        try { _clearConfirmCts?.Cancel(); } catch { /* ignore */ }
+        try { _clearConfirmCts?.Cancel(); } catch { }
         _clearConfirmCts?.Dispose();
         _clearConfirmCts = null;
     }
 
-    // --- 操作 1：清除所有标签 ---
+    // ============ 操作 1：清除所有标签 ============
 
     private async Task DoClearAllTagsAsync()
     {
         if (_files.Count == 0) return;
         IsApplying = true;
         Applied = false;
+        ApplyProgressTotal = _files.Count;
+        ApplyProgressCurrent = 0;
 
         var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var originalSnapshots = new Dictionary<long, List<string>>();
-        var succeededFiles = new List<MediaFile>();
+        var snapshots = new Dictionary<long, List<string>>();
+        var succeeded = new List<MediaFile>();
         Exception? firstFailure = null;
         int fail = 0;
 
@@ -226,66 +360,46 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
             foreach (var file in _files)
             {
                 var original = file.Tags?.ToList() ?? new List<string>();
-                originalSnapshots[file.Id] = original;
+                snapshots[file.Id] = original;
                 file.Tags = new List<string>();
 
                 try
                 {
                     await _mediaRepo.UpdateTagsOnlyAsync(file.Id, new List<string>(), nowMs);
-                    succeededFiles.Add(file);
+                    succeeded.Add(file);
                 }
                 catch (Exception ex)
                 {
                     fail++;
-                    if (firstFailure == null) firstFailure = ex;
+                    firstFailure ??= ex;
                     file.Tags = original;
-                    Trace.WriteLine($"[EditTagsBatch] ClearAll failed for fileId={file.Id}: {ex.GetType().Name}: {ex.Message}");
+                }
+                finally
+                {
+                    ApplyProgressCurrent++;
                 }
             }
 
             if (fail > 0)
             {
-                int rollbackOk = 0, rollbackFail = 0;
-                foreach (var file in succeededFiles)
-                {
-                    if (!originalSnapshots.TryGetValue(file.Id, out var original)) continue;
-                    try
-                    {
-                        file.Tags = original;
-                        await _mediaRepo.UpdateTagsOnlyAsync(file.Id, original, nowMs);
-                        rollbackOk++;
-                    }
-                    catch (Exception rbEx)
-                    {
-                        rollbackFail++;
-                        Trace.WriteLine($"[EditTagsBatch] ClearAll rollback failed for fileId={file.Id}: {rbEx.GetType().Name}: {rbEx.Message}");
-                    }
-                }
-
-                var message = rollbackFail == 0
-                    ? $"批量清除失败：{firstFailure?.Message}（{fail} 个文件未清除，已回滚 {rollbackOk} 个文件）"
-                    : $"批量清除失败：{firstFailure?.Message}（{fail} 个文件未清除，回滚 {rollbackOk} 个，另有 {rollbackFail} 个回滚失败，请刷新视图）";
-                _galleryVm.ShowToastPublic(message);
+                await RollbackAsync(succeeded, snapshots, nowMs);
+                _galleryVm.ShowToastPublic($"清除失败：{firstFailure?.Message}（{fail} 个未清除，已回滚）");
                 return;
             }
 
             Applied = true;
-            foreach (var file in _files)
-            {
-                _galleryVm.OnFileTagsChanged(file);
-            }
-
+            NotifyChanges(_files);
             _galleryVm.ShowToastPublic($"已清除 {_files.Count} 个文件的所有标签");
-            Trace.WriteLine($"[EditTagsBatch] ClearAll done: total={_files.Count}");
             RequestClose?.Invoke(this, EventArgs.Empty);
         }
         finally
         {
             IsApplying = false;
+            ApplyProgressText = "";
         }
     }
 
-    // --- 操作 2：添加标签 ---
+    // ============ 操作 2：添加标签 ============
 
     [RelayCommand(CanExecute = nameof(CanApplyAddTags))]
     private async Task ApplyAddTagsAsync()
@@ -293,11 +407,13 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
         if (Tags.Count == 0 || _files.Count == 0) return;
         IsApplying = true;
         Applied = false;
+        ApplyProgressTotal = _files.Count;
+        ApplyProgressCurrent = 0;
 
         var editor = Tags.ToList();
         var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var originalSnapshots = new Dictionary<long, List<string>>();
-        var succeededFiles = new List<MediaFile>();
+        var snapshots = new Dictionary<long, List<string>>();
+        var succeeded = new List<MediaFile>();
         Exception? firstFailure = null;
         int fail = 0;
 
@@ -306,77 +422,209 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
             foreach (var file in _files)
             {
                 var original = file.Tags?.ToList() ?? new List<string>();
-                originalSnapshots[file.Id] = original;
+                snapshots[file.Id] = original;
 
-                // 追加 + 去重（大小写不敏感）
                 var merged = original
                     .Concat(editor.Where(t => !original.Any(o => string.Equals(o, t, StringComparison.OrdinalIgnoreCase))))
                     .ToList();
 
-                // 没有任何新增则跳过该文件
                 if (editor.All(t => original.Any(o => string.Equals(o, t, StringComparison.OrdinalIgnoreCase))))
                 {
+                    ApplyProgressCurrent++;
                     continue;
                 }
 
                 file.Tags = merged;
-
                 try
                 {
                     await _mediaRepo.UpdateTagsOnlyAsync(file.Id, merged, nowMs);
-                    succeededFiles.Add(file);
+                    succeeded.Add(file);
                 }
                 catch (Exception ex)
                 {
                     fail++;
-                    if (firstFailure == null) firstFailure = ex;
+                    firstFailure ??= ex;
                     file.Tags = original;
-                    Trace.WriteLine($"[EditTagsBatch] AddTags failed for fileId={file.Id}: {ex.GetType().Name}: {ex.Message}");
+                }
+                finally
+                {
+                    ApplyProgressCurrent++;
                 }
             }
 
             if (fail > 0)
             {
-                int rollbackOk = 0, rollbackFail = 0;
-                foreach (var file in succeededFiles)
-                {
-                    if (!originalSnapshots.TryGetValue(file.Id, out var original)) continue;
-                    try
-                    {
-                        file.Tags = original;
-                        await _mediaRepo.UpdateTagsOnlyAsync(file.Id, original, nowMs);
-                        rollbackOk++;
-                    }
-                    catch (Exception rbEx)
-                    {
-                        rollbackFail++;
-                        Trace.WriteLine($"[EditTagsBatch] AddTags rollback failed for fileId={file.Id}: {rbEx.GetType().Name}: {rbEx.Message}");
-                    }
-                }
-
-                var message = rollbackFail == 0
-                    ? $"批量添加标签失败：{firstFailure?.Message}（{fail} 个文件未保存，已回滚 {rollbackOk} 个文件）"
-                    : $"批量添加标签失败：{firstFailure?.Message}（{fail} 个文件未保存，回滚 {rollbackOk} 个，另有 {rollbackFail} 个回滚失败，请刷新视图）";
-                _galleryVm.ShowToastPublic(message);
+                await RollbackAsync(succeeded, snapshots, nowMs);
+                _galleryVm.ShowToastPublic($"添加失败：{firstFailure?.Message}（{fail} 个未保存，已回滚）");
                 return;
             }
 
             Applied = true;
-            foreach (var file in succeededFiles)
-            {
-                _galleryVm.OnFileTagsChanged(file);
-            }
-
+            NotifyChanges(succeeded);
             _galleryVm.ShowToastPublic(
-                succeededFiles.Count == 0
+                succeeded.Count == 0
                     ? "所选文件已包含所有标签，无变化"
-                    : $"已为 {succeededFiles.Count} 个文件添加标签");
-            Trace.WriteLine($"[EditTagsBatch] AddTags done: applied={succeededFiles.Count}, total={_files.Count}");
+                    : $"已为 {succeeded.Count} 个文件添加标签");
             RequestClose?.Invoke(this, EventArgs.Empty);
         }
         finally
         {
             IsApplying = false;
+            ApplyProgressText = "";
         }
+    }
+
+    // ============ 操作 3：删除标签 ============
+
+    [RelayCommand(CanExecute = nameof(CanApplyRemoveTags))]
+    private async Task ApplyRemoveTagsAsync()
+    {
+        if (RemoveTags.Count == 0 || _files.Count == 0) return;
+        IsApplying = true;
+        Applied = false;
+        ApplyProgressTotal = _files.Count;
+        ApplyProgressCurrent = 0;
+
+        var toRemove = RemoveTags.ToList();
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var snapshots = new Dictionary<long, List<string>>();
+        var succeeded = new List<MediaFile>();
+        Exception? firstFailure = null;
+        int fail = 0;
+
+        try
+        {
+            foreach (var file in _files)
+            {
+                var original = file.Tags?.ToList() ?? new List<string>();
+                snapshots[file.Id] = original;
+
+                var remaining = original
+                    .Where(o => !toRemove.Any(t => string.Equals(t, o, StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+
+                // 无变化则跳过
+                if (remaining.Count == original.Count)
+                {
+                    ApplyProgressCurrent++;
+                    continue;
+                }
+
+                file.Tags = remaining;
+                try
+                {
+                    await _mediaRepo.UpdateTagsOnlyAsync(file.Id, remaining, nowMs);
+                    succeeded.Add(file);
+                }
+                catch (Exception ex)
+                {
+                    fail++;
+                    firstFailure ??= ex;
+                    file.Tags = original;
+                }
+                finally
+                {
+                    ApplyProgressCurrent++;
+                }
+            }
+
+            if (fail > 0)
+            {
+                await RollbackAsync(succeeded, snapshots, nowMs);
+                _galleryVm.ShowToastPublic($"删除失败：{firstFailure?.Message}（{fail} 个未保存，已回滚）");
+                return;
+            }
+
+            Applied = true;
+            NotifyChanges(succeeded);
+            _galleryVm.ShowToastPublic(
+                succeeded.Count == 0
+                    ? "所选文件均不包含这些标签，无变化"
+                    : $"已从 {succeeded.Count} 个文件中删除标签");
+            RequestClose?.Invoke(this, EventArgs.Empty);
+        }
+        finally
+        {
+            IsApplying = false;
+            ApplyProgressText = "";
+        }
+    }
+
+    // ============ 回滚 ============
+
+    private async Task RollbackAsync(
+        List<MediaFile> succeeded,
+        Dictionary<long, List<string>> snapshots,
+        long nowMs)
+    {
+        int ok = 0, failCount = 0;
+        foreach (var file in succeeded)
+        {
+            if (!snapshots.TryGetValue(file.Id, out var original)) continue;
+            try
+            {
+                file.Tags = original;
+                await _mediaRepo.UpdateTagsOnlyAsync(file.Id, original, nowMs);
+                ok++;
+            }
+            catch (Exception ex)
+            {
+                failCount++;
+                Trace.WriteLine($"[EditTagsBatch] Rollback failed fileId={file.Id}: {ex.Message}");
+            }
+        }
+        if (failCount > 0)
+            _galleryVm.ShowToastPublic($"回滚警告：{failCount} 个文件回滚失败，请刷新视图");
+    }
+
+    private void NotifyChanges(IReadOnlyList<MediaFile> files)
+    {
+        foreach (var file in files)
+            _galleryVm.OnFileTagsChanged(file);
+    }
+
+    // ============ 移除标签内部宿主（实现 ITagEditorHost） ============
+
+    /// <summary>
+    /// 内部类，实现 ITagEditorHost，将 RemoveTags / RemoveTagInput 等封装为独立契约，
+    /// 供第二个 TagChipEditor 通过 DataContext="{Binding RemoveHost}" 绑定。
+    /// </summary>
+    public sealed class RemoveTagEditorHost : ITagEditorHost
+    {
+        private readonly EditTagsBatchDialogViewModel _parent;
+
+        public RemoveTagEditorHost(EditTagsBatchDialogViewModel parent)
+        {
+            _parent = parent;
+        }
+
+        public ObservableCollection<string> Tags => _parent.RemoveTags;
+        public string NewTagInput { get => _parent.RemoveTagInput; set => _parent.RemoveTagInput = value; }
+        public int MaxTagLength => _parent.MaxTagLength;
+        public string Watermark => "输入要删除的标签后按 Enter 添加";
+        public bool ShowInputBox => true;
+        public ICommand AddTagCommand => _parent.AddRemoveTagCommand;
+        public ICommand RemoveTagCommand => _parent.RemoveRemoveTagCommand;
+    }
+
+    // 移除标签的 add/remove 命令（由 [RelayCommand] 自动生成，供 RemoveTagEditorHost 使用）
+
+    [RelayCommand]
+    private void AddRemoveTag()
+    {
+        var raw = RemoveTagInput;
+        if (string.IsNullOrWhiteSpace(raw)) return;
+        var text = raw.Trim();
+        if (text.Length == 0 || text.Length > MaxTagLength) return;
+        if (RemoveTags.Any(t => string.Equals(t, text, StringComparison.OrdinalIgnoreCase))) return;
+        RemoveTags.Add(text);
+        RemoveTagInput = "";
+    }
+
+    [RelayCommand]
+    private void RemoveRemoveTag(string? tag)
+    {
+        if (string.IsNullOrEmpty(tag)) return;
+        RemoveTags.Remove(tag);
     }
 }
