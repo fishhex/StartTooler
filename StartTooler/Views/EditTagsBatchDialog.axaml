@@ -162,38 +162,47 @@
                     Background="{DynamicResource Bg.SurfaceElevated}"
                     BorderBrush="{DynamicResource Bg.Divider}" BorderThickness="1"
                     CornerRadius="6" Padding="14">
-                <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="10">
+                <Grid RowDefinitions="Auto,Auto" RowSpacing="10">
                     <StackPanel Grid.Row="0" Spacing="4">
                         <TextBlock Text="删除标签" FontSize="13" FontWeight="SemiBold"
                                    Foreground="{DynamicResource Text.Primary}" />
                         <TextBlock FontSize="11" Foreground="{DynamicResource Text.Tertiary}"
                                    TextWrapping="Wrap">
-                            <Run Text="从这" />
+                            <Run Text="点击已有标签右侧的" />
+                            <Run Text="×" FontWeight="SemiBold" Foreground="{DynamicResource State.Danger}" />
+                            <Run Text="，从这" />
                             <Run Text="{Binding FileCount, Mode=OneWay}" FontWeight="SemiBold" />
-                            <Run Text="个文件中移除指定标签。输入标签名后按 Enter 添加。" />
+                            <Run Text="个文件中移除该标签。" />
                         </TextBlock>
                     </StackPanel>
 
-                    <!-- chip 编辑器（绑定 RemoveHost） -->
-                    <controls:TagChipEditor Grid.Row="1" DataContext="{Binding RemoveHost}" />
-
-                    <!-- 提示 + 应用按钮 -->
-                    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                        <TextBlock Grid.Column="0" Text="提示：按 Enter 添加标签，点击 chip 删除"
-                                   FontSize="10" Foreground="{DynamicResource Text.Disabled}"
-                                   VerticalAlignment="Center" />
-                        <Button Grid.Column="2"
-                                Classes="danger-button"
-                                Padding="14,6"
-                                Command="{Binding ApplyRemoveTagsCommand}"
-                                IsEnabled="{Binding CanApplyRemoveTags}">
-                            <TextBlock>
-                                <Run Text="从" />
-                                <Run Text="{Binding RemoveAffectedCount}" FontWeight="SemiBold" />
-                                <Run Text="个文件删除" />
-                            </TextBlock>
-                        </Button>
-                    </Grid>
+                    <!-- 已有标签 chip 列表，每个带 x 按钮 -->
+                    <ItemsControl Grid.Row="1" ItemsSource="{Binding RemovableTags}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Classes="removable-chip"
+                                        Margin="0,0,6,4">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock Text="{Binding}" FontSize="12"
+                                                   Foreground="{DynamicResource Text.Secondary}"
+                                                   VerticalAlignment="Center" />
+                                        <Button Classes="removable-x"
+                                                Command="{Binding $parent[Window].DataContext.RemoveSpecificTagCommand}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip.Tip="删除此标签">
+                                            <TextBlock Text="×" FontSize="14" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource State.Danger}" />
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </Grid>
             </Border>
 
@@ -252,6 +261,26 @@
         <Style Selector="Button.suggestion-chip:pointerover">
             <Setter Property="Background" Value="{DynamicResource Accent.Stellar.Subtle}" />
             <Setter Property="BorderBrush" Value="{DynamicResource Accent.Stellar}" />
+        </Style>
+        <Style Selector="Border.removable-chip">
+            <Setter Property="Background" Value="{DynamicResource Bg.Surface}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Bg.Divider}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="6,2" />
+        </Style>
+        <Style Selector="Button.removable-x">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2,0" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.removable-x:pointerover">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <SolidColorBrush Color="{DynamicResource State.Danger}" Opacity="0.12" />
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Styles>
 </Window>

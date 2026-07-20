@@ -75,19 +75,13 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     /// <summary>添加按钮可用条件：chip 非空 + 无正在执行。</summary>
     public bool CanApplyAddTags => Tags.Count > 0 && !IsApplying && _files.Count > 0;
 
-    // ============ 操作 3：删除标签 ============
+    // ============ 操作 3：删除标签（点击已有标签的 x 按钮） ============
 
-    /// <summary>待删除的标签 chip 集合。</summary>
-    public ObservableCollection<string> RemoveTags { get; } = new();
+    /// <summary>选中文件已有的全部标签，每个带 x 按钮可点击删除。</summary>
+    public ObservableCollection<string> RemovableTags { get; } = new();
 
-    [ObservableProperty]
-    private string _removeTagInput = "";
-
-    /// <summary>删除标签 — 将影响的文件数（至少包含一个待删标签的文件）。</summary>
-    public int RemoveAffectedCount => ComputeAffectedCount(RemoveTags, AddMode: false);
-
-    /// <summary>删除按钮可用条件：chip 非空 + 无正在执行。</summary>
-    public bool CanApplyRemoveTags => RemoveTags.Count > 0 && !IsApplying && _files.Count > 0;
+    /// <summary>是否有可删除的标签。</summary>
+    public bool CanRemoveTags => RemovableTags.Count > 0 && !IsApplying;
 
     // ============ 进度 ============
 
@@ -120,12 +114,7 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     public bool ShouldShowClearConfirmRow => IsConfirmingClear;
     public bool CanClearAllTags => !IsApplying && _files.Count > 0;
 
-    // ============ 移除标签的 ITagEditorHost（内部委托） ============
-
-    /// <summary>内部移除标签宿主，供第二个 TagChipEditor 绑定。</summary>
-    public RemoveTagEditorHost RemoveHost { get; }
-
-    // ============ 构造 ============
+    // ============ 清除确认态 UI 切换 ============
 
     public EditTagsBatchDialogViewModel(
         IReadOnlyList<MediaFile> files,
@@ -168,15 +157,9 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
             ApplyAddTagsCommand.NotifyCanExecuteChanged();
         };
 
-        RemoveTags.CollectionChanged += (_, _) =>
-        {
-            OnPropertyChanged(nameof(CanApplyRemoveTags));
-            OnPropertyChanged(nameof(RemoveAffectedCount));
-            ApplyRemoveTagsCommand.NotifyCanExecuteChanged();
-        };
-
-        // 内部移除标签宿主
-        RemoveHost = new RemoveTagEditorHost(this);
+        // 填充 RemovableTags（选中文件已有的全部标签）
+        foreach (var tag in allTags)
+            RemovableTags.Add(tag);
 
         Trace.WriteLine($"[EditTagsBatch] ctor: fileCount={_files.Count}, existingTags={allTags.Count}, commonTags={common.Count}");
     }
@@ -184,7 +167,7 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     partial void OnIsApplyingChanged(bool value)
     {
         OnPropertyChanged(nameof(CanApplyAddTags));
-        OnPropertyChanged(nameof(CanApplyRemoveTags));
+        OnPropertyChanged(nameof(CanRemoveTags));
         OnPropertyChanged(nameof(CanClearAllTags));
         RequestClearTagsCommand.NotifyCanExecuteChanged();
         ConfirmClearTagsCommand.NotifyCanExecuteChanged();
@@ -474,18 +457,21 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
         }
     }
 
-    // ============ 操作 3：删除标签 ============
+    // ============ 操作 3：删除特定标签 ============
 
-    [RelayCommand(CanExecute = nameof(CanApplyRemoveTags))]
-    private async Task ApplyRemoveTagsAsync()
+    /// <summary>
+    /// 点击已有标签的 x 按钮，从所有选中文件中移除该标签。
+    /// 直接执行，无需二次确认（操作可逆——重新添加即可）。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRemoveTags))]
+    private async Task RemoveSpecificTagAsync(string tag)
     {
-        if (RemoveTags.Count == 0 || _files.Count == 0) return;
+        if (string.IsNullOrEmpty(tag)) return;
         IsApplying = true;
         Applied = false;
         ApplyProgressTotal = _files.Count;
         ApplyProgressCurrent = 0;
 
-        var toRemove = RemoveTags.ToList();
         var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var snapshots = new Dictionary<long, List<string>>();
         var succeeded = new List<MediaFile>();
@@ -500,10 +486,9 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
                 snapshots[file.Id] = original;
 
                 var remaining = original
-                    .Where(o => !toRemove.Any(t => string.Equals(t, o, StringComparison.OrdinalIgnoreCase)))
+                    .Where(o => !string.Equals(tag, o, StringComparison.OrdinalIgnoreCase))
                     .ToList();
 
-                // 无变化则跳过
                 if (remaining.Count == original.Count)
                 {
                     ApplyProgressCurrent++;
@@ -539,8 +524,8 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
             NotifyChanges(succeeded);
             _galleryVm.ShowToastPublic(
                 succeeded.Count == 0
-                    ? "所选文件均不包含这些标签，无变化"
-                    : $"已从 {succeeded.Count} 个文件中删除标签");
+                    ? $"所选文件均不包含「{tag}」标签，无变化"
+                    : $"已从 {succeeded.Count} 个文件中删除「{tag}」标签");
             RequestClose?.Invoke(this, EventArgs.Empty);
         }
         finally
@@ -581,50 +566,5 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     {
         foreach (var file in files)
             _galleryVm.OnFileTagsChanged(file);
-    }
-
-    // ============ 移除标签内部宿主（实现 ITagEditorHost） ============
-
-    /// <summary>
-    /// 内部类，实现 ITagEditorHost，将 RemoveTags / RemoveTagInput 等封装为独立契约，
-    /// 供第二个 TagChipEditor 通过 DataContext="{Binding RemoveHost}" 绑定。
-    /// </summary>
-    public sealed class RemoveTagEditorHost : ITagEditorHost
-    {
-        private readonly EditTagsBatchDialogViewModel _parent;
-
-        public RemoveTagEditorHost(EditTagsBatchDialogViewModel parent)
-        {
-            _parent = parent;
-        }
-
-        public ObservableCollection<string> Tags => _parent.RemoveTags;
-        public string NewTagInput { get => _parent.RemoveTagInput; set => _parent.RemoveTagInput = value; }
-        public int MaxTagLength => _parent.MaxTagLength;
-        public string Watermark => "输入要删除的标签后按 Enter 添加";
-        public bool ShowInputBox => true;
-        public ICommand AddTagCommand => _parent.AddRemoveTagCommand;
-        public ICommand RemoveTagCommand => _parent.RemoveRemoveTagCommand;
-    }
-
-    // 移除标签的 add/remove 命令（由 [RelayCommand] 自动生成，供 RemoveTagEditorHost 使用）
-
-    [RelayCommand]
-    private void AddRemoveTag()
-    {
-        var raw = RemoveTagInput;
-        if (string.IsNullOrWhiteSpace(raw)) return;
-        var text = raw.Trim();
-        if (text.Length == 0 || text.Length > MaxTagLength) return;
-        if (RemoveTags.Any(t => string.Equals(t, text, StringComparison.OrdinalIgnoreCase))) return;
-        RemoveTags.Add(text);
-        RemoveTagInput = "";
-    }
-
-    [RelayCommand]
-    private void RemoveRemoveTag(string? tag)
-    {
-        if (string.IsNullOrEmpty(tag)) return;
-        RemoveTags.Remove(tag);
     }
 }
