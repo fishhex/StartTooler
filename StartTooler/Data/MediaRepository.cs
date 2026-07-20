@@ -202,7 +202,14 @@ public class MediaRepository : IMediaRepository
     private static void MigrateTagsToIdArray(SqliteConnection connection)
     {
         // 1. 读取所有需要迁移的行（有效 JSON 字符串数组）。
-        const string selectSql = "SELECT id, project_path, tags FROM media_files WHERE tags IS NOT NULL AND tags != '[]'";
+        //    用 json_valid + json_type 过滤，避免旧数据里非 JSON/非数组值触发 malformed JSON。
+        const string selectSql = @"
+            SELECT id, project_path, tags
+            FROM media_files
+            WHERE tags IS NOT NULL
+              AND tags != '[]'
+              AND json_valid(tags) = 1
+              AND json_type(tags) = 'array'";
         var candidateRows = new List<(long Id, string ProjectPath, string Tags)>();
         using (var cmd = new SqliteCommand(selectSql, connection))
         using (var reader = cmd.ExecuteReader())
