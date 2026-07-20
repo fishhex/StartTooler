@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using StartTooler.Controls;
@@ -52,6 +52,9 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     [ObservableProperty]
     private bool _isConfirmingClear;
 
+    /// <summary>用于取消自动撤销确认态的计时器，避免上一次的 await 干扰新点击。</summary>
+    private CancellationTokenSource? _clearConfirmCts;
+
     /// <summary>true = 任一操作成功 Apply（调用方据此刷新）。</summary>
     public bool Applied { get; private set; }
 
@@ -84,15 +87,21 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     {
         OnPropertyChanged(nameof(CanApplyAddTags));
         OnPropertyChanged(nameof(CanClearAllTags));
+        RequestClearTagsCommand.NotifyCanExecuteChanged();
+        ConfirmClearTagsCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsConfirmingClearChanged(bool value)
     {
-        OnPropertyChanged(nameof(ClearButtonText));
+        OnPropertyChanged(nameof(ShouldShowClearConfirmRow));
+        OnPropertyChanged(nameof(ShouldShowClearInitialButton));
     }
 
-    /// <summary>清除按钮显示文案：确认中切换为「确认清除？」。</summary>
-    public string ClearButtonText => IsConfirmingClear ? "确认清除？" : "清除所有标签";
+    /// <summary>初始态显示「清除所有标签」大按钮。</summary>
+    public bool ShouldShowClearInitialButton => !IsConfirmingClear;
+
+    /// <summary>确认态显示「确认清除」+「取消」两个按钮。</summary>
+    public bool ShouldShowClearConfirmRow => IsConfirmingClear;
 
     /// <summary>添加按钮可用条件：chip 非空 + 无正在执行。</summary>
     public bool CanApplyAddTags => Tags.Count > 0 && !IsApplying && _files.Count > 0;
@@ -128,31 +137,74 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
         return true;
     }
 
-    // --- 二次确认清除流程 ---
+    // --- 二次确认清除流程（双按钮方案） ---
 
     /// <summary>
-    /// 点击「清除所有标签」按钮：
-    ///   - 第一次点击：进入确认态，按钮文字切换为「确认清除？」；3 秒内未再次点击则自动回滚
-    ///   - 第二次点击（确认态）：执行 ClearAllTagsAsync
+    /// 「清除所有标签」按钮第一次点击后进入 IsConfirmingClear=true 状态，
+    /// 此时 UI 切为「确认清除」+ 「取消」两个独立按钮，避免「点同一个按钮两次」的歧义。
+    /// 5 秒内未点确认则自动撤销，CancellationTokenSource 控制计时器生命周期。
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanClearAllTags))]
-    private async Task ClearAllTagsAsync()
+    private async Task RequestClearTagsAsync()
     {
-        if (!IsConfirmingClear)
-        {
-            IsConfirmingClear = true;
+        // 首次点击：进入确认态，并启动 5 秒自动撤销计时器
+        IsConfirmingClear = true;
+        ArmAutoCancelClear();
+        await Task.CompletedTask;
+    }
 
-            // 3 秒后自动撤销确认态
-            await Task.Delay(3000);
-            if (IsConfirmingClear)
-            {
-                IsConfirmingClear = false;
-            }
-            return;
-        }
-
+    /// <summary>「确认清除」按钮：取消计时器，立即执行真正的清除。</summary>
+    [RelayCommand(CanExecute = nameof(CanClearAllTags))]
+    private async Task ConfirmClearTagsAsync()
+    {
+        CancelAutoCancelClear();
         IsConfirmingClear = false;
         await DoClearAllTagsAsync();
+    }
+
+    /// <summary>「取消」按钮：撤销确认态。</summary>
+    [RelayCommand]
+    private void CancelClearTags()
+    {
+        CancelAutoCancelClear();
+        IsConfirmingClear = false;
+    }
+
+    private void ArmAutoCancelClear()
+    {
+        CancelAutoCancelClear();
+        _clearConfirmCts = new System.Threading.CancellationTokenSource();
+        var ct = _clearConfirmCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(5000, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            if (ct.IsCancellationRequested) return;
+
+            // 自动撤销确认态（切回 UI 线程刷新绑定）
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (IsConfirmingClear)
+                {
+                    IsConfirmingClear = false;
+                }
+            });
+        });
+    }
+
+    private void CancelAutoCancelClear()
+    {
+        try { _clearConfirmCts?.Cancel(); } catch { /* ignore */ }
+        _clearConfirmCts?.Dispose();
+        _clearConfirmCts = null;
     }
 
     // --- 操作 1：清除所有标签 ---

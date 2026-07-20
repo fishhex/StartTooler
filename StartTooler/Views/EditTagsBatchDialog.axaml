@@ -50,14 +50,34 @@
                             <Run Text="个文件的所有标签一次性清空（不影响 AI 评分与质量标签）。" />
                         </TextBlock>
                     </StackPanel>
+
+                    <!-- 初始态：「清除所有标签」大按钮 -->
                     <Button Grid.Row="1"
+                            IsVisible="{Binding ShouldShowClearInitialButton}"
                             Classes="danger-button"
                             HorizontalAlignment="Left"
                             Padding="14,6"
-                            Command="{Binding ClearAllTagsCommand}"
+                            Command="{Binding RequestClearTagsCommand}"
                             IsEnabled="{Binding CanClearAllTags}">
-                        <TextBlock Text="{Binding ClearButtonText}" FontWeight="SemiBold" />
+                        <TextBlock Text="清除所有标签" FontWeight="SemiBold" />
                     </Button>
+
+                    <!-- 确认态：「确认清除」+「取消」两个按钮 -->
+                    <StackPanel Grid.Row="1"
+                                Orientation="Horizontal" Spacing="8"
+                                IsVisible="{Binding ShouldShowClearConfirmRow}">
+                        <Button Classes="danger-button"
+                                Padding="14,6"
+                                Command="{Binding ConfirmClearTagsCommand}"
+                                IsEnabled="{Binding CanClearAllTags}">
+                            <TextBlock Text="确认清除" FontWeight="SemiBold" />
+                        </Button>
+                        <Button Classes="secondary-button"
+                                Padding="14,6"
+                                Command="{Binding CancelClearTagsCommand}">
+                            <TextBlock Text="取消" />
+                        </Button>
+                    </StackPanel>
                 </Grid>
             </Border>
 
