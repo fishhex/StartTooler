@@ -13,6 +13,14 @@ mkdir -p "$APP/Contents/Resources"
 cp "$PUBLISH_DIR/StartTooler" "$APP/Contents/MacOS/"
 cp "$ICNS_SRC" "$APP/Contents/Resources/App.icns"
 
+# 对 .app 进行 ad-hoc 签名，避免 Gatekeeper 报告“已损坏”。
+# 若后续拥有 Apple Developer 证书，可替换为正式签名并接入 notarytool 公证。
+if command -v codesign >/dev/null 2>&1; then
+    codesign --sign - --force --deep --preserve-metadata=entitlements,requirements,flags,runtime "$APP"
+else
+    echo "Warning: codesign not found, skipping app signature" >&2
+fi
+
 cat > "$APP/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
