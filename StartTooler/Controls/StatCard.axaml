@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="using:StartTooler.Controls"
+             mc:Ignorable="d"
+             x:Class="StartTooler.Controls.StatCard"
+             x:DataType="local:StatCard">
+
+    <Border Background="{DynamicResource Bg.Surface}"
+            CornerRadius="{DynamicResource Radius.Large}"
+            Padding="20"
+            MinWidth="160">
+        <StackPanel Spacing="8">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <PathIcon Data="{Binding IconData, RelativeSource={RelativeSource AncestorType=local:StatCard}}"
+                          Width="16" Height="16"
+                          Foreground="{DynamicResource Text.Secondary}" />
+                <TextBlock Text="{Binding Label, RelativeSource={RelativeSource AncestorType=local:StatCard}}"
+                           FontSize="12"
+                           Foreground="{DynamicResource Text.Secondary}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock Text="{Binding Value, RelativeSource={RelativeSource AncestorType=local:StatCard}}"
+                       FontSize="24"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text.Primary}" />
+        </StackPanel>
+    </Border>
+</UserControl>

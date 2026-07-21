@@ -34,6 +34,76 @@ public partial class GalleryViewModel : ObservableObject
     public Action? NavigateToSettings { set => _navigateToSettings = value; }
     public Action? NavigateToOssSettings { set => _navigateToOssSettings = value; }
 
+    /// <summary>
+    /// v0.11: 外部模块（统计仪表盘）请求跳转到指定日期。
+    /// 自动切回日期视图、加载时间轴并选中该日期节点。
+    /// </summary>
+    public async Task NavigateToDateAsync(DateTime date)
+    {
+        if (string.IsNullOrEmpty(ProjectPath)) return;
+
+        Trace.WriteLine($"[Gallery] NavigateToDateAsync: {date:yyyy-MM-dd}");
+
+        // 切到日期视图
+        if (GroupMode != GroupMode.Date)
+            GroupMode = GroupMode.Date;
+
+        // 确保时间轴已加载
+        if (DateGroups.Count == 0)
+        {
+            await LoadTimelineAsync(_cts?.Token ?? default);
+        }
+
+        var key = date.ToString("yyyy-MM-dd");
+        var target = FindDayNodeByKey(DateGroups, key);
+        if (target != null)
+        {
+            await SelectAsync(target);
+        }
+        else
+        {
+            Trace.WriteLine($"[Gallery] NavigateToDateAsync: 未找到 {key} 对应节点");
+        }
+    }
+
+    /// <summary>
+    /// v0.11: 外部模块（统计仪表盘）请求按标签筛选。
+    /// 自动切到标签视图并选中对应标签分组。
+    /// </summary>
+    public async Task NavigateToTagAsync(string tag)
+    {
+        if (string.IsNullOrEmpty(ProjectPath) || string.IsNullOrEmpty(tag)) return;
+
+        Trace.WriteLine($"[Gallery] NavigateToTagAsync: tag='{tag}'");
+
+        // 切到标签视图（会触发 LoadTagGroupsAsync）
+        if (GroupMode != GroupMode.Tag)
+            GroupMode = GroupMode.Tag;
+
+        // 等 TagGroups 加载完成
+        var group = await FindTagGroupAsync(tag);
+        if (group != null)
+        {
+            await SelectTagAsync(group);
+        }
+        else
+        {
+            Trace.WriteLine($"[Gallery] NavigateToTagAsync: 未找到 tag='{tag}'");
+        }
+    }
+
+    private async Task<TagGroupItem?> FindTagGroupAsync(string tag)
+    {
+        // 最多等待 2 秒，让 LoadTagGroupsAsync 完成
+        for (int i = 0; i < 20; i++)
+        {
+            var group = TagGroups.FirstOrDefault(g => g.Tag == tag);
+            if (group != null) return group;
+            await Task.Delay(100);
+        }
+        return null;
+    }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasNoProject))]
     private string? _projectPath;

@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="using:StartTooler.Controls"
+             mc:Ignorable="d"
+             x:Class="StartTooler.Controls.BarChart"
+             x:DataType="local:BarChart">
+
+    <Border Background="{DynamicResource Bg.Surface}"
+            CornerRadius="{DynamicResource Radius.Large}"
+            Padding="20">
+        <StackPanel Spacing="12">
+            <TextBlock Text="{Binding Title, RelativeSource={RelativeSource AncestorType=local:BarChart}}"
+                       FontSize="14"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text.Primary}" />
+            <local:SkiaBarChart Items="{Binding Items, RelativeSource={RelativeSource AncestorType=local:BarChart}}"
+                                Orientation="{Binding Orientation, RelativeSource={RelativeSource AncestorType=local:BarChart}}"
+                                ShowValue="{Binding ShowValue, RelativeSource={RelativeSource AncestorType=local:BarChart}}"
+                                ItemClicked="OnItemClicked" />
+        </StackPanel>
+    </Border>
+</UserControl>

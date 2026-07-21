@@ -152,6 +152,14 @@ public partial class MediaFile : ObservableObject
     [ObservableProperty]
     private string? _tagError;
 
+    /// <summary>
+    /// v0.11: EXIF 冗余字段（D09 统计仪表盘用）。仅用于持久化，导入时从 EXIF 解析。
+    /// DB 列 focal_length_35mm REAL NULL, iso INTEGER NULL, exposure_time REAL NULL。
+    /// </summary>
+    public double? FocalLength35Mm { get; set; }
+    public int? Iso { get; set; }
+    public double? ExposureTimeSeconds { get; set; }
+
     // === v0.8 软删除字段（spec doc/14-delete-and-trash.md §2.1 / §4） ===
 
     /// <summary>

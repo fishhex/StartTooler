@@ -31,6 +31,15 @@ public sealed class ExifData
     public int? Iso { get; set; }
     public string? FocalLength { get; set; }  // "50mm"
 
+    /// <summary>原始曝光时长，秒（用于统计）。</summary>
+    public double? ExposureTimeSeconds { get; set; }
+
+    /// <summary>原始焦距，mm（用于统计）。</summary>
+    public double? FocalLengthMm { get; set; }
+
+    /// <summary>35mm 等效焦距，mm（用于统计）。</summary>
+    public double? FocalLength35Mm { get; set; }
+
     public string? Camera => string.IsNullOrEmpty(CameraModel) ? CameraMake : CameraModel;
     public bool HasAny => !string.IsNullOrEmpty(Camera)
         || !string.IsNullOrEmpty(Aperture)
@@ -153,7 +162,11 @@ internal static class ExifReader
                 if (tag == 0x829A) // ExposureTime (rational)
                 {
                     var r = ReadRational(tiff, valueOffset, littleEndian);
-                    if (r.HasValue) data.ShutterSpeed = FormatShutter(r.Value);
+                    if (r.HasValue)
+                    {
+                        data.ExposureTimeSeconds = r.Value.n / (double)r.Value.d;
+                        data.ShutterSpeed = FormatShutter(r.Value);
+                    }
                 }
                 else if (tag == 0x829D) // FNumber
                 {
@@ -167,10 +180,23 @@ internal static class ExifReader
                 else if (tag == 0x920A) // FocalLength (rational, mm)
                 {
                     var r = ReadRational(tiff, valueOffset, littleEndian);
-                    if (r.HasValue) data.FocalLength = $"{r.Value.n / (double)r.Value.d:F0}mm";
+                    if (r.HasValue)
+                    {
+                        var mm = r.Value.n / (double)r.Value.d;
+                        data.FocalLengthMm = mm;
+                        data.FocalLength = $"{mm:F0}mm";
+                    }
+                }
+                else if (tag == 0xA405) // FocalLengthIn35mmFilm (short)
+                {
+                    data.FocalLength35Mm = ReadUInt16(tiff, valueOffset, littleEndian);
                 }
             }
         }
+
+        // 6. 补全 35mm 等效焦距：未记录时用原始焦距兜底。
+        if (data.FocalLength35Mm == null && data.FocalLengthMm != null)
+            data.FocalLength35Mm = data.FocalLengthMm;
 
         return data;
     }

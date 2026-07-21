@@ -37,6 +37,7 @@
         <KeyBinding Gesture="Ctrl+2" Command="{Binding NavigateToUploadServerCommand}"/>
         <KeyBinding Gesture="Ctrl+3" Command="{Binding NavigateToTrashCommand}"/>
         <KeyBinding Gesture="Ctrl+4" Command="{Binding NavigateToSettingsCommand}"/>
+        <KeyBinding Gesture="Ctrl+5" Command="{Binding NavigateToStatsCommand}"/>
     </Window.KeyBindings>
     <Grid ColumnDefinitions="80,*"
           RowDefinitions="38,40,*,28">
@@ -287,12 +288,9 @@
             <controls:NavRail DataContext="{Binding}"/>
         </Border>
 
-        <!-- Row 2 Col 1: 页面内容（v0.11 用 TransitioningContentControl 加 PageSlide 过渡，spec demand/06 §10.） -->
-        <TransitioningContentControl Grid.Column="1" Grid.Row="2" Content="{Binding CurrentView}">
-            <TransitioningContentControl.PageTransition>
-                <PageSlide Duration="0:0:0.24" Orientation="Horizontal"/>
-            </TransitioningContentControl.PageTransition>
-            <TransitioningContentControl.DataTemplates>
+        <!-- Row 2 Col 1: 页面内容 -->
+        <ContentControl Grid.Column="1" Grid.Row="2" Content="{Binding CurrentView}">
+            <ContentControl.DataTemplates>
                 <DataTemplate DataType="{x:Type vm:GalleryViewModel}">
                     <views:GalleryView DataContext="{Binding}"/>
                 </DataTemplate>
@@ -306,8 +304,12 @@
                 <DataTemplate DataType="{x:Type vm:TrashViewModel}">
                     <views:TrashView DataContext="{Binding}"/>
                 </DataTemplate>
-            </TransitioningContentControl.DataTemplates>
-        </TransitioningContentControl>
+                <!-- v0.11: 统计仪表盘（spec/19 §4.3） -->
+                <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
+                    <views:DashboardView DataContext="{Binding}"/>
+                </DataTemplate>
+            </ContentControl.DataTemplates>
+        </ContentControl>
 
         <!-- 右下角通知浮层（跨全窗口） -->
         <Panel Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="2"

@@ -33,6 +33,9 @@
     <!-- 上传图标 (Upload) - 16x16 -->
     <StreamGeometry x:Key="Icon.Upload">M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4m4-5l5-5 5 5m-5-5v12</StreamGeometry>
 
+    <!-- v0.11: 统计仪表盘入口图标（条形图） -->
+    <StreamGeometry x:Key="Icon.Stats">M18 20V10m-6 10V4M6 20v-6</StreamGeometry>
+
     <!-- 删除图标 (Trash) - 16x16 -->
     <StreamGeometry x:Key="Icon.Trash">M3 6h18m-2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2m-6 5v6m4-6v6</StreamGeometry>
 
@@ -41,6 +44,11 @@
 
     <!-- 照片图标 (Image) - 16x16 -->
     <StreamGeometry x:Key="Icon.Image">M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm0 2v14h14V5H5zm4 3a2 2 0 110 4 2 2 0 010-4zm3 6h7v2H12v-2z</StreamGeometry>
+
+    <!-- v0.11: 统计仪表盘 KPI 图标 -->
+    <StreamGeometry x:Key="Icon.Clock">M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16zm1-8h4v2h-6V7h2v5z</StreamGeometry>
+    <StreamGeometry x:Key="Icon.Calendar">M19 3h-1V1h-2v2H8V1H6v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm0 16H5V8h14v11z</StreamGeometry>
+    <StreamGeometry x:Key="Icon.HardDrive">M2 12h20v8H2v-8zm2 6h4v-2H4v2zm16-8H4V4h16v6z</StreamGeometry>
 
     <!-- 导入图标 (Download) - 16x16 -->
     <StreamGeometry x:Key="Icon.Download">M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4m-4-4l7 7 7-7m-7 7V3</StreamGeometry>

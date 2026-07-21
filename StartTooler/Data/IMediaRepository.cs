@@ -47,6 +47,16 @@ public interface IMediaRepository
     /// </summary>
     Task<IReadOnlyList<TagGroupItem>> GetTagGroupsAsync(string projectPath, CancellationToken ct = default);
 
+    // === v0.11: 统计仪表盘查询（spec/19 §6.1）===
+
+    Task<DashboardKpi> GetDashboardKpiAsync(string projectPath, CancellationToken ct = default);
+    Task<IReadOnlyList<HeatmapDay>> GetDashboardHeatmapAsync(string projectPath, int year, CancellationToken ct = default);
+    Task<IReadOnlyList<MonthStat>> GetDashboardMonthlyStatsAsync(string projectPath, int year, CancellationToken ct = default);
+    Task<IReadOnlyList<TagRank>> GetDashboardTagRankingAsync(string projectPath, CancellationToken ct = default);
+    Task<IReadOnlyList<FocalRangeStat>> GetDashboardFocalDistributionAsync(string projectPath, CancellationToken ct = default);
+    Task<IReadOnlyList<IsoStat>> GetDashboardIsoDistributionAsync(string projectPath, CancellationToken ct = default);
+    Task<IReadOnlyList<ExposureStat>> GetDashboardExposureDistributionAsync(string projectPath, CancellationToken ct = default);
+
     /// <summary>
     /// 按标签筛选文件 + 按 SortMode 排序。
     /// v0.11: 先通过 tag 表把 name 解析成 id，再匹配 media_files.tags 中的 id 数组。

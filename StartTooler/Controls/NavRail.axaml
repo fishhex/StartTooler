@@ -12,7 +12,7 @@
       v0.11: 4 个导航按钮加 PathIcon（spec §3.1），高度 48 → 56 容纳图标+文字
       按钮 Foreground 自动驱动 PathIcon.Foreground（PathIcon 用 Fill="{TemplateBinding Foreground}" 风格跟随）
     -->
-    <Grid RowDefinitions="Auto,Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
         <!-- 媒体按钮 (C15 NavItem) -->
         <Button Grid.Row="0"
                 x:Name="MediaButton"
@@ -52,8 +52,27 @@
             </StackPanel>
         </Button>
 
-        <!-- v0.8: 垃圾筒按钮（紧贴上传，spec §9.2） -->
+        <!-- v0.11: 统计按钮（spec/19 §4.1，位于上传与垃圾筒之间） -->
         <Button Grid.Row="2"
+                x:Name="StatsButton"
+                Height="56"
+                Classes="nav-item"
+                Classes.active="{Binding IsStatsActive}"
+                Command="{Binding NavigateToStatsCommand}"
+                ToolTip.Tip="{Binding NavStatsTooltip}"
+                VerticalAlignment="Center"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Padding="0">
+            <StackPanel Spacing="4" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <PathIcon Data="{DynamicResource Icon.Stats}"
+                          Width="18" Height="18" />
+                <TextBlock Text="统计" FontSize="11" TextAlignment="Center" />
+            </StackPanel>
+        </Button>
+
+        <!-- v0.8: 垃圾筒按钮（紧贴统计，spec §9.2） -->
+        <Button Grid.Row="3"
                 x:Name="TrashButton"
                 Height="56"
                 Classes="nav-item"
@@ -90,7 +109,7 @@
         </Button>
 
         <!-- 设置按钮 (C15 NavItem) -->
-        <Button Grid.Row="3"
+        <Button Grid.Row="4"
                 x:Name="SettingsButton"
                 Height="56"
                 Classes="nav-item"

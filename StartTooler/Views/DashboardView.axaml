@@ -1,0 +1,104 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:StartTooler.ViewModels"
+             xmlns:controls="using:StartTooler.Controls"
+             mc:Ignorable="d"
+             x:Class="StartTooler.Views.DashboardView"
+             x:DataType="vm:DashboardViewModel">
+
+    <Grid Background="{DynamicResource Bg.Surface}">
+        <ScrollViewer IsVisible="{Binding !IsEmpty}"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="40,24" Spacing="24">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0"
+                               Text="数据统计"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Primary}"
+                               VerticalAlignment="Center"/>
+                    <ComboBox Grid.Column="1"
+                              ItemsSource="{Binding AvailableYears}"
+                              SelectedItem="{Binding SelectedYear}"
+                              Width="96"
+                              VerticalAlignment="Center"/>
+                </Grid>
+
+                <UniformGrid Columns="5" Margin="0,0,-12,0">
+                    <controls:StatCard Label="总照片数"
+                                       Value="{Binding KpiTotalPhotos}"
+                                       IconData="{DynamicResource Icon.Image}"/>
+                    <controls:StatCard Label="累计曝光"
+                                       Value="{Binding KpiExposureHours}"
+                                       IconData="{DynamicResource Icon.Clock}"/>
+                    <controls:StatCard Label="拍摄天数"
+                                       Value="{Binding KpiShootingDays}"
+                                       IconData="{DynamicResource Icon.Calendar}"/>
+                    <controls:StatCard Label="天体种类"
+                                       Value="{Binding KpiTargetCount}"
+                                       IconData="{DynamicResource Icon.Constellation}"/>
+                    <controls:StatCard Label="数据量"
+                                       Value="{Binding KpiTotalSize}"
+                                       IconData="{DynamicResource Icon.HardDrive}"/>
+                </UniformGrid>
+
+                <!-- 时间维度行：热力图 + 月度柱状图 -->
+                <Grid ColumnDefinitions="Auto,*">
+                    <controls:CalendarHeatmap Grid.Column="0"
+                                              Title="拍摄热力图"
+                                              Days="{Binding HeatmapDays}"
+                                              DayClicked="OnCalendarDayClicked"/>
+                    <controls:BarChart Grid.Column="1"
+                                       Title="月度统计"
+                                       Items="{Binding MonthlyBarItems}"
+                                       Orientation="Vertical"
+                                       ShowValue="True"/>
+                </Grid>
+
+                <!-- 目标+技术行：目标排行 + 曝光参数分布 -->
+                <Grid ColumnDefinitions="*,*">
+                    <controls:BarChart Grid.Column="0"
+                                       Title="目标排行榜 TOP15"
+                                       Items="{Binding TagRankBarItems}"
+                                       Orientation="Horizontal"
+                                       ShowValue="True"
+                                       ItemClicked="OnTagRankClicked"/>
+                    <StackPanel Grid.Column="1" Spacing="16">
+                        <controls:BarChart Title="焦距分布"
+                                           Items="{Binding FocalBarItems}"
+                                           Orientation="Horizontal"
+                                           ShowValue="True"/>
+                        <controls:BarChart Title="ISO 分布"
+                                           Items="{Binding IsoBarItems}"
+                                           Orientation="Horizontal"
+                                           ShowValue="True"/>
+                        <controls:BarChart Title="曝光时长分布"
+                                           Items="{Binding ExposureBarItems}"
+                                           Orientation="Horizontal"
+                                           ShowValue="True"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border IsVisible="{Binding IsEmpty}"
+                Background="{DynamicResource Bg.Surface}"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="12">
+                <PathIcon Data="{DynamicResource Icon.Stats}"
+                          Width="48" Height="48"
+                          Foreground="{DynamicResource Text.Disabled}"/>
+                <TextBlock Text="{Binding EmptyMessage}"
+                           FontSize="14"
+                           Foreground="{DynamicResource Text.Tertiary}"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

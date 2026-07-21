@@ -43,6 +43,12 @@
     <Color x:Key="Timeline.Dot.Selected">#4FC3F7</Color>
     <Color x:Key="Timeline.Line">#8892B0</Color>
 
+    <!-- ============ v0.11: 统计仪表盘图表用色（spec/19 §5.2） ============ -->
+    <Color x:Key="Chart.Heatmap.Zero">#1E2233</Color>
+    <Color x:Key="Chart.Heatmap.Max">#4FC3F7</Color>
+    <Color x:Key="Chart.Bar.Accent">#4FC3F7</Color>
+    <Color x:Key="Chart.Bar.Secondary">#8892B0</Color>
+
     <!-- macOS 交通灯 -->
     <Color x:Key="TrafficLight.Red">#FF5F57</Color>
     <Color x:Key="TrafficLight.Yellow">#FFBD2E</Color>

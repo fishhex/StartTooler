@@ -1,0 +1,22 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="using:StartTooler.Controls"
+             mc:Ignorable="d"
+             x:Class="StartTooler.Controls.CalendarHeatmap"
+             x:DataType="local:CalendarHeatmap">
+
+    <Border Background="{DynamicResource Bg.Surface}"
+            CornerRadius="{DynamicResource Radius.Large}"
+            Padding="20">
+        <StackPanel Spacing="12">
+            <TextBlock Text="{Binding Title, RelativeSource={RelativeSource AncestorType=local:CalendarHeatmap}}"
+                       FontSize="14"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text.Primary}" />
+            <local:SkiaHeatmap Days="{Binding Days, RelativeSource={RelativeSource AncestorType=local:CalendarHeatmap}}"
+                               DayClicked="OnDayClicked" />
+        </StackPanel>
+    </Border>
+</UserControl>

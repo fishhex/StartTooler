@@ -20,6 +20,7 @@ public enum ViewPage
     Settings,
     UploadServer,
     Trash,  // v0.8: 垃圾筒（spec doc/14-delete-and-trash.md §9.1）
+    Dashboard,  // v0.11: 统计仪表盘（spec/19 §4）
 }
 
 public partial class MainWindowViewModel : ObservableObject
@@ -35,6 +36,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private SettingsViewModel settingsViewModel;
     [ObservableProperty] private UploadServerViewModel uploadServerViewModel;
     [ObservableProperty] private TrashViewModel trashViewModel;  // v0.8
+    [ObservableProperty] private DashboardViewModel dashboardViewModel;  // v0.11
     [ObservableProperty] private object currentView;
     [ObservableProperty] private bool isSettingsPage;
     [ObservableProperty] private ViewPage currentPage = ViewPage.Gallery;
@@ -55,6 +57,7 @@ public partial class MainWindowViewModel : ObservableObject
                 ViewPage.Settings => "设置",
                 ViewPage.UploadServer => "上传服务",
                 ViewPage.Trash => "垃圾筒",
+                ViewPage.Dashboard => "统计",
                 _ => string.Empty,
             };
             return string.IsNullOrEmpty(pageName) ? "星助" : $"星助 — {pageName}";
@@ -70,6 +73,7 @@ public partial class MainWindowViewModel : ObservableObject
     public string NavUploadTooltip => OperatingSystem.IsMacOS() ? "上传 (⌘2)" : "上传 (Ctrl+2)";
     public string NavTrashTooltip => OperatingSystem.IsMacOS() ? "垃圾筒 (⌘3)" : "垃圾筒 (Ctrl+3)";
     public string NavSettingsTooltip => OperatingSystem.IsMacOS() ? "设置 (⌘4)" : "设置 (Ctrl+4)";
+    public string NavStatsTooltip => OperatingSystem.IsMacOS() ? "统计 (⌘5)" : "统计 (Ctrl+5)";
 
     /// <summary>
     /// v0.11: 通知历史（spec §14）—— 状态栏铃铛 Flyout 绑定这个集合。
@@ -83,6 +87,8 @@ public partial class MainWindowViewModel : ObservableObject
     public bool IsUploadServerActive => CurrentPage == ViewPage.UploadServer;
 
     public bool IsTrashActive => CurrentPage == ViewPage.Trash;  // v0.8
+
+    public bool IsStatsActive => CurrentPage == ViewPage.Dashboard;  // v0.11
 
     public bool IsGalleryPage => CurrentPage == ViewPage.Gallery;
 
@@ -139,6 +145,17 @@ public partial class MainWindowViewModel : ObservableObject
             dontAskAgain: dontAskAgain,
             onOssNotConfigured: ShowOssNotConfiguredDialogAsync,
             onNavigateToFile: NavigateToGalleryAndLocateFile);
+
+        // v0.11: 统计仪表盘 VM（spec/19 §4.2）
+        DashboardViewModel = new DashboardViewModel(_mediaRepository, _configService);
+        DashboardViewModel.NavigateToGalleryDate = async date =>
+        {
+            await NavigateToGalleryAndDateAsync(date);
+        };
+        DashboardViewModel.NavigateToGalleryTag = async tag =>
+        {
+            await NavigateToGalleryAndTagAsync(tag);
+        };
 
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;
@@ -335,10 +352,56 @@ public partial class MainWindowViewModel : ObservableObject
         GalleryViewModel?.LocateAndScrollTo(mediaId);
     }
 
+    /// <summary>
+    /// v0.11: 统计仪表盘 → Gallery 日期跳转（spec/19 §8）。
+    /// </summary>
+    private async Task NavigateToGalleryAndDateAsync(DateTime date)
+    {
+        Trace.WriteLine($"[MainWindow] NavigateToGalleryAndDateAsync: {date:yyyy-MM-dd}");
+
+        CurrentView = GalleryViewModel;
+        IsSettingsPage = false;
+        CurrentPage = ViewPage.Gallery;
+
+        if (GalleryViewModel != null)
+        {
+            await GalleryViewModel.NavigateToDateAsync(date);
+        }
+    }
+
+    /// <summary>
+    /// v0.11: 统计仪表盘 → Gallery 标签跳转（spec/19 §8）。
+    /// </summary>
+    private async Task NavigateToGalleryAndTagAsync(string tag)
+    {
+        Trace.WriteLine($"[MainWindow] NavigateToGalleryAndTagAsync: tag='{tag}'");
+
+        CurrentView = GalleryViewModel;
+        IsSettingsPage = false;
+        CurrentPage = ViewPage.Gallery;
+
+        if (GalleryViewModel != null)
+        {
+            await GalleryViewModel.NavigateToTagAsync(tag);
+        }
+    }
+
     [RelayCommand]
     private void NavigateToMedia()
     {
         NavigateToGalleryCommand.Execute(null);
+    }
+
+    /// <summary>
+    /// v0.11: 导航到统计仪表盘（spec/19 §4.2）。
+    /// </summary>
+    [RelayCommand]
+    private async Task NavigateToStats()
+    {
+        CurrentView = DashboardViewModel;
+        IsSettingsPage = false;
+        CurrentPage = ViewPage.Dashboard;
+        await DashboardViewModel.LoadAsync();
     }
 
     [RelayCommand]
@@ -415,6 +478,7 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSettingsPageVisible));
         OnPropertyChanged(nameof(IsUploadServerActive));
         OnPropertyChanged(nameof(IsTrashActive));
+        OnPropertyChanged(nameof(IsStatsActive));
         OnPropertyChanged(nameof(WindowTitle));  // v0.11: 标题随 CurrentPage 变化
     }
 }

@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
+using StartTooler.Converters;
 using StartTooler.Models;
 using StartTooler.Services;
 
@@ -109,6 +110,17 @@ public class MediaRepository : IMediaRepository
         SqliteMigrations.AddColumnIfMissing(
             connection, "media_files", "deleted_at",
             "INTEGER");
+
+        // === v0.11: 统计仪表盘 EXIF 冗余字段（spec/19 §6.2）===
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "focal_length_35mm",
+            "REAL");
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "iso",
+            "INTEGER");
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "exposure_time",
+            "REAL");
 
         // 评分排序的 B-tree 索引。tags 索引对未来 SQLite JSON1 查询有用，
         // 当前 LIKE '%"标签"%' 仍走全表扫（B-tree 不加速前缀模糊）。
@@ -390,6 +402,7 @@ public class MediaRepository : IMediaRepository
                 created_at, updated_at,
                 tags, score, tagged_at, tag_error,
                 quality_tags,
+                focal_length_35mm, iso, exposure_time,
                 deleted_at
             FROM media_files
             WHERE project_path = @projectPath
@@ -445,6 +458,7 @@ public class MediaRepository : IMediaRepository
                 created_at, updated_at,
                 tags, score, tagged_at, tag_error,
                 quality_tags,
+                focal_length_35mm, iso, exposure_time,
                 deleted_at
             FROM media_files
             WHERE project_path = @projectPath
@@ -536,9 +550,11 @@ public class MediaRepository : IMediaRepository
         var insertSql = @"
             INSERT INTO media_files (project_path, relative_path, file_name, media_type,
                 file_size, last_modified, shot_at, thumbnail_path, scanned_at,
+                focal_length_35mm, iso, exposure_time,
                 created_at, updated_at)
             VALUES (@projectPath, @relativePath, @fileName, @mediaType,
                 @fileSize, @lastModified, @shotAt, @thumbnailPath, @scannedAt,
+                @focalLength35mm, @iso, @exposureTime,
                 @createdAt, @updatedAt)
             ON CONFLICT(project_path, relative_path) DO UPDATE SET
                 file_size = @fileSize,
@@ -546,6 +562,9 @@ public class MediaRepository : IMediaRepository
                 shot_at = COALESCE(shot_at, @shotAt),
                 thumbnail_path = @thumbnailPath,
                 scanned_at = @scannedAt,
+                focal_length_35mm = COALESCE(@focalLength35mm, focal_length_35mm),
+                iso = COALESCE(@iso, iso),
+                exposure_time = COALESCE(@exposureTime, exposure_time),
                 created_at = created_at,
                 updated_at = @updatedAt";
 
@@ -567,6 +586,13 @@ public class MediaRepository : IMediaRepository
                 var lastModified = new DateTimeOffset(fileInfo.LastWriteTimeUtc).ToUnixTimeMilliseconds();
                 var scannedAt = DateTimeOffset.Now.ToUnixTimeMilliseconds();
 
+                // 解析 EXIF（D09 统计仪表盘用）。非图片/无 EXIF → null，列留空。
+                ExifData? exif = null;
+                if (mediaType == 0) // Image
+                {
+                    exif = ExifReader.Read(filePath);
+                }
+
                 // created_at/updated_at 都用当前 UTC：新行用 @createdAt 走 INSERT（与 DEFAULT 等价），
                 // 老行走 ON CONFLICT 时 @createdAt 被忽略（SQL 写死 created_at = created_at 保留原值）。
                 var nowIso = SqliteDateTime.ToDb(DateTime.UtcNow);
@@ -581,6 +607,9 @@ public class MediaRepository : IMediaRepository
                 cmd.Parameters.AddWithValue("@shotAt", lastModified); // 用文件修改时间作为 shot_at
                 cmd.Parameters.AddWithValue("@thumbnailPath", DBNull.Value); // 缩略图稍后生成
                 cmd.Parameters.AddWithValue("@scannedAt", scannedAt);
+                cmd.Parameters.AddWithValue("@focalLength35mm", (object?)exif?.FocalLength35Mm ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@iso", (object?)exif?.Iso ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@exposureTime", (object?)exif?.ExposureTimeSeconds ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@createdAt", nowIso);
                 cmd.Parameters.AddWithValue("@updatedAt", nowIso);
 
@@ -823,6 +852,387 @@ public class MediaRepository : IMediaRepository
         return results;
     }
 
+    // === v0.11: 统计仪表盘查询实现（spec/19 §6.1）===
+
+    public async Task<DashboardKpi> GetDashboardKpiAsync(string projectPath, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        const string sql = @"
+            SELECT
+                COUNT(*) AS total_photos,
+                COALESCE(SUM(exposure_time), 0) AS total_exposure_seconds,
+                COUNT(DISTINCT date(shot_at / 1000, 'unixepoch', 'localtime')) AS shooting_days,
+                COUNT(DISTINCT t.id) AS target_count,
+                COALESCE(SUM(file_size), 0) AS total_bytes
+            FROM media_files m
+            LEFT JOIN tags t ON t.project_path = m.project_path
+                AND EXISTS (
+                    SELECT 1 FROM json_each(m.tags)
+                    WHERE json_each.value = t.id
+                )
+            WHERE m.project_path = @projectPath
+              AND m.deleted_at IS NULL";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (await reader.ReadAsync(ct))
+        {
+            return new DashboardKpi
+            {
+                TotalPhotos = reader.GetInt32(0),
+                TotalExposureHours = reader.GetDouble(1) / 3600.0,
+                ShootingDays = reader.GetInt32(2),
+                TargetCount = reader.GetInt32(3),
+                TotalBytes = reader.GetInt64(4),
+            };
+        }
+
+        return new DashboardKpi();
+    }
+
+    public async Task<IReadOnlyList<HeatmapDay>> GetDashboardHeatmapAsync(string projectPath, int year, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var results = new List<HeatmapDay>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        await LoadTagCacheAsync(connection, normalizedPath, ct);
+
+        const string sql = @"
+            WITH day_counts AS (
+                SELECT
+                    date(shot_at / 1000, 'unixepoch', 'localtime') AS day,
+                    COUNT(*) AS count
+                FROM media_files
+                WHERE project_path = @projectPath
+                  AND deleted_at IS NULL
+                  AND shot_at IS NOT NULL
+                  AND strftime('%Y', datetime(shot_at / 1000, 'unixepoch')) = @year
+                GROUP BY day
+            ),
+            day_top_tag AS (
+                SELECT
+                    date(shot_at / 1000, 'unixepoch', 'localtime') AS day,
+                    t.name AS tag_name,
+                    COUNT(*) AS tag_count,
+                    ROW_NUMBER() OVER (PARTITION BY date(shot_at / 1000, 'unixepoch', 'localtime') ORDER BY COUNT(*) DESC, t.name) AS rn
+                FROM media_files m
+                JOIN tags t ON t.project_path = m.project_path
+                    AND EXISTS (
+                        SELECT 1 FROM json_each(m.tags)
+                        WHERE json_each.value = t.id
+                    )
+                WHERE m.project_path = @projectPath
+                  AND m.deleted_at IS NULL
+                  AND m.shot_at IS NOT NULL
+                  AND strftime('%Y', datetime(m.shot_at / 1000, 'unixepoch')) = @year
+                GROUP BY day, t.name
+            )
+            SELECT d.day, d.count, tt.tag_name
+            FROM day_counts d
+            LEFT JOIN day_top_tag tt ON tt.day = d.day AND tt.rn = 1
+            ORDER BY d.day";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+        cmd.Parameters.AddWithValue("@year", year.ToString());
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var dayStr = reader.GetString(0);
+            if (DateTime.TryParse(dayStr, out var day))
+            {
+                results.Add(new HeatmapDay
+                {
+                    Date = day,
+                    Count = reader.GetInt32(1),
+                    TopTarget = reader.IsDBNull(2) ? null : reader.GetString(2),
+                });
+            }
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyList<MonthStat>> GetDashboardMonthlyStatsAsync(string projectPath, int year, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var results = new List<MonthStat>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        const string sql = @"
+            SELECT
+                CAST(strftime('%m', datetime(shot_at / 1000, 'unixepoch')) AS INTEGER) AS month,
+                COUNT(*) AS count
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND deleted_at IS NULL
+              AND shot_at IS NOT NULL
+              AND strftime('%Y', datetime(shot_at / 1000, 'unixepoch')) = @year
+            GROUP BY month
+            ORDER BY month";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+        cmd.Parameters.AddWithValue("@year", year.ToString());
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            results.Add(new MonthStat
+            {
+                Month = reader.GetInt32(0),
+                Count = reader.GetInt32(1),
+            });
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyList<TagRank>> GetDashboardTagRankingAsync(string projectPath, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var results = new List<TagRank>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        const string sql = @"
+            SELECT t.name, COUNT(*) AS count
+            FROM tags t
+            JOIN media_files m ON m.project_path = t.project_path
+                AND EXISTS (
+                    SELECT 1 FROM json_each(m.tags)
+                    WHERE json_each.value = t.id
+                )
+            WHERE t.project_path = @projectPath
+              AND m.deleted_at IS NULL
+            GROUP BY t.id, t.name
+            ORDER BY count DESC, t.name
+            LIMIT 15";
+
+        long total = 0;
+        var rows = new List<(string Name, int Count)>();
+
+        await using (var cmd = new SqliteCommand(sql, connection))
+        {
+            cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var name = reader.GetString(0);
+                var count = reader.GetInt32(1);
+                rows.Add((name, count));
+                total += count;
+            }
+        }
+
+        // 计算百分比：分母为项目下所有有标签文件总数（避免未打标文件稀释）。
+        const string totalSql = @"
+            SELECT COUNT(*)
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND deleted_at IS NULL
+              AND tags IS NOT NULL
+              AND tags != '[]'";
+
+        long taggedTotal = 0;
+        await using (var cmd = new SqliteCommand(totalSql, connection))
+        {
+            cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+            var scalar = await cmd.ExecuteScalarAsync(ct);
+            taggedTotal = scalar is long l ? l : 0;
+        }
+
+        foreach (var (name, count) in rows)
+        {
+            results.Add(new TagRank
+            {
+                TagName = name,
+                Count = count,
+                Percentage = taggedTotal > 0 ? count * 100.0 / taggedTotal : 0,
+            });
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyList<FocalRangeStat>> GetDashboardFocalDistributionAsync(string projectPath, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var results = new List<FocalRangeStat>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        const string sql = @"
+            SELECT
+                CASE
+                    WHEN focal_length_35mm < 24 THEN '超广角 (<24mm)'
+                    WHEN focal_length_35mm < 50 THEN '广角 (24-50mm)'
+                    WHEN focal_length_35mm < 100 THEN '标准 (50-100mm)'
+                    WHEN focal_length_35mm <= 400 THEN '长焦 (100-400mm)'
+                    ELSE '超长焦 (>400mm)'
+                END AS range_label,
+                COUNT(*) AS count
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND deleted_at IS NULL
+              AND focal_length_35mm IS NOT NULL
+            GROUP BY range_label
+            ORDER BY MIN(focal_length_35mm)";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+
+        var rows = new List<(string Label, int Count)>();
+        long total = 0;
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var label = reader.GetString(0);
+                var count = reader.GetInt32(1);
+                rows.Add((label, count));
+                total += count;
+            }
+        }
+
+        foreach (var (label, count) in rows)
+        {
+            results.Add(new FocalRangeStat
+            {
+                RangeLabel = label,
+                Count = count,
+                Percentage = total > 0 ? count * 100.0 / total : 0,
+            });
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyList<IsoStat>> GetDashboardIsoDistributionAsync(string projectPath, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var results = new List<IsoStat>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        const string sql = @"
+            SELECT
+                CASE
+                    WHEN iso < 100 THEN 'ISO <100'
+                    WHEN iso < 200 THEN 'ISO 100'
+                    WHEN iso < 400 THEN 'ISO 200'
+                    WHEN iso < 800 THEN 'ISO 400'
+                    WHEN iso < 1600 THEN 'ISO 800'
+                    WHEN iso < 3200 THEN 'ISO 1600'
+                    WHEN iso < 6400 THEN 'ISO 3200'
+                    WHEN iso < 12800 THEN 'ISO 6400'
+                    WHEN iso < 25600 THEN 'ISO 12800'
+                    ELSE 'ISO 25600+'
+                END AS iso_label,
+                COUNT(*) AS count
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND deleted_at IS NULL
+              AND iso IS NOT NULL
+            GROUP BY iso_label
+            ORDER BY MIN(iso)";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+
+        var rows = new List<(string Label, int Count)>();
+        long total = 0;
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var label = reader.GetString(0);
+                var count = reader.GetInt32(1);
+                rows.Add((label, count));
+                total += count;
+            }
+        }
+
+        foreach (var (label, count) in rows)
+        {
+            results.Add(new IsoStat
+            {
+                IsoLabel = label,
+                Count = count,
+                Percentage = total > 0 ? count * 100.0 / total : 0,
+            });
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyList<ExposureStat>> GetDashboardExposureDistributionAsync(string projectPath, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var results = new List<ExposureStat>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        const string sql = @"
+            SELECT
+                CASE
+                    WHEN exposure_time < 1 THEN '<1s'
+                    WHEN exposure_time < 10 THEN '1-10s'
+                    WHEN exposure_time < 30 THEN '10-30s'
+                    ELSE '>30s'
+                END AS range_label,
+                COUNT(*) AS count
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND deleted_at IS NULL
+              AND exposure_time IS NOT NULL
+            GROUP BY range_label
+            ORDER BY MIN(exposure_time)";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+
+        var rows = new List<(string Label, int Count)>();
+        long total = 0;
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var label = reader.GetString(0);
+                var count = reader.GetInt32(1);
+                rows.Add((label, count));
+                total += count;
+            }
+        }
+
+        foreach (var (label, count) in rows)
+        {
+            results.Add(new ExposureStat
+            {
+                RangeLabel = label,
+                Count = count,
+                Percentage = total > 0 ? count * 100.0 / total : 0,
+            });
+        }
+
+        return results;
+    }
+
     public async Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath, string tag, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default)
     {
         var results = new List<MediaFile>();
@@ -852,6 +1262,7 @@ public class MediaRepository : IMediaRepository
                 created_at, updated_at,
                 tags, score, tagged_at, tag_error,
                 quality_tags,
+                focal_length_35mm, iso, exposure_time,
                 deleted_at
             FROM media_files
             WHERE project_path = @projectPath
@@ -1287,6 +1698,7 @@ public class MediaRepository : IMediaRepository
                 created_at, updated_at,
                 tags, score, tagged_at, tag_error,
                 quality_tags,
+                focal_length_35mm, iso, exposure_time,
                 deleted_at
             FROM media_files
             WHERE project_path = @projectPath
@@ -1367,6 +1779,7 @@ public class MediaRepository : IMediaRepository
                 created_at, updated_at,
                 tags, score, tagged_at, tag_error,
                 quality_tags,
+                focal_length_35mm, iso, exposure_time,
                 deleted_at
             FROM media_files
             WHERE id = @id
@@ -1386,7 +1799,7 @@ public class MediaRepository : IMediaRepository
     // === Row 映射 helpers（GetByDateAsync / GetByTagAsync / GetDeletedAsync 共用） ===
 
     /// <summary>
-    /// SELECT 列序：16 基础列 + 5 AI 列（tags/score/tagged_at/tag_error/quality_tags）+ 1 删除列（deleted_at），共 22 列。
+    /// SELECT 列序：16 基础列 + 5 AI 列（tags/score/tagged_at/tag_error/quality_tags）+ 3 EXIF 列（focal_length_35mm/iso/exposure_time）+ 1 删除列（deleted_at），共 25 列。
     /// SELECT 模板见 GetByDateAsync / GetByTagAsync / GetDeletedAsync 的 sql 字符串。
     /// v0.11: tags 列存 id 数组，ReadMediaFileRow 通过 tag 缓存把 id 解析为 name。
     /// </summary>
@@ -1417,7 +1830,36 @@ public class MediaRepository : IMediaRepository
             TagError = reader.IsDBNull(19) ? null : reader.GetString(19),
             QualityTags = ParseTags(reader.IsDBNull(20) ? null : reader.GetString(20)),
             DeletedAt = reader.IsDBNull(21) ? null : reader.GetInt64(21),
+            FocalLength35Mm = GetOptionalDouble(reader, "focal_length_35mm"),
+            Iso = GetOptionalInt(reader, "iso"),
+            ExposureTimeSeconds = GetOptionalDouble(reader, "exposure_time"),
         };
+    }
+
+    private static double? GetOptionalDouble(SqliteDataReader reader, string name)
+    {
+        try
+        {
+            var ordinal = reader.GetOrdinal(name);
+            return reader.IsDBNull(ordinal) ? null : reader.GetDouble(ordinal);
+        }
+        catch (IndexOutOfRangeException)
+        {
+            return null;
+        }
+    }
+
+    private static int? GetOptionalInt(SqliteDataReader reader, string name)
+    {
+        try
+        {
+            var ordinal = reader.GetOrdinal(name);
+            return reader.IsDBNull(ordinal) ? null : reader.GetInt32(ordinal);
+        }
+        catch (IndexOutOfRangeException)
+        {
+            return null;
+        }
     }
 
     /// <summary>JSON 字符串数组 → List&lt;string&gt;。空/损坏 → 空 list。（quality_tags 仍用）</summary>

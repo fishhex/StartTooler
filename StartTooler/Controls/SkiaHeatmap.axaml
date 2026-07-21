@@ -1,0 +1,27 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="using:StartTooler.Controls"
+             mc:Ignorable="d"
+             x:Class="StartTooler.Controls.SkiaHeatmap"
+             x:DataType="local:SkiaHeatmap">
+    <Grid>
+        <ContentControl x:Name="SkiaHost" HorizontalAlignment="Left" VerticalAlignment="Top" />
+        <Border x:Name="TooltipBorder"
+                Background="{DynamicResource Bg.SurfaceElevated}"
+                BorderBrush="{DynamicResource Bg.Divider}"
+                BorderThickness="1"
+                CornerRadius="{DynamicResource Radius.Medium}"
+                Padding="12,8"
+                IsVisible="False"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top">
+            <StackPanel Spacing="2">
+                <TextBlock x:Name="TooltipDate" FontSize="12" Foreground="{DynamicResource Text.Primary}" />
+                <TextBlock x:Name="TooltipCount" FontSize="11" Foreground="{DynamicResource Text.Secondary}" />
+                <TextBlock x:Name="TooltipTarget" FontSize="11" Foreground="{DynamicResource Text.Tertiary}" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>
