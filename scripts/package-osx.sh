@@ -10,7 +10,10 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/Resources"
 
-cp "$PUBLISH_DIR/StartTooler" "$APP/Contents/MacOS/"
+# 把 publish 目录下所有产物复制到 .app 中。单文件发布在 macOS 上仍会生成
+# libAvaloniaNative.dylib / libSkiaSharp.dylib / libe_sqlite3.dylib 等原生库，
+# 运行时从可执行文件所在目录加载；遗漏它们会导致启动时 TypeInitializationException / DllNotFoundException。
+cp -R "$PUBLISH_DIR/"* "$APP/Contents/MacOS/"
 cp "$ICNS_SRC" "$APP/Contents/Resources/App.icns"
 
 # 对 .app 进行 ad-hoc 签名，避免 Gatekeeper 报告“已损坏”。
