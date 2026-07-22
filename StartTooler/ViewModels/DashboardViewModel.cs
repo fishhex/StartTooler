@@ -105,11 +105,14 @@ public partial class DashboardViewModel : ObservableObject
             return;
         }
 
-        // 首次加载：默认年份为最后一条数据的年份（无数据则当前年）
+        // 首次加载：默认年份为最后一条数据的年份（无数据则当前年）。
+        // 先构建最小可用年份列表再设置 SelectedYear，避免 ComboBox 在 ItemsSource 为空时丢失选中项。
         if (AvailableYears.Count == 0)
         {
             var latestYear = await _mediaRepo.GetLatestPhotoYearAsync(projectPath, CancellationToken.None);
-            SelectedYear = latestYear ?? DateTime.Now.Year;
+            var year = latestYear ?? DateTime.Now.Year;
+            AvailableYears = new List<int> { DateTime.Now.Year, year };
+            SelectedYear = year;
         }
 
         IsLoading = true;
@@ -142,6 +145,12 @@ public partial class DashboardViewModel : ObservableObject
 
             // 构建可用年份列表（基于有数据的年份，至少包含当前年份和 SelectedYear）
             BuildAvailableYears();
+
+            // 列表重建后，再触发一次 SelectedYear 通知，确保 ComboBox 选中项与当前值同步。
+            if (AvailableYears.Contains(SelectedYear))
+            {
+                OnPropertyChanged(nameof(SelectedYear));
+            }
 
             NotifyChartPropertiesChanged();
         }
