@@ -14,16 +14,52 @@ namespace StartTooler.ViewModels;
 
 /// <summary>
 /// v0.11: 统计仪表盘 ViewModel（spec/19 §7）。
-/// Phase 1 实现：KPI + 热力图 + 月度统计 + 目标排行 + 曝光参数分布。
+/// Phase 1 实现：KPI + 热力图 + 周期统计 + 目标排行 + 曝光参数分布。
+/// 支持年 / 季度 / 月三种时间粒度切换。
 /// </summary>
 public partial class DashboardViewModel : ObservableObject
 {
     private readonly IMediaRepository _mediaRepo;
     private readonly IConfigService _configService;
 
-    // === 年份切换 ===
+    // === 时间维度切换 ===
+    [ObservableProperty] private TimeMode _timeMode = TimeMode.Year;
     [ObservableProperty] private int _selectedYear = DateTime.Now.Year;
+    [ObservableProperty] private int _selectedQuarter = 1;
+    [ObservableProperty] private int _selectedMonth = 1;
+
     [ObservableProperty] private List<int> _availableYears = new();
+    [ObservableProperty] private List<int> _availableMonths = Enumerable.Range(1, 12).ToList();
+
+    public IReadOnlyList<TimeModeOption> TimeModeOptions { get; } = new List<TimeModeOption>
+    {
+        new(TimeMode.Year, "年"),
+        new(TimeMode.Quarter, "季度"),
+        new(TimeMode.Month, "月"),
+    };
+
+    [ObservableProperty] private TimeModeOption _selectedTimeModeOption = null!;
+
+    public List<int> AvailableQuarters { get; } = new() { 1, 2, 3, 4 };
+
+    public DashboardPeriod CurrentPeriod => TimeMode switch
+    {
+        TimeMode.Quarter => new DashboardPeriod { Year = SelectedYear, Quarter = SelectedQuarter },
+        TimeMode.Month => new DashboardPeriod { Year = SelectedYear, Month = SelectedMonth },
+        _ => new DashboardPeriod { Year = SelectedYear },
+    };
+
+    public string CurrentPeriodTitle => TimeMode switch
+    {
+        TimeMode.Quarter => $"{SelectedYear}年 Q{SelectedQuarter}",
+        TimeMode.Month => $"{SelectedYear}年 {SelectedMonth}月",
+        _ => $"{SelectedYear}年",
+    };
+
+    public string PeriodChartTitle => TimeMode == TimeMode.Month ? "每日统计" : "月度统计";
+
+    public bool IsQuarterMode => TimeMode == TimeMode.Quarter;
+    public bool IsMonthMode => TimeMode == TimeMode.Month;
 
     // === KPI ===
     [ObservableProperty] private DashboardKpi? _kpi;
@@ -31,8 +67,8 @@ public partial class DashboardViewModel : ObservableObject
     // === 热力图 ===
     [ObservableProperty] private IReadOnlyList<HeatmapDay> _heatmapDays = Array.Empty<HeatmapDay>();
 
-    // === 月度统计 ===
-    [ObservableProperty] private IReadOnlyList<MonthStat> _monthlyStats = Array.Empty<MonthStat>();
+    // === 周期统计（年→月 / 季度→月 / 月→日）===
+    [ObservableProperty] private IReadOnlyList<PeriodStat> _periodStats = Array.Empty<PeriodStat>();
 
     // === 目标排行 ===
     [ObservableProperty] private IReadOnlyList<TagRank> _tagRanks = Array.Empty<TagRank>();
@@ -55,6 +91,7 @@ public partial class DashboardViewModel : ObservableObject
     {
         _mediaRepo = mediaRepo;
         _configService = configService;
+        _selectedTimeModeOption = TimeModeOptions[0];
     }
 
     public async Task LoadAsync()
@@ -68,34 +105,45 @@ public partial class DashboardViewModel : ObservableObject
             return;
         }
 
+        // 首次加载：默认年份为最后一条数据的年份（无数据则当前年）
+        if (AvailableYears.Count == 0)
+        {
+            var latestYear = await _mediaRepo.GetLatestPhotoYearAsync(projectPath, CancellationToken.None);
+            SelectedYear = latestYear ?? DateTime.Now.Year;
+        }
+
         IsLoading = true;
         try
         {
-            // 并行加载所有统计
-            var kpiTask = _mediaRepo.GetDashboardKpiAsync(projectPath, CancellationToken.None);
-            var heatmapTask = _mediaRepo.GetDashboardHeatmapAsync(projectPath, SelectedYear, CancellationToken.None);
-            var monthlyTask = _mediaRepo.GetDashboardMonthlyStatsAsync(projectPath, SelectedYear, CancellationToken.None);
-            var tagRankTask = _mediaRepo.GetDashboardTagRankingAsync(projectPath, CancellationToken.None);
-            var focalTask = _mediaRepo.GetDashboardFocalDistributionAsync(projectPath, CancellationToken.None);
-            var isoTask = _mediaRepo.GetDashboardIsoDistributionAsync(projectPath, CancellationToken.None);
-            var exposureTask = _mediaRepo.GetDashboardExposureDistributionAsync(projectPath, CancellationToken.None);
+            var period = CurrentPeriod;
 
-            await Task.WhenAll(kpiTask, heatmapTask, monthlyTask, tagRankTask,
+            // 并行加载所有统计
+            var kpiTask = _mediaRepo.GetDashboardKpiAsync(projectPath, period, CancellationToken.None);
+            var heatmapTask = _mediaRepo.GetDashboardHeatmapAsync(projectPath, period, CancellationToken.None);
+            var periodTask = _mediaRepo.GetDashboardPeriodStatsAsync(projectPath, period, CancellationToken.None);
+            var tagRankTask = _mediaRepo.GetDashboardTagRankingAsync(projectPath, period, CancellationToken.None);
+            var focalTask = _mediaRepo.GetDashboardFocalDistributionAsync(projectPath, period, CancellationToken.None);
+            var isoTask = _mediaRepo.GetDashboardIsoDistributionAsync(projectPath, period, CancellationToken.None);
+            var exposureTask = _mediaRepo.GetDashboardExposureDistributionAsync(projectPath, period, CancellationToken.None);
+
+            await Task.WhenAll(kpiTask, heatmapTask, periodTask, tagRankTask,
                                focalTask, isoTask, exposureTask);
 
             Kpi = kpiTask.Result;
             HeatmapDays = heatmapTask.Result;
-            MonthlyStats = monthlyTask.Result;
+            PeriodStats = periodTask.Result;
             TagRanks = tagRankTask.Result;
             FocalStats = focalTask.Result;
             IsoStats = isoTask.Result;
             ExposureStats = exposureTask.Result;
 
             IsEmpty = Kpi.TotalPhotos == 0;
-            EmptyMessage = IsEmpty ? "导入照片后将生成统计数据" : "";
+            EmptyMessage = IsEmpty ? "所选时间段内没有照片" : "";
 
             // 构建可用年份列表（基于有数据的年份，至少包含当前年份和 SelectedYear）
             BuildAvailableYears();
+
+            NotifyChartPropertiesChanged();
         }
         finally
         {
@@ -103,9 +151,70 @@ public partial class DashboardViewModel : ObservableObject
         }
     }
 
+    partial void OnTimeModeChanged(TimeMode value)
+    {
+        SelectedTimeModeOption = TimeModeOptions.First(o => o.Mode == value);
+        NormalizeSelection();
+        NotifyPeriodPropertiesChanged();
+        _ = LoadAsync();
+    }
+
+    partial void OnSelectedTimeModeOptionChanged(TimeModeOption value)
+    {
+        if (value is not null && TimeMode != value.Mode)
+        {
+            TimeMode = value.Mode;
+        }
+    }
+
     partial void OnSelectedYearChanged(int value)
     {
+        NormalizeSelection();
+        NotifyPeriodPropertiesChanged();
         _ = LoadAsync();
+    }
+
+    partial void OnSelectedQuarterChanged(int value)
+    {
+        NotifyPeriodPropertiesChanged();
+        _ = LoadAsync();
+    }
+
+    partial void OnSelectedMonthChanged(int value)
+    {
+        NotifyPeriodPropertiesChanged();
+        _ = LoadAsync();
+    }
+
+    private void NotifyPeriodPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(CurrentPeriod));
+        OnPropertyChanged(nameof(CurrentPeriodTitle));
+        OnPropertyChanged(nameof(PeriodChartTitle));
+        OnPropertyChanged(nameof(IsQuarterMode));
+        OnPropertyChanged(nameof(IsMonthMode));
+    }
+
+    private void NotifyChartPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(KpiTotalPhotos));
+        OnPropertyChanged(nameof(KpiExposureHours));
+        OnPropertyChanged(nameof(KpiShootingDays));
+        OnPropertyChanged(nameof(KpiTargetCount));
+        OnPropertyChanged(nameof(KpiTotalSize));
+        OnPropertyChanged(nameof(PeriodBarItems));
+        OnPropertyChanged(nameof(TagRankBarItems));
+        OnPropertyChanged(nameof(FocalBarItems));
+        OnPropertyChanged(nameof(IsoBarItems));
+        OnPropertyChanged(nameof(ExposureBarItems));
+    }
+
+    private void NormalizeSelection()
+    {
+        if (SelectedQuarter < 1) SelectedQuarter = 1;
+        if (SelectedQuarter > 4) SelectedQuarter = 4;
+        if (SelectedMonth < 1) SelectedMonth = 1;
+        if (SelectedMonth > 12) SelectedMonth = 12;
     }
 
     private void BuildAvailableYears()
@@ -114,10 +223,6 @@ public partial class DashboardViewModel : ObservableObject
         foreach (var d in HeatmapDays)
         {
             years.Add(d.Date.Year);
-        }
-        foreach (var m in MonthlyStats)
-        {
-            // MonthlyStats 只有月份，需要结合 SelectedYear
         }
         AvailableYears = years.OrderByDescending(y => y).ToList();
     }
@@ -150,14 +255,23 @@ public partial class DashboardViewModel : ObservableObject
     }
 
     // === 图表数据转换 ===
-    public IReadOnlyList<BarItem> MonthlyBarItems => MonthlyStats
-        .Select(m => new BarItem
+    public IReadOnlyList<BarItem> PeriodBarItems => PeriodStats
+        .Select(p => new BarItem
         {
-            Label = $"{m.Month}月",
-            Value = m.Count,
-            DisplayValue = m.Count.ToString(),
+            Label = p.Label ?? GetPeriodLabel(p.Period),
+            Value = p.Count,
+            DisplayValue = p.Count.ToString(),
         })
         .ToList();
+
+    private string GetPeriodLabel(int period)
+    {
+        return TimeMode switch
+        {
+            TimeMode.Month => $"{period}日",
+            _ => $"{period}月",
+        };
+    }
 
     public IReadOnlyList<BarItem> TagRankBarItems => TagRanks
         .Select(t => new BarItem
@@ -228,3 +342,8 @@ public partial class DashboardViewModel : ObservableObject
         }
     }
 }
+
+/// <summary>
+/// 时间维度选项（模式 + 显示文本）。
+/// </summary>
+public sealed record TimeModeOption(TimeMode Mode, string Display);

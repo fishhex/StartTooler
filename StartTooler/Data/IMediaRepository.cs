@@ -50,12 +50,25 @@ public interface IMediaRepository
     // === v0.11: 统计仪表盘查询（spec/19 §6.1）===
 
     Task<DashboardKpi> GetDashboardKpiAsync(string projectPath, CancellationToken ct = default);
+    Task<DashboardKpi> GetDashboardKpiAsync(string projectPath, DashboardPeriod period, CancellationToken ct = default);
     Task<IReadOnlyList<HeatmapDay>> GetDashboardHeatmapAsync(string projectPath, int year, CancellationToken ct = default);
+    Task<IReadOnlyList<HeatmapDay>> GetDashboardHeatmapAsync(string projectPath, DashboardPeriod period, CancellationToken ct = default);
     Task<IReadOnlyList<MonthStat>> GetDashboardMonthlyStatsAsync(string projectPath, int year, CancellationToken ct = default);
+    Task<IReadOnlyList<PeriodStat>> GetDashboardPeriodStatsAsync(string projectPath, DashboardPeriod period, CancellationToken ct = default);
     Task<IReadOnlyList<TagRank>> GetDashboardTagRankingAsync(string projectPath, CancellationToken ct = default);
+    Task<IReadOnlyList<TagRank>> GetDashboardTagRankingAsync(string projectPath, DashboardPeriod period, CancellationToken ct = default);
     Task<IReadOnlyList<FocalRangeStat>> GetDashboardFocalDistributionAsync(string projectPath, CancellationToken ct = default);
+    Task<IReadOnlyList<FocalRangeStat>> GetDashboardFocalDistributionAsync(string projectPath, DashboardPeriod period, CancellationToken ct = default);
     Task<IReadOnlyList<IsoStat>> GetDashboardIsoDistributionAsync(string projectPath, CancellationToken ct = default);
+    Task<IReadOnlyList<IsoStat>> GetDashboardIsoDistributionAsync(string projectPath, DashboardPeriod period, CancellationToken ct = default);
     Task<IReadOnlyList<ExposureStat>> GetDashboardExposureDistributionAsync(string projectPath, CancellationToken ct = default);
+    Task<IReadOnlyList<ExposureStat>> GetDashboardExposureDistributionAsync(string projectPath, DashboardPeriod period, CancellationToken ct = default);
+
+    /// <summary>
+    /// 获取项目下照片的最大 shot_at 年份，用于仪表盘默认选中最新数据年份。
+    /// 无数据时返回 null。
+    /// </summary>
+    Task<int?> GetLatestPhotoYearAsync(string projectPath, CancellationToken ct = default);
 
     /// <summary>
     /// 按标签筛选文件 + 按 SortMode 排序。

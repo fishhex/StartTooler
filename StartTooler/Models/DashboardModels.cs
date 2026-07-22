@@ -5,6 +5,51 @@ namespace StartTooler.Models;
 
 // === v0.11: 统计仪表盘数据模型（spec/19 §6.1）===
 
+/// <summary>
+/// 时间维度模式。
+/// </summary>
+public enum TimeMode
+{
+    Year,
+    Quarter,
+    Month,
+}
+
+/// <summary>
+/// 统计周期（年 / 季度 / 月）。
+/// </summary>
+public sealed class DashboardPeriod
+{
+    public int Year { get; init; }
+    public int? Quarter { get; init; }
+    public int? Month { get; init; }
+    public TimeMode Mode => Quarter.HasValue ? (Month.HasValue ? TimeMode.Month : TimeMode.Quarter) : TimeMode.Year;
+
+    public DateTime StartDate
+    {
+        get
+        {
+            if (Month.HasValue)
+                return new DateTime(Year, Month.Value, 1);
+            if (Quarter.HasValue)
+                return new DateTime(Year, (Quarter.Value - 1) * 3 + 1, 1);
+            return new DateTime(Year, 1, 1);
+        }
+    }
+
+    public DateTime EndDate
+    {
+        get
+        {
+            if (Month.HasValue)
+                return StartDate.AddMonths(1).AddDays(-1);
+            if (Quarter.HasValue)
+                return StartDate.AddMonths(3).AddDays(-1);
+            return new DateTime(Year, 12, 31);
+        }
+    }
+}
+
 public sealed class DashboardKpi
 {
     public int TotalPhotos { get; init; }
@@ -25,6 +70,16 @@ public sealed class MonthStat
 {
     public int Month { get; init; }
     public int Count { get; init; }
+}
+
+/// <summary>
+/// 通用周期统计项（年视图按月份、季度视图按月份、月视图按日）。
+/// </summary>
+public sealed class PeriodStat
+{
+    public int Period { get; init; }
+    public int Count { get; init; }
+    public string? Label { get; init; }
 }
 
 public sealed class TagRank

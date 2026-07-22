@@ -135,6 +135,48 @@
         <Setter Property="Background" Value="{DynamicResource Timeline.Selected}"/>
     </Style>
 
+    <!-- ============================================================
+         v0.11: 通用 Chip / Badge 样式 —— 供搜索建议、筛选标签等复用，
+         主题切换（DeepSpace ↔ RedNightVision）时只需改 Colors.axaml token。
+         ============================================================ -->
+
+    <!-- 只读信息胶囊：小圆角彩色文字条（如 photo tile 评分角标，未来可复用于筛选标签展示） -->
+    <Style Selector="Border.chip">
+        <Setter Property="Background" Value="{DynamicResource Bg.SurfaceElevated}"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Padding" Value="4,1"/>
+    </Style>
+    <Style Selector="Border.chip > TextBlock">
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Foreground" Value="White"/>
+    </Style>
+
+    <!-- 可删除 chip 按钮：标签编辑 / 筛选标签移除通用（原 TagChipEditor 本地样式提升为全局，供多处复用） -->
+    <Style Selector="Button.chip-removable">
+        <Setter Property="Background" Value="{DynamicResource Bg.SurfaceElevated}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Text.Primary}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="CornerRadius" Value="4"/>
+        <Setter Property="Padding" Value="6,2"/>
+        <Setter Property="Margin" Value="0,2,4,2"/>
+        <Setter Property="MinHeight" Value="20"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.chip-removable:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Chip.DeleteHover}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Chip.DeleteHoverFg}"/>
+    </Style>
+
+    <!-- 圆形图标徽章容器：照片卡片角标统一底座（视频/同步/失败徽章复用），默认 22×22；
+         尺寸不同的场景可在实例上覆盖 Width/Height/CornerRadius。 -->
+    <Style Selector="Border.badge-icon">
+        <Setter Property="Width" Value="22"/>
+        <Setter Property="Height" Value="22"/>
+        <Setter Property="CornerRadius" Value="11"/>
+        <Setter Property="Background" Value="{DynamicResource Overlay.Dark}"/>
+    </Style>
+
     <!-- v0.6.1: 标签分类节点（左栏「标签」tab 列表项，视觉沿用 timeline-node） -->
     <Style Selector="Button.tag-node">
         <Setter Property="Background" Value="Transparent"/>

@@ -47,6 +47,7 @@ public partial class MediaFile : ObservableObject
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SyncStatusValue))]
+    [NotifyPropertyChangedFor(nameof(BadgeSource))]
     private bool _isUploaded;
 
     /// <summary>
@@ -55,6 +56,7 @@ public partial class MediaFile : ObservableObject
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SyncStatusValue))]
+    [NotifyPropertyChangedFor(nameof(BadgeSource))]
     private bool _localExists = true;
 
     /// <summary>
@@ -105,6 +107,7 @@ public partial class MediaFile : ObservableObject
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SyncStatusValue))]
+    [NotifyPropertyChangedFor(nameof(BadgeSource))]
     private UploadStatus _uploadStatus;
 
     /// <summary>
@@ -210,6 +213,18 @@ public partial class MediaFile : ObservableObject
             return SyncStatus.NotUploaded;
         }
     }
+
+    /// <summary>
+    /// v0.11 补丁：右上角同步徽章的 4 个 Converter（SyncBadgeToVis/Color/Tooltip/Icon，见
+    /// GalleryView.axaml + SingleSyncBadgeConverter.cs）需要整个 MediaFile 实例做联合判断。
+    /// 若 XAML 直接写 {Binding ., Converter=...}（self/空 path），Avalonia 编译绑定不会订阅
+    /// 任何属性变化，只在 DataContext 引用本身被替换时才重新取值——上传完成后 IsUploaded/
+    /// UploadStatus 变了，徽章却看起来"卡住"不变，直到切日期强制重建 item 才刷新。
+    /// 与 SyncStatusValue 早前踩过的坑同源。这里补一个具名属性当绑定锚点：Getter 直接返回
+    /// this（4 个 Converter 签名不用改），配合 IsUploaded/LocalExists/UploadStatus 上的
+    /// [NotifyPropertyChangedFor(nameof(BadgeSource))] 触发 XAML 端重新求值。
+    /// </summary>
+    public MediaFile BadgeSource => this;
 
     public DateTime? ShotAtDateTime => ShotAt.HasValue
         ? DateTimeOffset.FromUnixTimeMilliseconds(ShotAt.Value).DateTime

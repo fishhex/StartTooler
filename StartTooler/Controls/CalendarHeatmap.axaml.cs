@@ -18,6 +18,12 @@ public partial class CalendarHeatmap : UserControl
     public static readonly StyledProperty<IReadOnlyList<HeatmapDay>> DaysProperty =
         AvaloniaProperty.Register<CalendarHeatmap, IReadOnlyList<HeatmapDay>>(nameof(Days), defaultValue: Array.Empty<HeatmapDay>());
 
+    public static readonly StyledProperty<DateTime?> StartDateProperty =
+        AvaloniaProperty.Register<CalendarHeatmap, DateTime?>(nameof(StartDate));
+
+    public static readonly StyledProperty<DateTime?> EndDateProperty =
+        AvaloniaProperty.Register<CalendarHeatmap, DateTime?>(nameof(EndDate));
+
     public string Title
     {
         get => GetValue(TitleProperty);
@@ -28,6 +34,18 @@ public partial class CalendarHeatmap : UserControl
     {
         get => GetValue(DaysProperty);
         set => SetValue(DaysProperty, value);
+    }
+
+    public DateTime? StartDate
+    {
+        get => GetValue(StartDateProperty);
+        set => SetValue(StartDateProperty, value);
+    }
+
+    public DateTime? EndDate
+    {
+        get => GetValue(EndDateProperty);
+        set => SetValue(EndDateProperty, value);
     }
 
     public event EventHandler<HeatmapDay>? DayClicked;

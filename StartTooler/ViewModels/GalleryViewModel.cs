@@ -30,6 +30,17 @@ public partial class GalleryViewModel : ObservableObject
     private Action? _navigateToSettings;  // v0.11 spec/07: 引导跳转回调(由 MainWindowVM 注入)
     private Action? _navigateToOssSettings;  // v0.11 spec/07: 引导跳转 OSS Tab 回调
 
+    /// <summary>
+    /// 左侧过滤栏状态快照：刷新前捕获、刷新后恢复，避免重新初始化过滤栏。
+    /// 包含时间轴/标签两种模式下的选中项、展开状态、快捷过滤器等完整状态。
+    /// </summary>
+    public record FilterStateSnapshot(
+        GroupMode GroupMode,
+        string? SelectedDateKey,
+        Dictionary<string, bool> ExpandedNodeKeys,
+        TimelineQuickFilter ActiveQuickFilter,
+        string? SelectedTag);
+
     /// <summary>MainWindowViewModel 注入导航回调,供 Onboarding 卡片跳转用</summary>
     public Action? NavigateToSettings { set => _navigateToSettings = value; }
     public Action? NavigateToOssSettings { set => _navigateToOssSettings = value; }
@@ -671,7 +682,7 @@ public partial class GalleryViewModel : ObservableObject
         EditTagsBatchCommand.NotifyCanExecuteChanged();
     }
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(FilterStateSnapshot? preservedState = null)
     {
         _cts?.Cancel();
         _cts = new CancellationTokenSource();
@@ -695,8 +706,14 @@ public partial class GalleryViewModel : ObservableObject
                 return;
             }
 
-            // 构建 TimelineNode 树 + 自动选中第一个 Day
-            await LoadTimelineAsync(ct);
+            // 构建 TimelineNode 树；传入 preservedState 时保留刷新前的过滤栏状态
+            await LoadTimelineAsync(ct, preservedState);
+
+            // 刷新前处于标签模式：重新加载 TagGroups 并恢复选中标签
+            if (preservedState?.GroupMode == GroupMode.Tag)
+            {
+                await RestoreTagStateAsync(preservedState);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -713,8 +730,9 @@ public partial class GalleryViewModel : ObservableObject
     /// <summary>
     /// 实际从 _mediaRepo 拉分组数据并构建 TimelineNode 树。从 InitializeAsync 拆出方便复用 +
     /// LocateAndScrollTo 触发重新加载（用户从垃圾筒切到 Gallery 时 DateGroups 可能还没数据）。
+    /// 传入 preservedState 时，会恢复刷新前的展开/选中/快捷过滤状态，而非重置到第一个日期。
     /// </summary>
-    private async Task LoadTimelineAsync(CancellationToken ct)
+    private async Task LoadTimelineAsync(CancellationToken ct, FilterStateSnapshot? preservedState = null)
     {
         try
         {
@@ -731,22 +749,57 @@ public partial class GalleryViewModel : ObservableObject
             // 订阅所有节点的 IsExpanded
             foreach (var root in DateGroups) SubscribeNodeExpansion(root);
 
-            // 默认展开：所有顶层 Year 展开，让用户一眼看到所有日期
-            foreach (var y in DateGroups) y.IsExpanded = true;
-            RefreshFlatTimeline();
-
-            IsLoadingDateGroups = false;
-
-            if (DateGroups.Count == 0)
+            if (preservedState?.GroupMode == GroupMode.Date)
             {
-                return;
+                // 恢复时间轴展开/折叠状态
+                foreach (var root in DateGroups) RestoreExpandedKeys(root, preservedState.ExpandedNodeKeys);
+                RefreshFlatTimeline();
+                IsLoadingDateGroups = false;
+
+                if (DateGroups.Count == 0) return;
+
+                // 恢复之前选中的日期；若已不存在则回退到第一个日期
+                var target = !string.IsNullOrEmpty(preservedState.SelectedDateKey)
+                    ? FindDayNodeByKey(DateGroups, preservedState.SelectedDateKey)
+                    : null;
+                target ??= FindFirstDayNode(DateGroups);
+                if (target == null) return;
+
+                // 恢复快捷过滤器：若激活了时间范围，直接加载该范围；否则加载选中日期
+                foreach (var q in QuickFilters)
+                    q.IsSelected = q.Key == preservedState.ActiveQuickFilter && preservedState.ActiveQuickFilter != TimelineQuickFilter.All;
+                ActiveQuickFilter = preservedState.ActiveQuickFilter;
+
+                if (ActiveQuickFilter != TimelineQuickFilter.All)
+                {
+                    // 仅恢复选中态，不触发日期加载，随后由 quickfilter 覆盖
+                    SetSelectedDateWithoutLoad(target);
+                    await LoadQuickFilterRangeAsync(ActiveQuickFilter);
+                }
+                else
+                {
+                    await SelectDayWithoutClearingQuickFilterAsync(target);
+                }
             }
-
-            // 自动选中第一个日期节点（递归取第一个 Kind=Day）
-            var firstDay = FindFirstDayNode(DateGroups);
-            if (firstDay != null)
+            else
             {
-                await SelectAsync(firstDay);
+                // 默认展开：所有顶层 Year 展开，让用户一眼看到所有日期
+                foreach (var y in DateGroups) y.IsExpanded = true;
+                RefreshFlatTimeline();
+
+                IsLoadingDateGroups = false;
+
+                if (DateGroups.Count == 0)
+                {
+                    return;
+                }
+
+                // 自动选中第一个日期节点（递归取第一个 Kind=Day）
+                var firstDay = FindFirstDayNode(DateGroups);
+                if (firstDay != null)
+                {
+                    await SelectAsync(firstDay);
+                }
             }
         }
         catch (OperationCanceledException)
@@ -917,6 +970,105 @@ public partial class GalleryViewModel : ObservableObject
             if (deeper != null) return deeper;
         }
         return null;
+    }
+
+    // === 刷新时保留左侧过滤栏状态（spec: 刷新后不重新初始化过滤栏）===
+
+    /// <summary>
+    /// 捕获当前左侧过滤栏的完整状态，供刷新后恢复。
+    /// </summary>
+    private FilterStateSnapshot CaptureFilterState()
+    {
+        var expandedKeys = new Dictionary<string, bool>();
+        foreach (var root in DateGroups) CollectExpandedKeys(root, expandedKeys);
+
+        return new FilterStateSnapshot(
+            GroupMode,
+            SelectedDate?.Key,
+            expandedKeys,
+            ActiveQuickFilter,
+            SelectedTag);
+    }
+
+    private static void CollectExpandedKeys(TimelineNode node, Dictionary<string, bool> keys)
+    {
+        keys[node.Key] = node.IsExpanded;
+        foreach (var child in node.Children) CollectExpandedKeys(child, keys);
+    }
+
+    private static void RestoreExpandedKeys(TimelineNode node, Dictionary<string, bool> keys)
+    {
+        if (keys.TryGetValue(node.Key, out var expanded))
+            node.IsExpanded = expanded;
+        foreach (var child in node.Children) RestoreExpandedKeys(child, keys);
+    }
+
+    /// <summary>
+    /// 仅恢复日期选中态与祖先展开，不触发媒体加载。用于 quickfilter 恢复前设置 SelectedDate。
+    /// </summary>
+    private void SetSelectedDateWithoutLoad(TimelineNode dayNode)
+    {
+        if (dayNode.Kind != TimelineNodeKind.Day) return;
+
+        if (SelectedDate != null)
+            SelectedDate.IsSelected = false;
+
+        dayNode.IsSelected = true;
+        SelectedDate = dayNode;
+        ExpandAncestorsOf(dayNode);
+    }
+
+    /// <summary>
+    /// 选中指定 Day 并加载其媒体，但不清理快捷过滤器（区别于 SelectAsync 的单日期浏览语义）。
+    /// </summary>
+    private async Task SelectDayWithoutClearingQuickFilterAsync(TimelineNode dayNode)
+    {
+        if (dayNode.Kind != TimelineNodeKind.Day) return;
+
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+
+        ExitMultiSelect();
+
+        if (SelectedDate != null)
+            SelectedDate.IsSelected = false;
+
+        dayNode.IsSelected = true;
+        SelectedDate = dayNode;
+        ExpandAncestorsOf(dayNode);
+
+        await LoadDateAsync(dayNode, ct);
+    }
+
+    /// <summary>
+    /// 刷新后恢复标签模式的状态：重新加载 TagGroups 并选中之前的标签。
+    /// </summary>
+    private async Task RestoreTagStateAsync(FilterStateSnapshot state)
+    {
+        if (string.IsNullOrEmpty(ProjectPath)) return;
+
+        await LoadTagGroupsAsync(_cts?.Token ?? default, autoSelectFirst: false);
+
+        if (!string.IsNullOrEmpty(state.SelectedTag))
+        {
+            var group = TagGroups.FirstOrDefault(g => g.Tag == state.SelectedTag);
+            if (group != null)
+            {
+                await SelectTagAsync(group);
+                return;
+            }
+        }
+
+        if (TagGroups.Count > 0)
+        {
+            await SelectTagAsync(TagGroups[0]);
+        }
+        else
+        {
+            SelectedTag = null;
+            CurrentMediaFiles.Clear();
+        }
     }
 
     [RelayCommand]
@@ -1269,13 +1421,14 @@ public partial class GalleryViewModel : ObservableObject
     // === v0.6.1 标签分类（spec doc/11-ai-tagging.md §5.6） ===
 
     /// <summary>
-    /// 加载项目的 TagGroups + 自动选中第一个 tag（用户决策：切 tab 即看到内容）。
+    /// 加载项目的 TagGroups。
+    /// autoSelectFirst=true 时自动选中第一个 tag（切 tab / 默认行为）；
+    /// autoSelectFirst=false 时仅加载列表，由调用方决定选中项（刷新后恢复状态用）。
     /// 复用 _cts 模式：被 OnGroupModeChanged 调用前会先 _cts.Cancel() 旧请求。
     /// </summary>
-    [RelayCommand]
-    private async Task LoadTagGroupsAsync(CancellationToken ct)
+    private async Task LoadTagGroupsAsync(CancellationToken ct, bool autoSelectFirst = true)
     {
-        Trace.WriteLine($"[Gallery] LoadTagGroupsAsync 启动: ProjectPath={ProjectPath ?? "(null)"}");
+        Trace.WriteLine($"[Gallery] LoadTagGroupsAsync 启动: ProjectPath={ProjectPath ?? "(null)"}, autoSelectFirst={autoSelectFirst}");
 
         if (string.IsNullOrEmpty(ProjectPath))
         {
@@ -1290,13 +1443,13 @@ public partial class GalleryViewModel : ObservableObject
             foreach (var g in groups) TagGroups.Add(g);
             Trace.WriteLine($"[Gallery] LoadTagGroupsAsync 完成: 共 {TagGroups.Count} 个 tag");
 
-            if (TagGroups.Count > 0)
+            if (TagGroups.Count > 0 && autoSelectFirst)
             {
-                // 用户决策：自动选中第一个 tag
+                // 用户决策：切 tab 时自动选中第一个 tag
                 Trace.WriteLine($"[Gallery] 自动选中第一个 tag: '{TagGroups[0].Tag}' ({TagGroups[0].Count} 张)");
                 await SelectTagAsync(TagGroups[0]);
             }
-            else
+            else if (TagGroups.Count == 0)
             {
                 // 项目还没打过标 → 清空 + 显示空态（沿用现有 IsEmpty 逻辑）
                 Trace.WriteLine("[Gallery] TagGroups 为空, 清空 CurrentMediaFiles");
@@ -1488,7 +1641,8 @@ public partial class GalleryViewModel : ObservableObject
     [RelayCommand]
     private async Task ReloadAsync()
     {
-        await InitializeAsync();
+        var preservedState = CaptureFilterState();
+        await InitializeAsync(preservedState);
     }
 
     /// <summary>
@@ -1629,7 +1783,8 @@ public partial class GalleryViewModel : ObservableObject
             ScanStatusMessage = "正在生成缩略图...";
             await _mediaRepo.GenerateThumbnailsAsync(ProjectPath, _thumbnailService, progress, _cts?.Token ?? default);
 
-            await InitializeAsync();
+            var preservedState = CaptureFilterState();
+            await InitializeAsync(preservedState);
 
             RefreshState = Models.RefreshState.Completed;
             ScanStatusMessage = $"扫描完成 · 共 {result.Processed} 个文件，新增 {result.NewFiles}，更新 {result.UpdatedFiles}";

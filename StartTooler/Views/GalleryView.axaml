@@ -361,13 +361,11 @@
                                                                   IsVisible="{Binding ThumbnailPath, Converter={StaticResource FilePathToVis}, ConverterParameter=Invert}"/>
 
                                                             <!-- 视频徽章 (左上角) -->
-                                                            <Border IsVisible="{Binding MediaType, Converter={StaticResource MediaTypeToVideo}}"
+                                                            <Border Classes="badge-icon"
+                                                                    IsVisible="{Binding MediaType, Converter={StaticResource MediaTypeToVideo}}"
                                                                     HorizontalAlignment="Left"
                                                                     VerticalAlignment="Top"
-                                                                    Margin="6,10,10,6"
-                                                                    Width="22" Height="22"
-                                                                    Background="{DynamicResource Overlay.Dark}"
-                                                                    CornerRadius="11">
+                                                                    Margin="6,10,10,6">
                                                                 <Path Data="{DynamicResource Icon.Play}"
                                                                       Stretch="Uniform"
                                                                       Width="12" Height="12"
@@ -384,15 +382,16 @@
                                                                 - ToolTip.Tip ← SyncBadgeToTooltip
                                                                 - PathIcon.Data ← SyncBadgeToIcon
                                                             -->
-                                                            <Border IsVisible="{Binding ., Converter={StaticResource SyncBadgeToVis}}"
+                                                            <Border Classes="badge-icon"
+                                                                    IsVisible="{Binding BadgeSource, Converter={StaticResource SyncBadgeToVis}}"
                                                                     HorizontalAlignment="Right"
                                                                     VerticalAlignment="Top"
                                                                     Margin="6,10,10,6"
                                                                     Width="24" Height="24"
-                                                                    Background="{Binding ., Converter={StaticResource SyncBadgeToColor}}"
+                                                                    Background="{Binding BadgeSource, Converter={StaticResource SyncBadgeToColor}}"
                                                                     CornerRadius="12"
-                                                                    ToolTip.Tip="{Binding ., Converter={StaticResource SyncBadgeToTooltip}}">
-                                                                <PathIcon Data="{Binding ., Converter={StaticResource SyncBadgeToIcon}}"
+                                                                    ToolTip.Tip="{Binding BadgeSource, Converter={StaticResource SyncBadgeToTooltip}}">
+                                                                <PathIcon Data="{Binding BadgeSource, Converter={StaticResource SyncBadgeToIcon}}"
                                                                           Width="14" Height="14"
                                                                           Foreground="White"
                                                                           HorizontalAlignment="Center"
@@ -411,13 +410,10 @@
                                                                     Padding="6,3"
                                                                     Background="{DynamicResource Card.FooterBg}">
                                                                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                                                    <Border IsVisible="{Binding HasScore}"
-                                                                            Background="{Binding Score, Converter={StaticResource ScoreToBrush}}"
-                                                                            CornerRadius="6"
-                                                                            Padding="4,1">
+                                                                    <Border Classes="chip"
+                                                                            IsVisible="{Binding HasScore}"
+                                                                            Background="{Binding Score, Converter={StaticResource ScoreToBrush}}">
                                                                         <TextBlock Text="{Binding Score, Converter={StaticResource ScoreToDisplay}}"
-                                                                                   FontSize="10" FontWeight="Bold"
-                                                                                   Foreground="White"
                                                                                    VerticalAlignment="Center"/>
                                                                     </Border>
                                                                     <TextBlock Text="{Binding Tags, Converter={StaticResource TagsToShortText}}"
@@ -453,7 +449,8 @@
                                                             </Border>
 
                                                             <!-- 打标失败徽章 (右下, hover tooltip 看错误原因) -->
-                                                            <Border IsVisible="{Binding TagError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                            <Border Classes="badge-icon"
+                                                                    IsVisible="{Binding TagError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                                                     HorizontalAlignment="Right"
                                                                     VerticalAlignment="Bottom"
                                                                     Margin="6,6,10,6"

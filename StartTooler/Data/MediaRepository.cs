@@ -1233,6 +1233,464 @@ public class MediaRepository : IMediaRepository
         return results;
     }
 
+    // === v0.11: Dashboard 分周期重载（DashboardViewModel 切换年/季度/月粒度用）===
+    // 复用上面非分周期版本的 SQL 结构，只是把统计范围收窄到 period.StartDate ~ EndDate 半开区间。
+    // 统一走本地日期字符串比较（跟 GetDashboardKpiAsync 里 shooting_days 子表达式的 'localtime' 一致）。
+
+    private static (string StartDate, string EndDateExclusive) GetPeriodDateRange(DashboardPeriod period)
+        => (period.StartDate.ToString("yyyy-MM-dd"), period.EndDate.AddDays(1).ToString("yyyy-MM-dd"));
+
+    public async Task<DashboardKpi> GetDashboardKpiAsync(string projectPath, DashboardPeriod period, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var (startDate, endDateExclusive) = GetPeriodDateRange(period);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        const string sql = @"
+            SELECT
+                COUNT(*) AS total_photos,
+                COALESCE(SUM(exposure_time), 0) AS total_exposure_seconds,
+                COUNT(DISTINCT date(shot_at / 1000, 'unixepoch', 'localtime')) AS shooting_days,
+                COUNT(DISTINCT t.id) AS target_count,
+                COALESCE(SUM(file_size), 0) AS total_bytes
+            FROM media_files m
+            LEFT JOIN tags t ON t.project_path = m.project_path
+                AND EXISTS (
+                    SELECT 1 FROM json_each(m.tags)
+                    WHERE json_each.value = t.id
+                )
+            WHERE m.project_path = @projectPath
+              AND m.deleted_at IS NULL
+              AND m.shot_at IS NOT NULL
+              AND date(m.shot_at / 1000, 'unixepoch', 'localtime') >= @startDate
+              AND date(m.shot_at / 1000, 'unixepoch', 'localtime') < @endDateExclusive";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+        cmd.Parameters.AddWithValue("@startDate", startDate);
+        cmd.Parameters.AddWithValue("@endDateExclusive", endDateExclusive);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (await reader.ReadAsync(ct))
+        {
+            return new DashboardKpi
+            {
+                TotalPhotos = reader.GetInt32(0),
+                TotalExposureHours = reader.GetDouble(1) / 3600.0,
+                ShootingDays = reader.GetInt32(2),
+                TargetCount = reader.GetInt32(3),
+                TotalBytes = reader.GetInt64(4),
+            };
+        }
+
+        return new DashboardKpi();
+    }
+
+    public async Task<IReadOnlyList<HeatmapDay>> GetDashboardHeatmapAsync(string projectPath, DashboardPeriod period, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var (startDate, endDateExclusive) = GetPeriodDateRange(period);
+        var results = new List<HeatmapDay>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        await LoadTagCacheAsync(connection, normalizedPath, ct);
+
+        const string sql = @"
+            WITH day_counts AS (
+                SELECT
+                    date(shot_at / 1000, 'unixepoch', 'localtime') AS day,
+                    COUNT(*) AS count
+                FROM media_files
+                WHERE project_path = @projectPath
+                  AND deleted_at IS NULL
+                  AND shot_at IS NOT NULL
+                  AND date(shot_at / 1000, 'unixepoch', 'localtime') >= @startDate
+                  AND date(shot_at / 1000, 'unixepoch', 'localtime') < @endDateExclusive
+                GROUP BY day
+            ),
+            day_top_tag AS (
+                SELECT
+                    date(shot_at / 1000, 'unixepoch', 'localtime') AS day,
+                    t.name AS tag_name,
+                    COUNT(*) AS tag_count,
+                    ROW_NUMBER() OVER (PARTITION BY date(shot_at / 1000, 'unixepoch', 'localtime') ORDER BY COUNT(*) DESC, t.name) AS rn
+                FROM media_files m
+                JOIN tags t ON t.project_path = m.project_path
+                    AND EXISTS (
+                        SELECT 1 FROM json_each(m.tags)
+                        WHERE json_each.value = t.id
+                    )
+                WHERE m.project_path = @projectPath
+                  AND m.deleted_at IS NULL
+                  AND m.shot_at IS NOT NULL
+                  AND date(m.shot_at / 1000, 'unixepoch', 'localtime') >= @startDate
+                  AND date(m.shot_at / 1000, 'unixepoch', 'localtime') < @endDateExclusive
+                GROUP BY day, t.name
+            )
+            SELECT d.day, d.count, tt.tag_name
+            FROM day_counts d
+            LEFT JOIN day_top_tag tt ON tt.day = d.day AND tt.rn = 1
+            ORDER BY d.day";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+        cmd.Parameters.AddWithValue("@startDate", startDate);
+        cmd.Parameters.AddWithValue("@endDateExclusive", endDateExclusive);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var dayStr = reader.GetString(0);
+            if (DateTime.TryParse(dayStr, out var day))
+            {
+                results.Add(new HeatmapDay
+                {
+                    Date = day,
+                    Count = reader.GetInt32(1),
+                    TopTarget = reader.IsDBNull(2) ? null : reader.GetString(2),
+                });
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// 通用周期统计（spec/19）：Year/Quarter 视图按月份分桶，Month 视图按日分桶。
+    /// </summary>
+    public async Task<IReadOnlyList<PeriodStat>> GetDashboardPeriodStatsAsync(string projectPath, DashboardPeriod period, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var (startDate, endDateExclusive) = GetPeriodDateRange(period);
+        var results = new List<PeriodStat>();
+        var byDay = period.Mode == TimeMode.Month;
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        var bucketExpr = byDay
+            ? "CAST(strftime('%d', datetime(shot_at / 1000, 'unixepoch', 'localtime')) AS INTEGER)"
+            : "CAST(strftime('%m', datetime(shot_at / 1000, 'unixepoch', 'localtime')) AS INTEGER)";
+
+        var sql = $@"
+            SELECT {bucketExpr} AS bucket, COUNT(*) AS count
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND deleted_at IS NULL
+              AND shot_at IS NOT NULL
+              AND date(shot_at / 1000, 'unixepoch', 'localtime') >= @startDate
+              AND date(shot_at / 1000, 'unixepoch', 'localtime') < @endDateExclusive
+            GROUP BY bucket
+            ORDER BY bucket";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+        cmd.Parameters.AddWithValue("@startDate", startDate);
+        cmd.Parameters.AddWithValue("@endDateExclusive", endDateExclusive);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var bucket = reader.GetInt32(0);
+            results.Add(new PeriodStat
+            {
+                Period = bucket,
+                Count = reader.GetInt32(1),
+                Label = byDay ? $"{bucket:D2}日" : $"{bucket:D2}月",
+            });
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyList<TagRank>> GetDashboardTagRankingAsync(string projectPath, DashboardPeriod period, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var (startDate, endDateExclusive) = GetPeriodDateRange(period);
+        var results = new List<TagRank>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        const string sql = @"
+            SELECT t.name, COUNT(*) AS count
+            FROM tags t
+            JOIN media_files m ON m.project_path = t.project_path
+                AND EXISTS (
+                    SELECT 1 FROM json_each(m.tags)
+                    WHERE json_each.value = t.id
+                )
+            WHERE t.project_path = @projectPath
+              AND m.deleted_at IS NULL
+              AND m.shot_at IS NOT NULL
+              AND date(m.shot_at / 1000, 'unixepoch', 'localtime') >= @startDate
+              AND date(m.shot_at / 1000, 'unixepoch', 'localtime') < @endDateExclusive
+            GROUP BY t.id, t.name
+            ORDER BY count DESC, t.name
+            LIMIT 15";
+
+        var rows = new List<(string Name, int Count)>();
+
+        await using (var cmd = new SqliteCommand(sql, connection))
+        {
+            cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+            cmd.Parameters.AddWithValue("@startDate", startDate);
+            cmd.Parameters.AddWithValue("@endDateExclusive", endDateExclusive);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                rows.Add((reader.GetString(0), reader.GetInt32(1)));
+            }
+        }
+
+        // 百分比分母：同一周期内有标签的文件总数（避免未打标文件稀释）。
+        const string totalSql = @"
+            SELECT COUNT(*)
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND deleted_at IS NULL
+              AND shot_at IS NOT NULL
+              AND date(shot_at / 1000, 'unixepoch', 'localtime') >= @startDate
+              AND date(shot_at / 1000, 'unixepoch', 'localtime') < @endDateExclusive
+              AND tags IS NOT NULL
+              AND tags != '[]'";
+
+        long taggedTotal = 0;
+        await using (var cmd = new SqliteCommand(totalSql, connection))
+        {
+            cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+            cmd.Parameters.AddWithValue("@startDate", startDate);
+            cmd.Parameters.AddWithValue("@endDateExclusive", endDateExclusive);
+            var scalar = await cmd.ExecuteScalarAsync(ct);
+            taggedTotal = scalar is long l ? l : 0;
+        }
+
+        foreach (var (name, count) in rows)
+        {
+            results.Add(new TagRank
+            {
+                TagName = name,
+                Count = count,
+                Percentage = taggedTotal > 0 ? count * 100.0 / taggedTotal : 0,
+            });
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyList<FocalRangeStat>> GetDashboardFocalDistributionAsync(string projectPath, DashboardPeriod period, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var (startDate, endDateExclusive) = GetPeriodDateRange(period);
+        var results = new List<FocalRangeStat>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        const string sql = @"
+            SELECT
+                CASE
+                    WHEN focal_length_35mm < 24 THEN '超广角 (<24mm)'
+                    WHEN focal_length_35mm < 50 THEN '广角 (24-50mm)'
+                    WHEN focal_length_35mm < 100 THEN '标准 (50-100mm)'
+                    WHEN focal_length_35mm <= 400 THEN '长焦 (100-400mm)'
+                    ELSE '超长焦 (>400mm)'
+                END AS range_label,
+                COUNT(*) AS count
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND deleted_at IS NULL
+              AND focal_length_35mm IS NOT NULL
+              AND shot_at IS NOT NULL
+              AND date(shot_at / 1000, 'unixepoch', 'localtime') >= @startDate
+              AND date(shot_at / 1000, 'unixepoch', 'localtime') < @endDateExclusive
+            GROUP BY range_label
+            ORDER BY MIN(focal_length_35mm)";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+        cmd.Parameters.AddWithValue("@startDate", startDate);
+        cmd.Parameters.AddWithValue("@endDateExclusive", endDateExclusive);
+
+        var rows = new List<(string Label, int Count)>();
+        long total = 0;
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var label = reader.GetString(0);
+                var count = reader.GetInt32(1);
+                rows.Add((label, count));
+                total += count;
+            }
+        }
+
+        foreach (var (label, count) in rows)
+        {
+            results.Add(new FocalRangeStat
+            {
+                RangeLabel = label,
+                Count = count,
+                Percentage = total > 0 ? count * 100.0 / total : 0,
+            });
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyList<IsoStat>> GetDashboardIsoDistributionAsync(string projectPath, DashboardPeriod period, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var (startDate, endDateExclusive) = GetPeriodDateRange(period);
+        var results = new List<IsoStat>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        const string sql = @"
+            SELECT
+                CASE
+                    WHEN iso < 100 THEN 'ISO <100'
+                    WHEN iso < 200 THEN 'ISO 100'
+                    WHEN iso < 400 THEN 'ISO 200'
+                    WHEN iso < 800 THEN 'ISO 400'
+                    WHEN iso < 1600 THEN 'ISO 800'
+                    WHEN iso < 3200 THEN 'ISO 1600'
+                    WHEN iso < 6400 THEN 'ISO 3200'
+                    WHEN iso < 12800 THEN 'ISO 6400'
+                    WHEN iso < 25600 THEN 'ISO 12800'
+                    ELSE 'ISO 25600+'
+                END AS iso_label,
+                COUNT(*) AS count
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND deleted_at IS NULL
+              AND iso IS NOT NULL
+              AND shot_at IS NOT NULL
+              AND date(shot_at / 1000, 'unixepoch', 'localtime') >= @startDate
+              AND date(shot_at / 1000, 'unixepoch', 'localtime') < @endDateExclusive
+            GROUP BY iso_label
+            ORDER BY MIN(iso)";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+        cmd.Parameters.AddWithValue("@startDate", startDate);
+        cmd.Parameters.AddWithValue("@endDateExclusive", endDateExclusive);
+
+        var rows = new List<(string Label, int Count)>();
+        long total = 0;
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var label = reader.GetString(0);
+                var count = reader.GetInt32(1);
+                rows.Add((label, count));
+                total += count;
+            }
+        }
+
+        foreach (var (label, count) in rows)
+        {
+            results.Add(new IsoStat
+            {
+                IsoLabel = label,
+                Count = count,
+                Percentage = total > 0 ? count * 100.0 / total : 0,
+            });
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyList<ExposureStat>> GetDashboardExposureDistributionAsync(string projectPath, DashboardPeriod period, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var (startDate, endDateExclusive) = GetPeriodDateRange(period);
+        var results = new List<ExposureStat>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        const string sql = @"
+            SELECT
+                CASE
+                    WHEN exposure_time < 1 THEN '<1s'
+                    WHEN exposure_time < 10 THEN '1-10s'
+                    WHEN exposure_time < 30 THEN '10-30s'
+                    ELSE '>30s'
+                END AS range_label,
+                COUNT(*) AS count
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND deleted_at IS NULL
+              AND exposure_time IS NOT NULL
+              AND shot_at IS NOT NULL
+              AND date(shot_at / 1000, 'unixepoch', 'localtime') >= @startDate
+              AND date(shot_at / 1000, 'unixepoch', 'localtime') < @endDateExclusive
+            GROUP BY range_label
+            ORDER BY MIN(exposure_time)";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+        cmd.Parameters.AddWithValue("@startDate", startDate);
+        cmd.Parameters.AddWithValue("@endDateExclusive", endDateExclusive);
+
+        var rows = new List<(string Label, int Count)>();
+        long total = 0;
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var label = reader.GetString(0);
+                var count = reader.GetInt32(1);
+                rows.Add((label, count));
+                total += count;
+            }
+        }
+
+        foreach (var (label, count) in rows)
+        {
+            results.Add(new ExposureStat
+            {
+                RangeLabel = label,
+                Count = count,
+                Percentage = total > 0 ? count * 100.0 / total : 0,
+            });
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// 获取项目下照片的最大 shot_at 年份（本地时区），用于仪表盘默认选中最新数据年份。无数据时返回 null。
+    /// </summary>
+    public async Task<int?> GetLatestPhotoYearAsync(string projectPath, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        const string sql = @"
+            SELECT MAX(shot_at)
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND deleted_at IS NULL
+              AND shot_at IS NOT NULL";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+
+        var scalar = await cmd.ExecuteScalarAsync(ct);
+        if (scalar is not long maxShotAt) return null;
+
+        return DateTimeOffset.FromUnixTimeMilliseconds(maxShotAt).ToLocalTime().Year;
+    }
+
     public async Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath, string tag, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default)
     {
         var results = new List<MediaFile>();

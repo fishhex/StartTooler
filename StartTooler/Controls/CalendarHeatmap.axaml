@@ -16,6 +16,8 @@
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource Text.Primary}" />
             <local:SkiaHeatmap Days="{Binding Days, RelativeSource={RelativeSource AncestorType=local:CalendarHeatmap}}"
+                               StartDate="{Binding StartDate, RelativeSource={RelativeSource AncestorType=local:CalendarHeatmap}}"
+                               EndDate="{Binding EndDate, RelativeSource={RelativeSource AncestorType=local:CalendarHeatmap}}"
                                DayClicked="OnDayClicked" />
         </StackPanel>
     </Border>
