@@ -8,40 +8,43 @@
              x:Class="StartTooler.Views.DashboardView"
              x:DataType="vm:DashboardViewModel">
 
-    <Grid Background="{DynamicResource Bg.Surface}">
-        <ScrollViewer IsVisible="{Binding !IsEmpty}"
-                      HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="40,24" Spacing="24">
-                <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Grid.Column="0"
-                               Text="数据统计"
-                               FontSize="18"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource Text.Primary}"
-                               VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1"
-                                Orientation="Horizontal"
-                                Spacing="8"
-                                VerticalAlignment="Center">
-                        <ComboBox ItemsSource="{Binding TimeModeOptions}"
-                                  SelectedItem="{Binding SelectedTimeModeOption}"
-                                  DisplayMemberBinding="{Binding Display}"
-                                  Width="72"/>
-                        <ComboBox ItemsSource="{Binding AvailableYears}"
-                                  SelectedItem="{Binding SelectedYear}"
-                                  Width="88"/>
-                        <ComboBox ItemsSource="{Binding AvailableQuarters}"
-                                  SelectedItem="{Binding SelectedQuarter}"
-                                  Width="72"
-                                  IsVisible="{Binding IsQuarterMode}"/>
-                        <ComboBox ItemsSource="{Binding AvailableMonths}"
-                                  SelectedItem="{Binding SelectedMonth}"
-                                  Width="72"
-                                  IsVisible="{Binding IsMonthMode}"/>
-                    </StackPanel>
-                </Grid>
+    <Grid Background="{DynamicResource Bg.Surface}" RowDefinitions="Auto,*">
+        <!-- 头部：标题 + 时间维度选择器，空态下也保持可见 -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="40,24,40,0">
+            <TextBlock Grid.Column="0"
+                       Text="数据统计"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text.Primary}"
+                       VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Center">
+                <ComboBox ItemsSource="{Binding TimeModeOptions}"
+                          SelectedItem="{Binding SelectedTimeModeOption}"
+                          DisplayMemberBinding="{Binding Display}"
+                          Width="72"/>
+                <ComboBox ItemsSource="{Binding AvailableYears}"
+                          SelectedItem="{Binding SelectedYear}"
+                          Width="88"/>
+                <ComboBox ItemsSource="{Binding AvailableQuarters}"
+                          SelectedItem="{Binding SelectedQuarter}"
+                          Width="72"
+                          IsVisible="{Binding IsQuarterMode}"/>
+                <ComboBox ItemsSource="{Binding AvailableMonths}"
+                          SelectedItem="{Binding SelectedMonth}"
+                          Width="72"
+                          IsVisible="{Binding IsMonthMode}"/>
+            </StackPanel>
+        </Grid>
 
+        <ScrollViewer Grid.Row="1"
+                      IsVisible="{Binding !IsEmpty}"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto"
+                      Margin="40,24,40,24">
+            <StackPanel Spacing="24">
                 <UniformGrid Columns="5" Margin="0,0,-12,0">
                     <controls:StatCard Label="总照片数"
                                        Value="{Binding KpiTotalPhotos}"
@@ -101,7 +104,8 @@
             </StackPanel>
         </ScrollViewer>
 
-        <Border IsVisible="{Binding IsEmpty}"
+        <Border Grid.Row="1"
+                IsVisible="{Binding IsEmpty}"
                 Background="{DynamicResource Bg.Surface}"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch">

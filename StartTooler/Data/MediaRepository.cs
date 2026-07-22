@@ -1691,6 +1691,31 @@ public class MediaRepository : IMediaRepository
         return DateTimeOffset.FromUnixTimeMilliseconds(maxShotAt).ToLocalTime().Year;
     }
 
+    public async Task<DateTime?> GetLatestPhotoDateAsync(string projectPath, int year, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        const string sql = @"
+            SELECT MAX(shot_at)
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND deleted_at IS NULL
+              AND shot_at IS NOT NULL
+              AND strftime('%Y', shot_at / 1000, 'unixepoch', 'localtime') = @year";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+        cmd.Parameters.AddWithValue("@year", year.ToString());
+
+        var scalar = await cmd.ExecuteScalarAsync(ct);
+        if (scalar is not long maxShotAt) return null;
+
+        return DateTimeOffset.FromUnixTimeMilliseconds(maxShotAt).ToLocalTime().DateTime;
+    }
+
     public async Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath, string tag, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default)
     {
         var results = new List<MediaFile>();

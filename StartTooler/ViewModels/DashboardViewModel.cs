@@ -165,7 +165,52 @@ public partial class DashboardViewModel : ObservableObject
         SelectedTimeModeOption = TimeModeOptions.First(o => o.Mode == value);
         NormalizeSelection();
         NotifyPeriodPropertiesChanged();
-        _ = LoadAsync();
+        _ = ApplyTimeModeDefaultsAndLoadAsync(value);
+    }
+
+    /// <summary>
+    /// 切换时间维度时，季度/月份默认定位到该年份最近有数据的周期；
+    /// 年视图直接加载。
+    /// </summary>
+    private async Task ApplyTimeModeDefaultsAndLoadAsync(TimeMode mode)
+    {
+        if (mode == TimeMode.Year)
+        {
+            await LoadAsync();
+            return;
+        }
+
+        var projectConfig = await _configService.GetOrCreateAsync<ProjectConfig>(ConfigKeys.Project);
+        var projectPath = projectConfig.CurrentDirectory;
+        if (string.IsNullOrEmpty(projectPath))
+        {
+            await LoadAsync();
+            return;
+        }
+
+        var latestDate = await _mediaRepo.GetLatestPhotoDateAsync(projectPath, SelectedYear);
+        if (!latestDate.HasValue)
+        {
+            await LoadAsync();
+            return;
+        }
+
+        if (mode == TimeMode.Quarter)
+        {
+            var quarter = (latestDate.Value.Month - 1) / 3 + 1;
+            if (quarter == SelectedQuarter)
+                await LoadAsync();
+            else
+                SelectedQuarter = quarter; // setter 会触发 LoadAsync
+        }
+        else if (mode == TimeMode.Month)
+        {
+            var month = latestDate.Value.Month;
+            if (month == SelectedMonth)
+                await LoadAsync();
+            else
+                SelectedMonth = month; // setter 会触发 LoadAsync
+        }
     }
 
     partial void OnSelectedTimeModeOptionChanged(TimeModeOption value)

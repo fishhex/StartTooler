@@ -71,6 +71,12 @@ public interface IMediaRepository
     Task<int?> GetLatestPhotoYearAsync(string projectPath, CancellationToken ct = default);
 
     /// <summary>
+    /// 获取指定年份内照片的最新 shot_at 日期，用于季度/月份视图默认选中最近有数据的周期。
+    /// 无数据时返回 null。
+    /// </summary>
+    Task<DateTime?> GetLatestPhotoDateAsync(string projectPath, int year, CancellationToken ct = default);
+
+    /// <summary>
     /// 按标签筛选文件 + 按 SortMode 排序。
     /// v0.11: 先通过 tag 表把 name 解析成 id，再匹配 media_files.tags 中的 id 数组。
     /// v0.8 加 deleted_at IS NULL 过滤：已移入垃圾筒的文件不出现在 Gallery。
