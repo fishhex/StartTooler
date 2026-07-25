@@ -206,6 +206,7 @@ public partial class GalleryView : UserControl
         {
             _photoScrollViewer.RemoveHandler(PointerEnteredEvent, OnPhotoPointerEnteredRouted);
             _photoScrollViewer.RemoveHandler(PointerExitedEvent, OnPhotoPointerExitedRouted);
+            _photoScrollViewer.ScrollChanged -= OnPhotoScrollChanged;
         }
         _photoScrollViewer = this.FindControl<ScrollViewer>("PhotoScrollViewer");
         if (_photoScrollViewer != null)
@@ -213,6 +214,7 @@ public partial class GalleryView : UserControl
             // AddHandler 走路由事件，捕获所有 descendant 上的 PointerEntered/Exited
             _photoScrollViewer.AddHandler(PointerEnteredEvent, OnPhotoPointerEnteredRouted, handledEventsToo: false);
             _photoScrollViewer.AddHandler(PointerExitedEvent, OnPhotoPointerExitedRouted, handledEventsToo: false);
+            _photoScrollViewer.ScrollChanged += OnPhotoScrollChanged;
         }
 
         // 拖拽框选：多选模式下 PointerPressed / Moved / Released 在 ScrollViewer 上处理
@@ -318,6 +320,30 @@ public partial class GalleryView : UserControl
         var row = (int)(index / colCount);
         var y = row * (120 + 16);  // 120 tile height + 16 margin
         _photoScrollViewer.Offset = new Vector(_photoScrollViewer.Offset.X, y);
+    }
+
+    /// <summary>
+    /// 照片网格滚动到底部附近时触发 ViewModel 加载下一页。
+    /// </summary>
+    private void OnPhotoScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        if (_photoScrollViewer == null) return;
+        if (DataContext is not GalleryViewModel vm) return;
+        if (!vm.HasMoreMediaFiles || vm.IsLoadingMore || vm.IsLoadingMedia) return;
+
+        var extent = _photoScrollViewer.Extent.Height;
+        var viewport = _photoScrollViewer.Viewport.Height;
+        var offset = _photoScrollViewer.Offset.Y;
+
+        if (extent <= viewport || viewport <= 0) return;
+
+        // 距离底部不足半屏时触发加载
+        var threshold = viewport * 0.5;
+        if (offset + viewport >= extent - threshold)
+        {
+            if (vm.LoadMoreCommand.CanExecute(null))
+                vm.LoadMoreCommand.Execute(null);
+        }
     }
 
     // ============================================================

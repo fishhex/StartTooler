@@ -10,13 +10,13 @@ namespace StartTooler.Data;
 public interface IMediaRepository
 {
     Task<IReadOnlyList<DateCount>> GetDateGroupsAsync(string projectPath, CancellationToken ct = default);
-    Task<IReadOnlyList<MediaFile>> GetByDateAsync(string projectPath, DateTime date, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default);
+    Task<IReadOnlyList<MediaFile>> GetByDateAsync(string projectPath, DateTime date, SortMode sortMode = SortMode.TimeDesc, int offset = 0, int limit = 1000, CancellationToken ct = default);
 
     /// <summary>
     /// 按 shot_at 时间范围查询文件（v0.11 快捷时间刷选：今天/本周/本月/今年）。
     /// 范围半开区间 [startTime, endTime)，按 SortMode 排序。
     /// </summary>
-    Task<IReadOnlyList<MediaFile>> GetByTimeRangeAsync(string projectPath, DateTimeOffset startTime, DateTimeOffset endTime, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default);
+    Task<IReadOnlyList<MediaFile>> GetByTimeRangeAsync(string projectPath, DateTimeOffset startTime, DateTimeOffset endTime, SortMode sortMode = SortMode.TimeDesc, int offset = 0, int limit = 2000, CancellationToken ct = default);
 
     Task<ScanResult> ScanDirectoryAsync(string projectPath, IProgress<ScanProgress>? progress = null, CancellationToken ct = default);
     Task GenerateThumbnailsAsync(string projectPath, IThumbnailService thumbnailService, IProgress<ScanProgress>? progress = null, CancellationToken ct = default);
@@ -81,7 +81,7 @@ public interface IMediaRepository
     /// v0.11: 先通过 tag 表把 name 解析成 id，再匹配 media_files.tags 中的 id 数组。
     /// v0.8 加 deleted_at IS NULL 过滤：已移入垃圾筒的文件不出现在 Gallery。
     /// </summary>
-    Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath, string tag, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default);
+    Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath, string tag, SortMode sortMode = SortMode.TimeDesc, int offset = 0, int limit = 1000, CancellationToken ct = default);
 
     // === v0.11 标签字典管理（方案 B：media_files.tags 存 tag id 数组）===
 

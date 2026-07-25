@@ -375,7 +375,7 @@ public class MediaRepository : IMediaRepository
         return results;
     }
 
-    public async Task<IReadOnlyList<MediaFile>> GetByTimeRangeAsync(string projectPath, DateTimeOffset startTime, DateTimeOffset endTime, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default)
+    public async Task<IReadOnlyList<MediaFile>> GetByTimeRangeAsync(string projectPath, DateTimeOffset startTime, DateTimeOffset endTime, SortMode sortMode = SortMode.TimeDesc, int offset = 0, int limit = 2000, CancellationToken ct = default)
     {
         var results = new List<MediaFile>();
 
@@ -410,12 +410,14 @@ public class MediaRepository : IMediaRepository
               AND shot_at < @endTime
               AND deleted_at IS NULL
             {orderBy}
-            LIMIT 2000";
+            LIMIT @limit OFFSET @offset";
 
         await using var cmd = new SqliteCommand(sql, connection);
         cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
         cmd.Parameters.AddWithValue("@startTime", startTimestamp);
         cmd.Parameters.AddWithValue("@endTime", endTimestamp);
+        cmd.Parameters.AddWithValue("@limit", limit);
+        cmd.Parameters.AddWithValue("@offset", offset);
 
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
@@ -426,7 +428,7 @@ public class MediaRepository : IMediaRepository
         return results;
     }
 
-    public async Task<IReadOnlyList<MediaFile>> GetByDateAsync(string projectPath, DateTime date, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default)
+    public async Task<IReadOnlyList<MediaFile>> GetByDateAsync(string projectPath, DateTime date, SortMode sortMode = SortMode.TimeDesc, int offset = 0, int limit = 1000, CancellationToken ct = default)
     {
         var results = new List<MediaFile>();
 
@@ -466,12 +468,14 @@ public class MediaRepository : IMediaRepository
               AND shot_at < @endTime
               AND deleted_at IS NULL
             {orderBy}
-            LIMIT 1000";
+            LIMIT @limit OFFSET @offset";
 
         await using var cmd = new SqliteCommand(sql, connection);
         cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
         cmd.Parameters.AddWithValue("@startTime", startTimestamp);
         cmd.Parameters.AddWithValue("@endTime", endTimestamp);
+        cmd.Parameters.AddWithValue("@limit", limit);
+        cmd.Parameters.AddWithValue("@offset", offset);
 
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
@@ -1716,7 +1720,7 @@ public class MediaRepository : IMediaRepository
         return DateTimeOffset.FromUnixTimeMilliseconds(maxShotAt).ToLocalTime().DateTime;
     }
 
-    public async Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath, string tag, SortMode sortMode = SortMode.TimeDesc, CancellationToken ct = default)
+    public async Task<IReadOnlyList<MediaFile>> GetByTagAsync(string projectPath, string tag, SortMode sortMode = SortMode.TimeDesc, int offset = 0, int limit = 1000, CancellationToken ct = default)
     {
         var results = new List<MediaFile>();
         var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
@@ -1755,11 +1759,13 @@ public class MediaRepository : IMediaRepository
                   WHERE json_each.value = @tagId
               )
             {orderBy}
-            LIMIT 1000";
+            LIMIT @limit OFFSET @offset";
 
         await using var cmd = new SqliteCommand(sql, connection);
         cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
         cmd.Parameters.AddWithValue("@tagId", tagId.Value);
+        cmd.Parameters.AddWithValue("@limit", limit);
+        cmd.Parameters.AddWithValue("@offset", offset);
 
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))

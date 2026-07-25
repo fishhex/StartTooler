@@ -157,6 +157,22 @@ public partial class GalleryViewModel : ObservableObject
     // 恢复过滤栏快照时抑制 MediaTypeFilter 切换回调，避免初始化期间重复加载。
     private bool _isRestoringFilterState;
 
+    // === 媒体网格滚动分页加载 ===
+    private const int MediaPageSize = 50;
+    private int _mediaDbOffset;
+    private MediaLoadContext _currentLoadContext;
+    private TimelineNode? _currentLoadDayNode;
+    private TimelineQuickFilter _currentLoadQuickFilter;
+    private TagGroupItem? _currentLoadTagGroup;
+
+    private enum MediaLoadContext
+    {
+        None,
+        Date,
+        QuickFilter,
+        Tag
+    }
+
     // === 选中态（日期） ===
     /// <summary>当前选中的日节点（spec/15 §3 仅 Day 节点可被选中；Year/Month 只控折叠）。</summary>
     [ObservableProperty] private TimelineNode? _selectedDate;
@@ -164,6 +180,8 @@ public partial class GalleryViewModel : ObservableObject
     // === 加载状态 ===
     [ObservableProperty] private bool _isLoadingDateGroups;
     [ObservableProperty] private bool _isLoadingMedia;
+    [ObservableProperty] private bool _isLoadingMore;
+    [ObservableProperty] private bool _hasMoreMediaFiles;
     [ObservableProperty] private string? _loadErrorMessage;
 
     // === 扫描进度状态 ===
@@ -579,8 +597,11 @@ public partial class GalleryViewModel : ObservableObject
 
         switch (GroupMode)
         {
-            case GroupMode.Date when SelectedDate != null:
-                _ = SelectAsync(SelectedDate);
+            case GroupMode.Date:
+                if (SelectedDate != null)
+                    _ = SelectAsync(SelectedDate);
+                else
+                    _ = LoadQuickFilterRangeAsync(ActiveQuickFilter);
                 break;
             case GroupMode.Tag when SelectedTag != null:
                 // 通过 Tag 找 TagGroupItem 重载（保留 TagGroups 顺序）
@@ -616,11 +637,11 @@ public partial class GalleryViewModel : ObservableObject
 
         switch (GroupMode)
         {
-            case GroupMode.Date when SelectedDate != null:
-                if (ActiveQuickFilter != TimelineQuickFilter.All)
-                    await LoadQuickFilterRangeAsync(ActiveQuickFilter);
-                else
+            case GroupMode.Date:
+                if (SelectedDate != null && ActiveQuickFilter == TimelineQuickFilter.All)
                     await LoadDateAsync(SelectedDate, ct);
+                else
+                    await LoadQuickFilterRangeAsync(ActiveQuickFilter);
                 break;
             case GroupMode.Tag when SelectedTag != null:
                 var group = TagGroups.FirstOrDefault(g => g.Tag == SelectedTag);
@@ -651,12 +672,15 @@ public partial class GalleryViewModel : ObservableObject
         CurrentMediaFiles.CollectionChanged += OnCurrentMediaFilesChanged;
         DateGroups.CollectionChanged += OnDateGroupsCollectionChanged;  // v0.11 spec/07
 
-        // v0.11 spec/15: 快捷时间刷选胶囊（全部 / 今天 / 本周 / 本月 / 今年；默认不选中，单选语义）
+        // v0.11 spec/15: 快捷时间刷选胶囊（全部 / 今天 / 本周 / 本月 / 今年；默认激活「全部」）
         QuickFilters.Add(new QuickFilterItem(TimelineQuickFilter.All, "全部"));
         QuickFilters.Add(new QuickFilterItem(TimelineQuickFilter.Today, "今天"));
         QuickFilters.Add(new QuickFilterItem(TimelineQuickFilter.ThisWeek, "本周"));
         QuickFilters.Add(new QuickFilterItem(TimelineQuickFilter.ThisMonth, "本月"));
         QuickFilters.Add(new QuickFilterItem(TimelineQuickFilter.ThisYear, "今年"));
+
+        // 时间过滤器默认激活「全部」：逻辑与 UI 保持一致
+        ClearQuickFilters();
     }
 
     private void OnCurrentMediaFilesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -840,19 +864,27 @@ public partial class GalleryViewModel : ObservableObject
                 if (target == null) return;
 
                 // 恢复快捷过滤器：若激活了时间范围，直接加载该范围；否则加载选中日期
-                foreach (var q in QuickFilters)
-                    q.IsSelected = q.Key == preservedState.ActiveQuickFilter && preservedState.ActiveQuickFilter != TimelineQuickFilter.All;
                 ActiveQuickFilter = preservedState.ActiveQuickFilter;
 
                 if (ActiveQuickFilter != TimelineQuickFilter.All)
                 {
+                    foreach (var q in QuickFilters)
+                        q.IsSelected = q.Key == preservedState.ActiveQuickFilter;
                     // 仅恢复选中态，不触发日期加载，随后由 quickfilter 覆盖
                     SetSelectedDateWithoutLoad(target);
                     await LoadQuickFilterRangeAsync(ActiveQuickFilter);
                 }
+                else if (!string.IsNullOrEmpty(preservedState.SelectedDateKey))
+                {
+                    // 未激活时间范围但之前选中了具体日期：恢复该日期视图
+                    ClearQuickFilters();
+                    await SelectDayWithoutClearingQuickFilterAsync(target);
+                }
                 else
                 {
-                    await SelectDayWithoutClearingQuickFilterAsync(target);
+                    // 未激活时间范围且未选中日期：默认加载全部时间的全部媒体
+                    ClearQuickFilters();
+                    await LoadQuickFilterRangeAsync(TimelineQuickFilter.All);
                 }
             }
             else
@@ -868,12 +900,9 @@ public partial class GalleryViewModel : ObservableObject
                     return;
                 }
 
-                // 自动选中第一个日期节点（递归取第一个 Kind=Day）
-                var firstDay = FindFirstDayNode(DateGroups);
-                if (firstDay != null)
-                {
-                    await SelectAsync(firstDay);
-                }
+                // 默认激活「全部」时间过滤器：加载所有时间的全部媒体，不自动选中具体日期
+                ClearQuickFilters();
+                await LoadQuickFilterRangeAsync(TimelineQuickFilter.All);
             }
         }
         catch (OperationCanceledException)
@@ -1239,11 +1268,14 @@ public partial class GalleryViewModel : ObservableObject
 
         if (ActiveQuickFilter == TimelineQuickFilter.All)
         {
-            // 取消快捷时间：回到当前选中日期视图（若未选中日期则清空）
+            // 取消快捷时间：同步 UI 让「全部」胶囊回到选中态
+            ClearQuickFilters();
+
+            // 回到当前选中日期视图；若未选中日期则加载全部时间的全部媒体
             if (SelectedDate != null)
                 await ReloadCurrentDateWithFilterAsync();
             else
-                CurrentMediaFiles.Clear();
+                await LoadQuickFilterRangeAsync(TimelineQuickFilter.All);
         }
         else
         {
@@ -1269,15 +1301,20 @@ public partial class GalleryViewModel : ObservableObject
         return TimelineQuickFilter.All;
     }
 
-    /// <summary>清除所有快捷时间按钮的选中态（回到 All）。</summary>
+    /// <summary>
+    /// 重置快捷时间按钮到「全部」选中态（逻辑与视觉保持一致）。
+    /// 时间过滤器默认激活「全部」，启动/切日期/取消时间范围时都应回到该状态。
+    /// </summary>
     private void ClearQuickFilters()
     {
         foreach (var q in QuickFilters)
-            q.IsSelected = false;
+            q.IsSelected = q.Key == TimelineQuickFilter.All;
         ActiveQuickFilter = TimelineQuickFilter.All;
     }
 
-    /// <summary>（v0.11 spec/15：搜索已移除）保留为历史占位，避免线上 partial 方法误调用。</summary>
+    /// <summary>
+    /// 加载指定日期的媒体（滚动分页：首次加载第一页）。
+    /// </summary>
     private async Task LoadDateAsync(TimelineNode dayNode, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(ProjectPath)) return;
@@ -1286,47 +1323,9 @@ public partial class GalleryViewModel : ObservableObject
         {
             IsLoadingMedia = true;
 
-            var files = await _mediaRepo.GetByDateAsync(ProjectPath, dayNode.Date, SortMode, ct);
-
-            // v0.11 spec/15: quickfilter 在内存里做二次过滤（仅 shot_at 区间判断，搜索已在 UI 移除）。
-            // 设计妥协：单日内文件数小（全表 91 张，单日最大 49），内存过滤成本可控；
-            // 真正按 shot_at 区间精确召回由 SQL WHERE 完成（GetByDateAsync 提供 day 范围），quickfilter 仅用于「今天/本周/...」次级筛选。
-            files = ApplyQuickFilter(files, ActiveQuickFilter);
-            files = ApplyMediaTypeFilter(files, MediaTypeFilter);
-
-            // 反推 UploadStatus：upload_jobs 里有未完成 job 的 → Paused，否则按 IsUploaded
-            // 单日最多几千条，直接全表扫成本可接受
-            IReadOnlyList<UploadJob> jobs;
-            try
-            {
-                jobs = await _uploadJobRepo.GetInProgressAsync(ProjectPath, ct);
-            }
-            catch
-            {
-                jobs = Array.Empty<UploadJob>();
-            }
-            var pausedSet = new HashSet<string>(
-                jobs.Select(j => j.RelativePath),
-                StringComparer.OrdinalIgnoreCase);
-
-            // 批量替换
-            CurrentMediaFiles.Clear();
-            foreach (var file in files)
-            {
-                if (file.IsUploaded)
-                {
-                    file.UploadStatus = UploadStatus.Uploaded;
-                }
-                else if (pausedSet.Contains(file.RelativePath))
-                {
-                    file.UploadStatus = UploadStatus.Paused;
-                }
-                else
-                {
-                    file.UploadStatus = UploadStatus.NotUploaded;
-                }
-                CurrentMediaFiles.Add(file);
-            }
+            _currentLoadDayNode = dayNode;
+            ResetMediaPagination(MediaLoadContext.Date);
+            await LoadMediaPageAsync(append: false, ct);
 
             IsLoadingMedia = false;
         }
@@ -1412,8 +1411,129 @@ public partial class GalleryViewModel : ObservableObject
         await LoadDateAsync(SelectedDate, _cts.Token);
     }
 
+    // === 媒体网格滚动分页加载 ===
+
+    private void ResetMediaPagination(MediaLoadContext context)
+    {
+        _currentLoadContext = context;
+        _mediaDbOffset = 0;
+        HasMoreMediaFiles = false;
+    }
+
     /// <summary>
-    /// 加载快捷时间范围视图：查询指定时间区间内的所有文件（Today/ThisWeek/ThisMonth/ThisYear）。
+    /// 查询 upload_jobs 中未完成的任务，用于反推文件 UploadStatus。
+    /// </summary>
+    private async Task<IReadOnlyList<UploadJob>> GetInProgressJobsAsync(CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(ProjectPath)) return Array.Empty<UploadJob>();
+        try
+        {
+            return await _uploadJobRepo.GetInProgressAsync(ProjectPath, ct);
+        }
+        catch
+        {
+            return Array.Empty<UploadJob>();
+        }
+    }
+
+    /// <summary>
+    /// 根据 upload_jobs 反推并设置 MediaFile.UploadStatus。
+    /// </summary>
+    private static void ApplyUploadStatus(MediaFile file, HashSet<string> pausedSet)
+    {
+        if (file.IsUploaded)
+            file.UploadStatus = UploadStatus.Uploaded;
+        else if (pausedSet.Contains(file.RelativePath))
+            file.UploadStatus = UploadStatus.Paused;
+        else
+            file.UploadStatus = UploadStatus.NotUploaded;
+    }
+
+    /// <summary>
+    /// 加载当前视图的一页媒体文件。
+    /// append=false 时清空 CurrentMediaFiles；append=true 时追加。
+    /// 返回本页过滤后实际加入集合的文件数。
+    /// </summary>
+    private async Task<int> LoadMediaPageAsync(bool append, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(ProjectPath)) return 0;
+        if (_currentLoadContext == MediaLoadContext.None) return 0;
+
+        IReadOnlyList<MediaFile> rawFiles;
+        switch (_currentLoadContext)
+        {
+            case MediaLoadContext.Date:
+                if (_currentLoadDayNode == null) return 0;
+                rawFiles = await _mediaRepo.GetByDateAsync(ProjectPath, _currentLoadDayNode.Date, SortMode, _mediaDbOffset, MediaPageSize, ct);
+                break;
+            case MediaLoadContext.QuickFilter:
+                var (start, end) = GetQuickFilterRange(_currentLoadQuickFilter);
+                rawFiles = await _mediaRepo.GetByTimeRangeAsync(ProjectPath, start, end, SortMode, _mediaDbOffset, MediaPageSize, ct);
+                break;
+            case MediaLoadContext.Tag:
+                if (_currentLoadTagGroup == null) return 0;
+                rawFiles = await _mediaRepo.GetByTagAsync(ProjectPath, _currentLoadTagGroup.Tag, SortMode, _mediaDbOffset, MediaPageSize, ct);
+                break;
+            default:
+                return 0;
+        }
+
+        var rawCount = rawFiles.Count;
+        _mediaDbOffset += rawCount;
+        HasMoreMediaFiles = rawCount == MediaPageSize;
+
+        // 应用内存过滤器
+        var files = ApplyQuickFilter(rawFiles, ActiveQuickFilter);
+        files = ApplyMediaTypeFilter(files, MediaTypeFilter);
+
+        var jobs = await GetInProgressJobsAsync(ct);
+        var pausedSet = new HashSet<string>(
+            jobs.Select(j => j.RelativePath),
+            StringComparer.OrdinalIgnoreCase);
+
+        if (!append)
+            CurrentMediaFiles.Clear();
+
+        foreach (var file in files)
+        {
+            ApplyUploadStatus(file, pausedSet);
+            CurrentMediaFiles.Add(file);
+        }
+
+        return files.Count;
+    }
+
+    /// <summary>
+    /// 滚动到底部附近时触发：加载下一页媒体。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanLoadMore))]
+    private async Task LoadMoreAsync()
+    {
+        if (_cts == null || _cts.IsCancellationRequested)
+            _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+
+        try
+        {
+            IsLoadingMore = true;
+            await LoadMediaPageAsync(append: true, ct);
+            IsLoadingMore = false;
+        }
+        catch (OperationCanceledException)
+        {
+            // 忽略取消
+        }
+        catch (Exception ex)
+        {
+            LoadErrorMessage = $"加载更多失败：{ex.Message}";
+            IsLoadingMore = false;
+        }
+    }
+
+    public bool CanLoadMore => HasMoreMediaFiles && !IsLoadingMore && !IsLoadingMedia;
+
+    /// <summary>
+    /// 加载快捷时间范围视图（滚动分页：首次加载第一页）。
     /// 该视图独立于当前选中的具体日期。
     /// </summary>
     private async Task LoadQuickFilterRangeAsync(TimelineQuickFilter filter)
@@ -1428,35 +1548,9 @@ public partial class GalleryViewModel : ObservableObject
         {
             IsLoadingMedia = true;
 
-            var (start, end) = GetQuickFilterRange(filter);
-            var files = await _mediaRepo.GetByTimeRangeAsync(ProjectPath, start, end, SortMode, ct);
-            files = ApplyMediaTypeFilter(files, MediaTypeFilter);
-
-            // 反推 UploadStatus
-            IReadOnlyList<UploadJob> jobs;
-            try
-            {
-                jobs = await _uploadJobRepo.GetInProgressAsync(ProjectPath, ct);
-            }
-            catch
-            {
-                jobs = Array.Empty<UploadJob>();
-            }
-            var pausedSet = new HashSet<string>(
-                jobs.Select(j => j.RelativePath),
-                StringComparer.OrdinalIgnoreCase);
-
-            CurrentMediaFiles.Clear();
-            foreach (var file in files)
-            {
-                if (file.IsUploaded)
-                    file.UploadStatus = UploadStatus.Uploaded;
-                else if (pausedSet.Contains(file.RelativePath))
-                    file.UploadStatus = UploadStatus.Paused;
-                else
-                    file.UploadStatus = UploadStatus.NotUploaded;
-                CurrentMediaFiles.Add(file);
-            }
+            _currentLoadQuickFilter = filter;
+            ResetMediaPagination(MediaLoadContext.QuickFilter);
+            await LoadMediaPageAsync(append: false, ct);
 
             IsLoadingMedia = false;
         }
@@ -1471,7 +1565,7 @@ public partial class GalleryViewModel : ObservableObject
         }
     }
 
-    /// <summary>根据快捷时间类型计算本地时间范围（半开区间）。</summary>
+    /// <summary>根据快捷时间类型计算本地时间范围（半开区间）。All 表示全部时间。</summary>
     private static (DateTimeOffset Start, DateTimeOffset End) GetQuickFilterRange(TimelineQuickFilter filter)
     {
         var now = DateTime.Now;
@@ -1480,6 +1574,9 @@ public partial class GalleryViewModel : ObservableObject
 
         switch (filter)
         {
+            case TimelineQuickFilter.All:
+                // 使用安全的极值范围表示「全部时间」，避免 DateTimeOffset 构造时越界。
+                return (DateTimeOffset.MinValue.AddDays(1), DateTimeOffset.MaxValue.AddDays(-1));
             case TimelineQuickFilter.Today:
                 startLocal = now.Date;
                 endLocal = startLocal.AddDays(1);
@@ -1499,9 +1596,7 @@ public partial class GalleryViewModel : ObservableObject
                 endLocal = startLocal.AddYears(1);
                 break;
             default:
-                startLocal = now.Date;
-                endLocal = startLocal.AddDays(1);
-                break;
+                return (DateTimeOffset.MinValue.AddDays(1), DateTimeOffset.MaxValue.AddDays(-1));
         }
 
         var startOffset = new DateTimeOffset(startLocal);
@@ -1560,7 +1655,7 @@ public partial class GalleryViewModel : ObservableObject
     }
 
     /// <summary>
-    /// 选中某个 tag → 调 GetByTagAsync + 反推 UploadStatus + 灌入 CurrentMediaFiles。
+    /// 选中某个 tag → 滚动分页加载第一页。
     /// 镜像 LoadDateAsync 模式（cancel-and-restart + UploadStatus 派生）。
     /// v0.11: 同步更新 TagGroups 各项 IsSelected 状态（spec §15.4）—— 选中项文字变色 / 加粗。
     /// </summary>
@@ -1592,41 +1687,9 @@ public partial class GalleryViewModel : ObservableObject
         {
             IsLoadingMedia = true;
 
-            var files = await _mediaRepo.GetByTagAsync(ProjectPath, group.Tag, SortMode, ct);
-            Trace.WriteLine($"[Gallery] GetByTagAsync 返回: {files.Count} 个文件, SortMode={SortMode}");
-            files = ApplyMediaTypeFilter(files, MediaTypeFilter);
-
-            // 反推 UploadStatus（跟 LoadDateAsync 一致）
-            IReadOnlyList<UploadJob> jobs;
-            try
-            {
-                jobs = await _uploadJobRepo.GetInProgressAsync(ProjectPath, ct);
-            }
-            catch
-            {
-                jobs = Array.Empty<UploadJob>();
-            }
-            var pausedSet = new HashSet<string>(
-                jobs.Select(j => j.RelativePath),
-                StringComparer.OrdinalIgnoreCase);
-
-            CurrentMediaFiles.Clear();
-            foreach (var file in files)
-            {
-                if (file.IsUploaded)
-                {
-                    file.UploadStatus = UploadStatus.Uploaded;
-                }
-                else if (pausedSet.Contains(file.RelativePath))
-                {
-                    file.UploadStatus = UploadStatus.Paused;
-                }
-                else
-                {
-                    file.UploadStatus = UploadStatus.NotUploaded;
-                }
-                CurrentMediaFiles.Add(file);
-            }
+            _currentLoadTagGroup = group;
+            ResetMediaPagination(MediaLoadContext.Tag);
+            await LoadMediaPageAsync(append: false, ct);
 
             IsLoadingMedia = false;
         }
