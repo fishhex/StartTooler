@@ -165,6 +165,52 @@
                     </ComboBoxItem>
                 </ComboBox>
 
+                <!-- 媒体类型过滤 ComboBox（v0.12：在排序旁边增加视频/图片过滤） -->
+                <ComboBox DockPanel.Dock="Right"
+                          SelectedIndex="{Binding GalleryViewModel.MediaTypeFilterIndex}"
+                          IsVisible="{Binding IsGalleryPage}"
+                          ToolTip.Tip="过滤媒体类型"
+                          Classes="sort-combo"
+                          Width="100"
+                          Margin="0,0,8,0">
+                    <ComboBoxItem>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Data="M4 4h7v7H4zm9 0h7v7h-7zM4 14h7v7H4zm9 0h7v7h-7z"
+                                  Stroke="{DynamicResource Text.Secondary}"
+                                  StrokeThickness="1.5"
+                                  Fill="Transparent"
+                                  Width="14" Height="14"
+                                  Stretch="Uniform"
+                                  VerticalAlignment="Center"/>
+                            <TextBlock Text="全部" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </ComboBoxItem>
+                    <ComboBoxItem>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Data="M3 17h18L14 8l-4 6-3-4z"
+                                  Stroke="{DynamicResource Text.Secondary}"
+                                  StrokeThickness="1.5"
+                                  Fill="Transparent"
+                                  Width="14" Height="14"
+                                  Stretch="Uniform"
+                                  VerticalAlignment="Center"/>
+                            <TextBlock Text="图片" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </ComboBoxItem>
+                    <ComboBoxItem>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Data="M5 3l14 9-14 9V3z"
+                                  Stroke="{DynamicResource Text.Secondary}"
+                                  StrokeThickness="1.5"
+                                  Fill="Transparent"
+                                  Width="14" Height="14"
+                                  Stretch="Uniform"
+                                  VerticalAlignment="Center"/>
+                            <TextBlock Text="视频" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </ComboBoxItem>
+                </ComboBox>
+
                 <!-- 左侧：动作按钮组（媒体页） -->
                 <StackPanel Orientation="Horizontal"
                             Spacing="8"
