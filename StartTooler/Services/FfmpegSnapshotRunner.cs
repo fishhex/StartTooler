@@ -80,4 +80,54 @@ public static class FfmpegSnapshotRunner
 
         return File.Exists(outputPath);
     }
+
+    /// <summary>
+    /// 为 AI 分析抽取单帧：thumbnail filter 跳过黑帧/相机初始化阶段，
+    /// scale 使用 force_original_aspect_ratio=decrease 保持原始宽高比，长边不超过 maxEdge。
+    /// </summary>
+    public static async Task<bool> SnapshotAsync(
+        string inputPath,
+        string outputPath,
+        int maxEdge,
+        CancellationToken ct = default)
+    {
+        var ffmpegPath = FFmpegConfigurator.GetFFmpegBinaryPath();
+        Trace.WriteLine($"[FfmpegSnapshotRunner] exec (AI frame): {ffmpegPath}");
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = ffmpegPath,
+            UseShellExecute = false,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            CreateNoWindow = true,
+        };
+        psi.ArgumentList.Add("-y");
+        psi.ArgumentList.Add("-i");
+        psi.ArgumentList.Add(inputPath);
+        psi.ArgumentList.Add("-vf");
+        psi.ArgumentList.Add($"thumbnail={ThumbnailScanFrames},scale={maxEdge}:{maxEdge}:force_original_aspect_ratio=decrease");
+        psi.ArgumentList.Add("-frames:v");
+        psi.ArgumentList.Add("1");
+        psi.ArgumentList.Add("-update");
+        psi.ArgumentList.Add("1");
+        psi.ArgumentList.Add(outputPath);
+
+        Trace.WriteLine($"[FfmpegSnapshotRunner] argv: ffmpeg {string.Join(" ", psi.ArgumentList)}");
+
+        using var proc = Process.Start(psi)!;
+        var stderrTask = proc.StandardError.ReadToEndAsync(ct);
+        await proc.WaitForExitAsync(ct);
+        var stderr = await stderrTask;
+
+        Trace.WriteLine($"[FfmpegSnapshotRunner] exit: {proc.ExitCode}");
+        if (proc.ExitCode != 0)
+        {
+            Trace.WriteLine($"[FfmpegSnapshotRunner] stderr: {stderr.Trim()}");
+            throw new InvalidOperationException(
+                $"ffmpeg failed (exit {proc.ExitCode}): {stderr.Trim()}");
+        }
+
+        return File.Exists(outputPath);
+    }
 }

@@ -81,12 +81,6 @@ public sealed class AITagger : IAITagger
         AIConfig config,
         CancellationToken ct)
     {
-        // D.1 仅实现图片；视频 D.2 加 ffmpeg 抽帧
-        if (file.MediaType != MediaType.Image)
-        {
-            return (null, new TagFailure($"暂不支持 {file.MediaType} 类型打标（D.2 视频抽帧待实施）", IsFatal: false));
-        }
-
         var localPath = Path.Combine(file.ProjectPath, file.RelativePath);
         if (!File.Exists(localPath))
         {
@@ -103,15 +97,43 @@ public sealed class AITagger : IAITagger
         // Protocol 老 config.db 兼容：null/空串 fallback 到 "OpenAI"
         var protocol = string.IsNullOrWhiteSpace(config.Protocol) ? "OpenAI" : config.Protocol;
 
-        // 1. 图片 resize → JPEG bytes
+        // 1. 准备 JPEG bytes：图片直接 resize；视频先 ffmpeg 抽帧（thumbnail filter 自动跳过黑帧）
         byte[] imageBytes;
+        string? tempFramePath = null;
         try
         {
-            imageBytes = ResizeToJpegBytes(localPath, maxEdge: 512, quality: 75);
+            string sourcePath;
+            if (file.MediaType == MediaType.Video)
+            {
+                tempFramePath = Path.Combine(Path.GetTempPath(), $"starttooler_ai_{file.Id}_{Guid.NewGuid():N}.jpg");
+                var ok = await FfmpegSnapshotRunner.SnapshotAsync(localPath, tempFramePath, maxEdge: 512, ct);
+                if (!ok)
+                    return (null, new TagFailure("视频抽帧失败：未生成帧文件", IsFatal: false));
+                sourcePath = tempFramePath;
+            }
+            else if (file.MediaType == MediaType.Image)
+            {
+                sourcePath = localPath;
+            }
+            else
+            {
+                return (null, new TagFailure($"暂不支持 {file.MediaType} 类型打标", IsFatal: false));
+            }
+
+            imageBytes = ResizeToJpegBytes(sourcePath, maxEdge: 512, quality: 75);
         }
         catch (Exception ex)
         {
-            return (null, new TagFailure($"图片处理失败：{ex.Message}", IsFatal: false));
+            var step = file.MediaType == MediaType.Video ? "视频抽帧" : "图片处理";
+            return (null, new TagFailure($"{step}失败：{ex.Message}", IsFatal: false));
+        }
+        finally
+        {
+            if (!string.IsNullOrEmpty(tempFramePath))
+            {
+                try { File.Delete(tempFramePath); }
+                catch { /* 临时文件清理失败不影响主流程 */ }
+            }
         }
 
         // 2. base64
