@@ -39,8 +39,7 @@ public partial class GalleryViewModel : ObservableObject
         string? SelectedDateKey,
         Dictionary<string, bool> ExpandedNodeKeys,
         TimelineQuickFilter ActiveQuickFilter,
-        string? SelectedTag,
-        MediaTypeFilter MediaTypeFilter);
+        string? SelectedTag);
 
     /// <summary>MainWindowViewModel 注入导航回调,供 Onboarding 卡片跳转用</summary>
     public Action? NavigateToSettings { set => _navigateToSettings = value; }
@@ -760,6 +759,11 @@ public partial class GalleryViewModel : ObservableObject
 
         try
         {
+            // 媒体类型过滤不加入快照：每次初始化都重置为“全部”。
+            _isRestoringFilterState = true;
+            MediaTypeFilter = MediaTypeFilter.All;
+            _isRestoringFilterState = false;
+
             IsLoadingDateGroups = true;
             LoadErrorMessage = null;
             DateGroups.Clear();
@@ -839,11 +843,6 @@ public partial class GalleryViewModel : ObservableObject
                 foreach (var q in QuickFilters)
                     q.IsSelected = q.Key == preservedState.ActiveQuickFilter && preservedState.ActiveQuickFilter != TimelineQuickFilter.All;
                 ActiveQuickFilter = preservedState.ActiveQuickFilter;
-
-                // 恢复媒体类型过滤器（通过标志位抑制切换回调，避免初始化期间重复加载）
-                _isRestoringFilterState = true;
-                MediaTypeFilter = preservedState.MediaTypeFilter;
-                _isRestoringFilterState = false;
 
                 if (ActiveQuickFilter != TimelineQuickFilter.All)
                 {
@@ -1062,8 +1061,7 @@ public partial class GalleryViewModel : ObservableObject
             SelectedDate?.Key,
             expandedKeys,
             ActiveQuickFilter,
-            SelectedTag,
-            MediaTypeFilter);
+            SelectedTag);
     }
 
     private static void CollectExpandedKeys(TimelineNode node, Dictionary<string, bool> keys)
