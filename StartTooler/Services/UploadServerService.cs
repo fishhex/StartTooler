@@ -64,11 +64,46 @@ public class UploadServerService : IDisposable
 
     public void Stop()
     {
-        _cts?.Cancel();
-        _listener?.Stop();
-        _listener?.Close();
+        try
+        {
+            _cts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 已经取消/释放，忽略
+        }
+
+        // 先清空字段，避免后续并发路径重复操作同一个 listener
+        var listener = _listener;
         _listener = null;
         _cts = null;
+
+        if (listener != null)
+        {
+            try
+            {
+                if (listener.IsListening)
+                    listener.Stop();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (HttpListenerException)
+            {
+            }
+
+            try
+            {
+                listener.Close();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (HttpListenerException)
+            {
+            }
+        }
+
         Debug.WriteLine("[UploadServer] Stopped");
     }
 
@@ -86,6 +121,10 @@ public class UploadServerService : IDisposable
                 break;
             }
             catch (HttpListenerException)
+            {
+                break;
+            }
+            catch (ObjectDisposedException)
             {
                 break;
             }
