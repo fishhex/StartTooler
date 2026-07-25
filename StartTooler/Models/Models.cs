@@ -90,6 +90,17 @@ public partial class TimelineNode : ObservableObject
 // 保留旧名注释作为迁移提示；新代码请直接使用 TimelineNode。
 
 /// <summary>
+/// 媒体类型过滤器（Date/Tag 视图通用）。
+/// All = 全部；Image = 仅图片；Video = 仅视频。
+/// </summary>
+public enum MediaTypeFilter
+{
+    All,
+    Image,
+    Video,
+}
+
+/// <summary>
 /// v0.11 时间轴快捷胶囊过滤器（spec/15 §5.5 预留扩展位）。
 /// All / Today / ThisWeek / ThisMonth / ThisYear 五个档位。
 /// QuickFilter 不直接改 SQL，而是覆写 shot_at 的起止区间（Date 视图）或扩成全标签列表（Tag 视图）。

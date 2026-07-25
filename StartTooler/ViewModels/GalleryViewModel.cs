@@ -39,7 +39,8 @@ public partial class GalleryViewModel : ObservableObject
         string? SelectedDateKey,
         Dictionary<string, bool> ExpandedNodeKeys,
         TimelineQuickFilter ActiveQuickFilter,
-        string? SelectedTag);
+        string? SelectedTag,
+        MediaTypeFilter MediaTypeFilter);
 
     /// <summary>MainWindowViewModel 注入导航回调,供 Onboarding 卡片跳转用</summary>
     public Action? NavigateToSettings { set => _navigateToSettings = value; }
@@ -153,6 +154,9 @@ public partial class GalleryViewModel : ObservableObject
     private readonly StartTooler.Helpers.TagChangeDebouncer _tagChangeDebouncer = new(500);
     // 跟踪已订阅 PropertyChanged 的 file，CurrentMediaFiles.Clear() / Reset 时统一解绑。
     private readonly HashSet<MediaFile> _tagSubscribedFiles = new();
+
+    // 恢复过滤栏快照时抑制 MediaTypeFilter 切换回调，避免初始化期间重复加载。
+    private bool _isRestoringFilterState;
 
     // === 选中态（日期） ===
     /// <summary>当前选中的日节点（spec/15 §3 仅 Day 节点可被选中；Year/Month 只控折叠）。</summary>
@@ -380,6 +384,33 @@ public partial class GalleryViewModel : ObservableObject
         set => SortMode = value == 0 ? SortMode.TimeDesc : SortMode.ScoreDesc;
     }
 
+    /// <summary>
+    /// 媒体类型过滤：All = 全部；Image = 仅图片；Video = 仅视频。
+    /// 切换时自动重载当前视图（Date/Tag）。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MediaTypeFilterIndex))]
+    private MediaTypeFilter _mediaTypeFilter = MediaTypeFilter.All;
+
+    /// <summary>
+    /// ComboBox SelectedIndex 桥接属性：0=全部 / 1=图片 / 2=视频。
+    /// </summary>
+    public int MediaTypeFilterIndex
+    {
+        get => MediaTypeFilter switch
+        {
+            MediaTypeFilter.Image => 1,
+            MediaTypeFilter.Video => 2,
+            _ => 0
+        };
+        set => MediaTypeFilter = value switch
+        {
+            1 => MediaTypeFilter.Image,
+            2 => MediaTypeFilter.Video,
+            _ => MediaTypeFilter.All
+        };
+    }
+
     /// <summary>左栏"标签"tab 用（v0.6.1 已接 UI）。</summary>
     public ObservableCollection<TagGroupItem> TagGroups { get; } = new();
 
@@ -556,6 +587,45 @@ public partial class GalleryViewModel : ObservableObject
                 // 通过 Tag 找 TagGroupItem 重载（保留 TagGroups 顺序）
                 var group = TagGroups.FirstOrDefault(g => g.Tag == SelectedTag);
                 if (group != null) _ = SelectTagAsync(group);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 媒体类型过滤切换：退出多选并保留当前 quickfilter（若处于时间范围视图）。
+    /// </summary>
+    partial void OnMediaTypeFilterChanged(MediaTypeFilter value)
+    {
+        if (_isRestoringFilterState) return;
+
+        Trace.WriteLine($"[Gallery] MediaTypeFilter 切换 → {value}, GroupMode={GroupMode}, SelectedDate={SelectedDate?.Date:yyyy-MM-dd}, SelectedTag={SelectedTag ?? "(null)"}");
+        if (string.IsNullOrEmpty(ProjectPath)) return;
+
+        ExitMultiSelect();
+        _ = ReloadCurrentViewAsync();
+    }
+
+    /// <summary>
+    /// 按当前 GroupMode/SelectedDate/SelectedTag/ActiveQuickFilter 重新加载视图。
+    /// 切换过滤条件时调用，避免重复实现每种组合的加载逻辑。
+    /// </summary>
+    private async Task ReloadCurrentViewAsync()
+    {
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+
+        switch (GroupMode)
+        {
+            case GroupMode.Date when SelectedDate != null:
+                if (ActiveQuickFilter != TimelineQuickFilter.All)
+                    await LoadQuickFilterRangeAsync(ActiveQuickFilter);
+                else
+                    await LoadDateAsync(SelectedDate, ct);
+                break;
+            case GroupMode.Tag when SelectedTag != null:
+                var group = TagGroups.FirstOrDefault(g => g.Tag == SelectedTag);
+                if (group != null) await SelectTagAsync(group);
                 break;
         }
     }
@@ -769,6 +839,11 @@ public partial class GalleryViewModel : ObservableObject
                 foreach (var q in QuickFilters)
                     q.IsSelected = q.Key == preservedState.ActiveQuickFilter && preservedState.ActiveQuickFilter != TimelineQuickFilter.All;
                 ActiveQuickFilter = preservedState.ActiveQuickFilter;
+
+                // 恢复媒体类型过滤器（通过标志位抑制切换回调，避免初始化期间重复加载）
+                _isRestoringFilterState = true;
+                MediaTypeFilter = preservedState.MediaTypeFilter;
+                _isRestoringFilterState = false;
 
                 if (ActiveQuickFilter != TimelineQuickFilter.All)
                 {
@@ -987,7 +1062,8 @@ public partial class GalleryViewModel : ObservableObject
             SelectedDate?.Key,
             expandedKeys,
             ActiveQuickFilter,
-            SelectedTag);
+            SelectedTag,
+            MediaTypeFilter);
     }
 
     private static void CollectExpandedKeys(TimelineNode node, Dictionary<string, bool> keys)
@@ -1218,6 +1294,7 @@ public partial class GalleryViewModel : ObservableObject
             // 设计妥协：单日内文件数小（全表 91 张，单日最大 49），内存过滤成本可控；
             // 真正按 shot_at 区间精确召回由 SQL WHERE 完成（GetByDateAsync 提供 day 范围），quickfilter 仅用于「今天/本周/...」次级筛选。
             files = ApplyQuickFilter(files, ActiveQuickFilter);
+            files = ApplyMediaTypeFilter(files, MediaTypeFilter);
 
             // 反推 UploadStatus：upload_jobs 里有未完成 job 的 → Paused，否则按 IsUploaded
             // 单日最多几千条，直接全表扫成本可接受
@@ -1313,6 +1390,21 @@ public partial class GalleryViewModel : ObservableObject
         }).ToList();
     }
 
+    /// <summary>
+    /// 应用媒体类型过滤：All 不过滤；Image 仅保留图片；Video 仅保留视频。
+    /// 在 DB 查询后的内存层执行，避免为过滤条件新增 SQL 分支。
+    /// </summary>
+    private static IReadOnlyList<MediaFile> ApplyMediaTypeFilter(
+        IReadOnlyList<MediaFile> files,
+        MediaTypeFilter filter)
+    {
+        if (filter == MediaTypeFilter.All)
+            return files;
+
+        var expected = filter == MediaTypeFilter.Image ? MediaType.Image : MediaType.Video;
+        return files.Where(f => f.MediaType == expected).ToList();
+    }
+
     /// <summary>用当前 SelectedDate 重新加载，过滤器（quickfilter + 搜索）立刻生效。</summary>
     private async Task ReloadCurrentDateWithFilterAsync()
     {
@@ -1340,6 +1432,7 @@ public partial class GalleryViewModel : ObservableObject
 
             var (start, end) = GetQuickFilterRange(filter);
             var files = await _mediaRepo.GetByTimeRangeAsync(ProjectPath, start, end, SortMode, ct);
+            files = ApplyMediaTypeFilter(files, MediaTypeFilter);
 
             // 反推 UploadStatus
             IReadOnlyList<UploadJob> jobs;
@@ -1503,6 +1596,7 @@ public partial class GalleryViewModel : ObservableObject
 
             var files = await _mediaRepo.GetByTagAsync(ProjectPath, group.Tag, SortMode, ct);
             Trace.WriteLine($"[Gallery] GetByTagAsync 返回: {files.Count} 个文件, SortMode={SortMode}");
+            files = ApplyMediaTypeFilter(files, MediaTypeFilter);
 
             // 反推 UploadStatus（跟 LoadDateAsync 一致）
             IReadOnlyList<UploadJob> jobs;
