@@ -94,6 +94,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="models:TimelineNode">
                                 <Button Classes="timeline-node"
+                                        HorizontalAlignment="Stretch"
                                         HorizontalContentAlignment="Stretch"
                                         Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).NodeClickCommand}"
                                         CommandParameter="{Binding}">
@@ -114,20 +115,29 @@
                                                  Margin="0,0,8,0"
                                                  VerticalAlignment="Center"
                                                  Fill="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
-                                        <!-- 文字 + 数量，布局与标签列表一致 -->
-                                        <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
+                                        <!-- 文字 + 数量，布局与标签列表一致。
+                                             label 在 Auto 列占自然宽度（紧凑），count 在 * 列内右对齐贴边。
+                                             中间剩余空间作为留白，与标签列表的 plain Grid 视觉效果一致，且无重叠风险。 -->
+                                        <Grid Grid.Column="1" ColumnDefinitions="Auto,*">
                                             <TextBlock Grid.Column="0"
                                                        Text="{Binding Label}"
+                                                       HorizontalAlignment="Left"
                                                        FontSize="{Binding Kind, Converter={StaticResource KindToFontSizeConverter}}"
                                                        FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
                                                        Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"
                                                        VerticalAlignment="Center"
                                                        TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock Grid.Column="1"
-                                                       Text="{Binding Count, StringFormat='{}{0} 张'}"
-                                                       VerticalAlignment="Center"
-                                                       FontSize="12"
-                                                       Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
+                                            <Border Grid.Column="1"
+                                                    Classes="count-pill"
+                                                    Classes.selected="{Binding IsSelected}"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Count, StringFormat='{}{0} 张'}"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="12"
+                                                           Foreground="{Binding IsSelected, Converter={StaticResource BoolToInverseConverter}}"/>
+                                            </Border>
                                         </Grid>
                                     </Grid>
                                 </Button>
@@ -158,11 +168,16 @@
                                                    FontSize="13"
                                                    FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
                                                    Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
-                                        <TextBlock Text="{Binding Count, StringFormat='{}{0} 张'}"
-                                                   HorizontalAlignment="Right"
-                                                   VerticalAlignment="Center"
-                                                   FontSize="12"
-                                                   Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
+                                        <Border Classes="count-pill"
+                                                Classes.selected="{Binding IsSelected}"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Count, StringFormat='{}{0} 张'}"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="12"
+                                                       Foreground="{Binding IsSelected, Converter={StaticResource BoolToInverseConverter}}"/>
+                                        </Border>
                                     </Grid>
                                 </Button>
                             </DataTemplate>
