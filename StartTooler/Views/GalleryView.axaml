@@ -249,6 +249,30 @@
                                HorizontalAlignment="Center"/>
                 </StackPanel>
 
+                <!-- 筛选无匹配空态 -->
+                <StackPanel IsVisible="{Binding IsFilteredEmpty}"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="16">
+                    <Path Data="{DynamicResource Icon.Constellation}"
+                          Stretch="Uniform"
+                          Width="64" Height="64"
+                          Stroke="{DynamicResource Card.EmptyStateStroke}"
+                          StrokeThickness="1"
+                          Fill="Transparent"
+                          Opacity="0.4"
+                          HorizontalAlignment="Center"/>
+                    <TextBlock Text="当前筛选条件无匹配媒体"
+                               FontSize="15"
+                               FontWeight="600"
+                               Foreground="{DynamicResource Text.Primary}"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="尝试调整或清除筛选条件"
+                               FontSize="13"
+                               Foreground="{DynamicResource Text.Secondary}"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+
                 <!--
                   v0.11: 骨架屏替代 "加载中..." 纯文字（spec §9）。
                   标题行 placeholder + 8 张 tile placeholder + 第二个标题 + 5 张 tile placeholder。

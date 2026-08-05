@@ -481,6 +481,12 @@ public partial class GalleryViewModel : ObservableObject
     public bool HasNoProject => string.IsNullOrEmpty(ProjectPath);
     public bool IsEmpty => !HasNoProject && !IsLoadingDateGroups && DateGroups.Count == 0;
 
+    /// <summary>是否有激活的筛选条件（快捷时间筛选 或 媒体类型筛选）</summary>
+    public bool HasActiveFilter => ActiveQuickFilter != TimelineQuickFilter.All || MediaTypeFilter != MediaTypeFilter.All;
+
+    /// <summary>有媒体文件但当前筛选条件无匹配结果（区别于项目无媒体的空态）</summary>
+    public bool IsFilteredEmpty => !HasNoProject && !IsLoadingDateGroups && !IsLoadingMedia && DateGroups.Count > 0 && CurrentMediaFiles.Count == 0 && HasActiveFilter;
+
     // === v0.11 spec/07: 首次使用引导状态 ===
     [ObservableProperty] private bool _showOnboarding;
     [ObservableProperty] private bool _step1Complete;
@@ -629,6 +635,19 @@ public partial class GalleryViewModel : ObservableObject
 
         ExitMultiSelect();
         _ = ReloadCurrentViewAsync();
+        OnPropertyChanged(nameof(HasActiveFilter));
+        OnPropertyChanged(nameof(IsFilteredEmpty));
+    }
+
+    partial void OnActiveQuickFilterChanged(TimelineQuickFilter value)
+    {
+        OnPropertyChanged(nameof(HasActiveFilter));
+        OnPropertyChanged(nameof(IsFilteredEmpty));
+    }
+
+    partial void OnIsLoadingMediaChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsFilteredEmpty));
     }
 
     /// <summary>
@@ -694,6 +713,8 @@ public partial class GalleryViewModel : ObservableObject
         // CurrentMediaFiles 内容变化（全选/反选命令的可用性主要依赖它）
         SelectAllCommand.NotifyCanExecuteChanged();
         InvertSelectionCommand.NotifyCanExecuteChanged();
+
+        OnPropertyChanged(nameof(IsFilteredEmpty));
 
         // v0.11: 状态栏统计（任何集合变化都重算）
         OnPropertyChanged(nameof(CurrentFileCount));
@@ -2006,6 +2027,7 @@ public partial class GalleryViewModel : ObservableObject
         {
             UpdateStepStates();
         }
+        OnPropertyChanged(nameof(IsFilteredEmpty));
     }
 
     partial void OnIsMultiSelectModeChanged(bool value)
