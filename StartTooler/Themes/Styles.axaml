@@ -171,6 +171,44 @@
         <Setter Property="Foreground" Value="{DynamicResource State.Danger}"/>
     </Style>
 
+    <!-- v0.12: autocomplete 下拉候选容器 -->
+    <Style Selector="Border.suggestion-dropdown">
+        <Setter Property="Background" Value="{DynamicResource Bg.Outer}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Border.Strong}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="BoxShadow" Value="0 4 16 0 rgba(0,0,0,0.4)"/>
+    </Style>
+
+    <!-- 候选行 -->
+    <Style Selector="Button.suggestion-row">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="8,5"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.suggestion-row:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
+    </Style>
+
+    <!-- 键盘高亮行 -->
+    <Style Selector="Button.suggestion-row-highlighted /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Accent.Stellar.Subtle}"/>
+    </Style>
+    <Style Selector="Button.suggestion-row-highlighted:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Accent.Stellar.Subtle}"/>
+    </Style>
+
+    <!-- chevron 切换按钮 -->
+    <Style Selector="Button.chevron-toggle">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.chevron-toggle:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
+    </Style>
+
     <!-- 圆形图标徽章容器：照片卡片角标统一底座（视频/同步/失败徽章复用），默认 22×22；
          尺寸不同的场景可在实例上覆盖 Width/Height/CornerRadius。 -->
     <Style Selector="Border.badge-icon">

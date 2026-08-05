@@ -5,22 +5,13 @@
              x:DataType="controls:ITagEditorHost">
 
     <!--
-      通用 tag chip 编辑器（spec doc/15-manual-tag-edit.md §4）。
-      接受外部 DataContext（实现 ITagEditorHost），编译 binding 模式绑 ITagEditorHost 契约。
-      让 LightboxViewModel / EditTagsDialogViewModel / EditTagsBatchDialogViewModel 都能复用。
-
-      结构：
-        - chip 列表（WrapPanel，chip 整块 Button 点击删除）
-        - 输入框（TextBox + Watermark + MaxLength + 回车提交）
-
-      触发命令：
-        - chip 点击 → DataContext.RemoveTagCommand.Execute(tag)
-        - 输入框回车 → DataContext.AddTagCommand.Execute(null)
+      v0.12: tag chip 编辑器 + 自动补全下拉。
+      候选数据在 code-behind 中填充到 SuggestionsList.ItemsSource。
     -->
 
     <StackPanel Spacing="8">
 
-        <!-- chip 列表：每个 chip 整块 Button，整 chip 任意位置点击删除 -->
+        <!-- chip 列表 -->
         <ItemsControl ItemsSource="{Binding Tags}">
             <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -29,11 +20,6 @@
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                    <!--
-                      Tag="{Binding}" 把 chip 文本传给 code-behind，避免 DataTemplate 编译 binding 模式下
-                      写 $parent[UserControl].DataContext.RemoveTagCommand 链式 cast 整个返回 null 的坑
-                      （v0.8.1 spec 警告）。
-                    -->
                     <Button Classes="chip-removable"
                             Tag="{Binding}"
                             Click="OnChipClick"
@@ -44,21 +30,114 @@
                                        Foreground="{DynamicResource Text.Primary}"
                                        VerticalAlignment="Center" />
                             <PathIcon Data="{StaticResource Icon.X}"
-                                  Width="8" Height="8"
-                                  Classes="chip-x-icon"
-                                  VerticalAlignment="Center" />
+                                      Width="8" Height="8"
+                                      Classes="chip-x-icon"
+                                      VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <!-- 输入框（可选，默认显示） -->
-        <TextBox IsVisible="{Binding ShowInputBox}"
-                 Text="{Binding NewTagInput, Mode=TwoWay}"
-                 KeyDown="OnInputKeyDown"
-                 Watermark="{Binding Watermark}"
-                 MaxLength="{Binding MaxTagLength}"
-                 FontSize="12" />
+        <!-- 输入行：TextBox + chevron 按钮 -->
+        <Grid ColumnDefinitions="*,Auto"
+              IsVisible="{Binding ShowInputBox}">
+
+            <TextBox Grid.Column="0"
+                     x:Name="InputBox"
+                     Text="{Binding NewTagInput, Mode=TwoWay}"
+                     KeyDown="OnInputKeyDown"
+                     GotFocus="OnInputGotFocus"
+                     Watermark="{Binding Watermark}"
+                     MaxLength="{Binding MaxTagLength}"
+                     FontSize="12" />
+
+            <Button Grid.Column="1"
+                    x:Name="ChevronButton"
+                    Classes="chevron-toggle"
+                    Click="OnChevronClick"
+                    ToolTip.Tip="展开标签候选"
+                    Margin="4,0,0,0"
+                    Width="24" Height="24"
+                    Padding="0"
+                    VerticalAlignment="Stretch">
+                <PathIcon Data="{StaticResource Icon.ChevronDown}"
+                          Width="12" Height="12"
+                          Foreground="{DynamicResource Text.Secondary}" />
+            </Button>
+
+            <!-- 候选下拉 Popup -->
+            <Popup x:Name="SuggestionsPopup"
+                   Placement="BottomEdgeAlignedLeft"
+                   IsLightDismissEnabled="True"
+                   HorizontalOffset="0"
+                   VerticalOffset="4">
+                <Border Classes="suggestion-dropdown"
+                        MinWidth="200"
+                        x:Name="DropdownBorder">
+                    <StackPanel>
+
+                        <!-- 候选列表（ItemsSource 由 code-behind 设置，ScrollViewer 让超出条目可滚动） -->
+                        <ScrollViewer MaxHeight="240"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl x:Name="SuggestionsList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="controls:SuggestionItem">
+                                        <Button Classes="suggestion-row"
+                                                HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Stretch"
+                                                Padding="8,5"
+                                                Click="OnSuggestionClick">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="{Binding DisplayName}"
+                                                           FontSize="12"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding UsageText}"
+                                                           FontSize="10"
+                                                           Foreground="{DynamicResource Text.Tertiary}"
+                                                           VerticalAlignment="Center"
+                                                           IsVisible="{Binding ShowUsage}" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                        <!-- 分隔线 -->
+                        <Separator x:Name="SectionSeparator"
+                                   Margin="8,4"
+                                   IsVisible="False"
+                                   Background="{DynamicResource Border.Strong}"
+                                   Height="1" />
+
+                        <!-- "＋ 新建" 行 -->
+                        <Button x:Name="NewTagRow"
+                                Classes="suggestion-row"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                Padding="8,5"
+                                Click="OnNewTagClick"
+                                IsVisible="False">
+                            <TextBlock FontSize="12"
+                                       Foreground="{DynamicResource Accent.Stellar}"
+                                       VerticalAlignment="Center">
+                                <Run Text="+ 新建 &quot;" />
+                                <Run x:Name="NewTagNameRun" />
+                                <Run Text="&quot;" />
+                            </TextBlock>
+                        </Button>
+
+                        <!-- 底部提示 -->
+                        <Border Padding="8,4">
+                            <TextBlock FontSize="10"
+                                       Foreground="{DynamicResource Text.Tertiary}"
+                                       Text="↑↓ 选择  Enter 确认  Esc 关闭" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </Popup>
+        </Grid>
     </StackPanel>
 </UserControl>

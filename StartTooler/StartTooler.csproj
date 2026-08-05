@@ -6,6 +6,8 @@
         <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
         <ApplicationIcon>Assets\avalonia-logo.ico</ApplicationIcon>
         <AssemblyName>StartTooler</AssemblyName>
+        <!-- 禁用 Avalonia telemetry 任务：写入 ~/Library/ 被 sandbox 拦截导致构建失败 -->
+        <UsedAvaloniaProducts />
     </PropertyGroup>
 
     <ItemGroup>
