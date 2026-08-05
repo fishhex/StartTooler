@@ -212,6 +212,12 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty] private string? _toastMessage;
     public ObservableCollection<MediaFile> SelectedFiles { get; } = new();
 
+    /// <summary>Shift+Click 范围选择的锚点索引（-1 = 无锚点）。</summary>
+    private int _lastClickedIndex = -1;
+
+    /// <summary>View 层已处理 Shift+Click 时设此标志，ToggleSelection 跳过以避免重复处理。</summary>
+    private bool _suppressNextToggle;
+
     // === v3.0 上传状态 ===
     [ObservableProperty] private bool _isUploading;
     [ObservableProperty] private int _uploadCompletedCount;
@@ -2004,10 +2010,17 @@ public partial class GalleryViewModel : ObservableObject
 
     partial void OnIsMultiSelectModeChanged(bool value)
     {
-        // 退出多选时清空选中
+        // 退出多选时清空选中和锚点
         if (!value)
         {
+            // 先显式重置所有 IsSelected（Clear() 触发的 CollectionChanged
+            // 不一定带 OldItems，依赖它会漏掉同步）
+            foreach (var mf in CurrentMediaFiles)
+            {
+                mf.IsSelected = false;
+            }
             SelectedFiles.Clear();
+            _lastClickedIndex = -1;
         }
         OnPropertyChanged(nameof(IsBatchActionEnabled));
         EditTagsBatchCommand.NotifyCanExecuteChanged();
@@ -2138,6 +2151,16 @@ public partial class GalleryViewModel : ObservableObject
             return;
         }
 
+        // View 层已处理 Shift+Click，跳过避免重复
+        if (_suppressNextToggle)
+        {
+            _suppressNextToggle = false;
+            return;
+        }
+
+        // 无修饰键普通单击：更新锚点，单选当前项
+        _lastClickedIndex = CurrentMediaFiles.IndexOf(file);
+
         if (SelectedFiles.Contains(file))
         {
             SelectedFiles.Remove(file);
@@ -2146,6 +2169,43 @@ public partial class GalleryViewModel : ObservableObject
         {
             SelectedFiles.Add(file);
         }
+    }
+
+    /// <summary>
+    /// Shift+Click 范围选择：从锚点到当前项之间全部选中（含两端）。
+    /// 由 View 层 PointerPressed 调用，在 Button.Command 触发前执行。
+    /// </summary>
+    public void HandleShiftClick(MediaFile file)
+    {
+        if (!IsMultiSelectMode || file == null) return;
+
+        _suppressNextToggle = true;
+
+        var files = CurrentMediaFiles;
+        var currentIndex = files.IndexOf(file);
+        if (currentIndex < 0) return;
+
+        // 无锚点：以当前项为锚点并选中
+        if (_lastClickedIndex < 0 || _lastClickedIndex >= files.Count)
+        {
+            _lastClickedIndex = currentIndex;
+            SelectedFiles.Add(file);
+            return;
+        }
+
+        var from = Math.Min(_lastClickedIndex, currentIndex);
+        var to = Math.Max(_lastClickedIndex, currentIndex);
+
+        BatchUpdateSelectedFiles(() =>
+        {
+            for (int i = from; i <= to; i++)
+            {
+                if (!SelectedFiles.Contains(files[i]))
+                {
+                    SelectedFiles.Add(files[i]);
+                }
+            }
+        });
     }
 
     [RelayCommand]

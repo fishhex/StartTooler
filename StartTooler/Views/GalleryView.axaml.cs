@@ -355,10 +355,23 @@ public partial class GalleryView : UserControl
         if (DataContext is not GalleryViewModel vm) return;
         if (!vm.IsMultiSelectMode) return;
 
-        // 只处理左键 + 未在 marquee 中
         var point = e.GetCurrentPoint(this);
         if (!point.Properties.IsLeftButtonPressed) return;
         if (_isMarqueeSelecting) return;
+
+        // Shift+Click 范围选择：找到点击的 photo tile，调用 VM 处理
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            if (e.Source is Control src)
+            {
+                var tile = FindPhotoTileAncestor(src);
+                if (tile is Button btn && btn.DataContext is MediaFile mf)
+                {
+                    vm.HandleShiftClick(mf);
+                }
+            }
+            return;
+        }
 
         _dragStart = e.GetPosition(PhotoGridHost);
         _isMarqueeSelecting = true;
