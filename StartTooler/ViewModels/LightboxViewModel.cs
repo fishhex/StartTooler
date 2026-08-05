@@ -103,6 +103,13 @@ namespace StartTooler.ViewModels;
         ICommand ITagEditorHost.AddTagCommand => AddTagCommand;
         ICommand ITagEditorHost.RemoveTagCommand => RemoveTagCommand;
 
+        // === v0.12 autocomplete ===
+        public ObservableCollection<TagWithCount> AllProjectTags { get; } = new();
+        public int MaxSuggestions => 8;
+        ICommand ITagEditorHost.AddTagFromSuggestionCommand => AddTagFromSuggestionCommand;
+
+        private bool _tagsLoaded;
+
         /// <summary>是否处于编辑态。true 时灯箱右侧显示 chip 编辑器 + 输入框 + 保存/取消按钮。</summary>
         [ObservableProperty]
         private bool _isEditingTags;
@@ -475,6 +482,13 @@ namespace StartTooler.ViewModels;
         NewTagInput = "";
         IsEditingTags = true;
         OnPropertyChanged(nameof(IsDirty));
+
+        // v0.12: 首次进入编辑态时加载项目标签（供 autocomplete 下拉）
+        if (!_tagsLoaded)
+        {
+            _ = LoadAllProjectTagsAsync();
+        }
+
         Trace.WriteLine($"[Lightbox] EnterEditTags: file={CurrentFile.FileName}, originalCount={_originalTags.Count}");
     }
 
@@ -521,6 +535,7 @@ namespace StartTooler.ViewModels;
 
         // 1. 乐观更新内存（ObservableProperty 触发 UI 刷）
         CurrentFile.Tags = newList;
+        CurrentFile.TagEditedManually = true;
 
         // 2. 写库
         try
@@ -600,6 +615,39 @@ namespace StartTooler.ViewModels;
         OnPropertyChanged(nameof(IsDirty));
         Trace.WriteLine($"[Lightbox] AddTag: added='{text}', total={Tags.Count}");
         return true;
+    }
+
+    /// <summary>
+    /// v0.12: 从下拉候选选中 tag → 直接加入 Tags（等价于手动输入后回车）。
+    /// </summary>
+    [RelayCommand]
+    private void AddTagFromSuggestion(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        AddTagFromInputRaw(name);
+        Trace.WriteLine($"[Lightbox] AddTagFromSuggestion: '{name}'");
+    }
+
+    /// <summary>
+    /// v0.12: 加载项目所有标签（含使用频次），填充 AllProjectTags。
+    /// 灯箱编辑态期间只加载一次（_tagsLoaded 防重），切文件不重载（项目级缓存）。
+    /// 失败静默：AllProjectTags 保持为空，等同无下拉的旧体验。
+    /// </summary>
+    private async Task LoadAllProjectTagsAsync()
+    {
+        if (_mediaRepo == null || CurrentFile == null) return;
+        try
+        {
+            var tags = await _mediaRepo.GetTagsAsync(CurrentFile.ProjectPath);
+            AllProjectTags.Clear();
+            foreach (var t in tags) AllProjectTags.Add(t);
+            _tagsLoaded = true;
+            Trace.WriteLine($"[Lightbox] LoadAllProjectTags: loaded={AllProjectTags.Count}");
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[Lightbox] LoadAllProjectTags failed: {ex.Message}");
+        }
     }
 
     /// <summary>

@@ -165,8 +165,10 @@
         <Setter Property="Cursor" Value="Hand"/>
     </Style>
     <Style Selector="Button.chip-removable:pointerover /template/ ContentPresenter">
-        <Setter Property="Background" Value="{DynamicResource Chip.DeleteHover}"/>
-        <Setter Property="Foreground" Value="{DynamicResource Chip.DeleteHoverFg}"/>
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
+    </Style>
+    <Style Selector="Button.chip-removable:pointerover PathIcon.chip-x-icon">
+        <Setter Property="Foreground" Value="{DynamicResource State.Danger}"/>
     </Style>
 
     <!-- 圆形图标徽章容器：照片卡片角标统一底座（视频/同步/失败徽章复用），默认 22×22；

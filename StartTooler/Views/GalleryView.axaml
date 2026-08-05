@@ -436,7 +436,7 @@
                                                               替代原「左下评分角标 + 底部居中标签条」两行冗余。
                                                               暖色背景适配白字；评分 + 标签横排展示。
                                                             -->
-                                                            <Border IsVisible="{Binding HasScore}"
+                                                            <Border IsVisible="{Binding HasScoreOrTags}"
                                                                     HorizontalAlignment="Stretch"
                                                                     VerticalAlignment="Bottom"
                                                                     Margin="0,0,0,3"
@@ -454,18 +454,16 @@
                                                                                Foreground="{DynamicResource Card.FooterText}"
                                                                                TextTrimming="CharacterEllipsis"
                                                                                MaxLines="1"
-                                                                               MaxWidth="90"
                                                                                VerticalAlignment="Center"
                                                                                ToolTip.Tip="{Binding Tags, Converter={StaticResource TagsToShortText}, ConverterParameter=Full}"/>
                                                                 </StackPanel>
                                                             </Border>
 
                                                             <!--
-                                                              v0.11: 质量标签仅 hover 显示（spec §5.3）。
-                                                              IsHovered 由 View 的 PointerEnter/Leave 维护，IsVisible 绑定。
-                                                              没 hover 时质量条完全不占位。
+                                                              v0.11: 质量标签 hover 或键盘焦点时显示。
+                                                              仅 hover 时键盘导航用户看不到，改为 IsHoveredOrFocused。
                                                             -->
-                                                            <Border IsVisible="{Binding IsHovered}"
+                                                            <Border IsVisible="{Binding IsHoveredOrFocused}"
                                                                     HorizontalAlignment="Center"
                                                                     VerticalAlignment="Bottom"
                                                                     Margin="0,0,0,28"

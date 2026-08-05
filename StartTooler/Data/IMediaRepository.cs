@@ -86,9 +86,9 @@ public interface IMediaRepository
     // === v0.11 标签字典管理（方案 B：media_files.tags 存 tag id 数组）===
 
     /// <summary>
-    /// 获取项目下所有标签（id + name）。左侧标签面板右键菜单等场景用。
+    /// 获取项目下所有标签（含使用频次，用于 autocomplete 下拉候选排序）。
     /// </summary>
-    Task<IReadOnlyList<Tag>> GetTagsAsync(string projectPath, CancellationToken ct = default);
+    Task<IReadOnlyList<TagWithCount>> GetTagsAsync(string projectPath, CancellationToken ct = default);
 
     /// <summary>
     /// 根据名称获取或创建标签。写 tags 列前统一走这里，保证 name 与 id 映射存在。

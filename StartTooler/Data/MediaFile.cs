@@ -93,6 +93,7 @@ public partial class MediaFile : ObservableObject
     /// 运行时 UI 状态，不入 DB。
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsHoveredOrFocused))]
     private bool _isHovered;
 
     /// <summary>
@@ -100,6 +101,7 @@ public partial class MediaFile : ObservableObject
     /// 决定 photo tile 是否画键盘焦点边框。运行时 UI 状态，不入 DB。
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsHoveredOrFocused))]
     private bool _isKeyboardFocused;
 
     /// <summary>
@@ -180,6 +182,15 @@ public partial class MediaFile : ObservableObject
 
     /// <summary>photo tile 标签条 IsVisible 绑定。Tags 为空列表或 null 时隐藏。</summary>
     public bool HasTags => Tags is { Count: > 0 };
+
+    /// <summary>photo tile 底部信息栏 IsVisible 绑定。有评分或有标签时显示。</summary>
+    public bool HasScoreOrTags => HasScore || HasTags;
+
+    /// <summary>质量标签条 IsVisible 绑定。hover 或键盘焦点时显示，避免纯 hover 导致键盘用户看不到。</summary>
+    public bool IsHoveredOrFocused => IsHovered || IsKeyboardFocused;
+
+    /// <summary>标记标签是否被手动编辑过。AI 批量打标时跳过，防止覆盖手动修改。</summary>
+    public bool TagEditedManually { get; set; }
 
     /// <summary>v0.7: photo tile 质量标签条 IsVisible 绑定。QualityTags 为空列表或 null 时隐藏。</summary>
     public bool HasQualityTags => QualityTags is { Count: > 0 };

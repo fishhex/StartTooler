@@ -43,21 +43,4 @@ public partial class TagChipEditor : UserControl
         }
         e.Handled = true;
     }
-
-    /// <summary>
-    /// 输入框失焦时自动提交（spec 用户体验：避免输入了文字但没回车就失焦导致的"丢字"）。
-    /// 复用 host.AddTagCommand 的 trim/length/duplicate 校验；空 input 静默跳过。
-    /// 副作用链路：AddTag → Tags.Add → CollectionChanged → host.IsDirty 更新 + SaveCommand.NotifyCanExecuteChanged
-    ///   → 保存按钮在 chip 进入集合后立刻变可点。
-    /// </summary>
-    private void OnInputLostFocus(object? sender, RoutedEventArgs e)
-    {
-        if (DataContext is not ITagEditorHost host) return;
-        if (string.IsNullOrWhiteSpace(host.NewTagInput)) return;
-
-        if (host.AddTagCommand.CanExecute(null))
-        {
-            host.AddTagCommand.Execute(null);
-        }
-    }
 }

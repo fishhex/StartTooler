@@ -1943,29 +1943,38 @@ public class MediaRepository : IMediaRepository
         return tagId;
     }
 
-    public async Task<IReadOnlyList<Tag>> GetTagsAsync(string projectPath, CancellationToken ct = default)
+    public async Task<IReadOnlyList<TagWithCount>> GetTagsAsync(string projectPath, CancellationToken ct = default)
     {
         var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
-        var results = new List<Tag>();
+        var results = new List<TagWithCount>();
 
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(ct);
-        await LoadTagCacheAsync(connection, normalizedPath, ct);
 
-        _tagCacheLock.EnterReadLock();
-        try
+        // 直接用 SQL 查 tag + 使用频次（json_each 统计 media_files.tags 中的 tag id 出现次数）
+        await using var cmd = new SqliteCommand(@"
+            SELECT t.id, t.name,
+                   (SELECT COUNT(*) FROM media_files mf
+                    WHERE mf.project_path = @path
+                      AND mf.deleted_at IS NULL
+                      AND mf.tags IS NOT NULL
+                      AND EXISTS (SELECT 1 FROM json_each(mf.tags) WHERE CAST(value AS INTEGER) = t.id)
+                   ) AS usage_count
+            FROM tags t
+            WHERE t.project_path = @path
+            ORDER BY usage_count DESC, t.name
+        ", connection);
+        cmd.Parameters.AddWithValue("@path", normalizedPath);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
         {
-            if (_tagNameCache.TryGetValue(normalizedPath, out var nameById))
+            results.Add(new TagWithCount
             {
-                foreach (var kv in nameById)
-                {
-                    results.Add(new Tag { Id = kv.Key, ProjectPath = normalizedPath, Name = kv.Value });
-                }
-            }
-        }
-        finally
-        {
-            _tagCacheLock.ExitReadLock();
+                Id = reader.GetInt64(0),
+                Name = reader.GetString(1),
+                UsageCount = reader.GetInt32(2)
+            });
         }
 
         return results;

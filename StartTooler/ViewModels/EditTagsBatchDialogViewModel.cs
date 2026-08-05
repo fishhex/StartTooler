@@ -56,6 +56,12 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     /// <summary>是否有建议标签可展示。</summary>
     public bool HasSuggestedTags => SuggestedTags.Count > 0;
 
+    // ============ v0.12 autocomplete ============
+
+    public ObservableCollection<TagWithCount> AllProjectTags { get; } = new();
+    public int MaxSuggestions => 8;
+    ICommand ITagEditorHost.AddTagFromSuggestionCommand => AddTagFromSuggestionCommand;
+
     // ============ 操作 2：添加标签 ============
 
     public ObservableCollection<string> Tags { get; } = new();
@@ -197,7 +203,12 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
         {
             if (string.IsNullOrEmpty(_projectPath)) return;
             var tags = await _mediaRepo.GetTagsAsync(_projectPath);
-            // 排除已在选中文件中的共同标签，避免重复建议
+
+            // v0.12: 填充 AllProjectTags（全部标签，供 TagChipEditor 下拉）
+            foreach (var t in tags)
+                AllProjectTags.Add(t);
+
+            // 排除已在选中文件中的共同标签，避免重复建议（建议云用）
             var commonSet = new HashSet<string>(CommonTagsText.Split("、", StringSplitOptions.RemoveEmptyEntries), StringComparer.OrdinalIgnoreCase);
             foreach (var t in tags)
             {
@@ -219,6 +230,19 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
         if (Tags.Any(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase))) return;
         if (tag.Length > MaxTagLength) return;
         Tags.Add(tag);
+    }
+
+    /// <summary>
+    /// v0.12: 从下拉候选选中 tag → 直接加入 Tags。
+    /// </summary>
+    [RelayCommand]
+    private void AddTagFromSuggestion(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        if (Tags.Any(t => string.Equals(t, name, StringComparison.OrdinalIgnoreCase))) return;
+        if (name.Length > MaxTagLength) return;
+        Tags.Add(name);
+        Trace.WriteLine($"[EditTagsBatch] AddTagFromSuggestion: '{name}', total={Tags.Count}");
     }
 
     // ============ 内部 TagChipEditor（添加） ============
@@ -565,6 +589,9 @@ public partial class EditTagsBatchDialogViewModel : ObservableObject, ITagEditor
     private void NotifyChanges(IReadOnlyList<MediaFile> files)
     {
         foreach (var file in files)
+        {
+            file.TagEditedManually = true;
             _galleryVm.OnFileTagsChanged(file);
+        }
     }
 }

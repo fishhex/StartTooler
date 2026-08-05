@@ -37,6 +37,11 @@ public partial class EditTagsDialogViewModel : ObservableObject, ITagEditorHost
     public ICommand AddTagCommand { get; }
     public ICommand RemoveTagCommand { get; }
 
+    // === v0.12 autocomplete ===
+    public ObservableCollection<TagWithCount> AllProjectTags { get; } = new();
+    public int MaxSuggestions => 8;
+    ICommand ITagEditorHost.AddTagFromSuggestionCommand => AddTagFromSuggestionCommand;
+
     /// <summary>Tags 与原 CurrentFile.Tags 是否不同（派生），用于 Save 按钮 IsEnabled。</summary>
     public bool IsDirty
     {
@@ -78,6 +83,9 @@ public partial class EditTagsDialogViewModel : ObservableObject, ITagEditorHost
         AddTagCommand = new RelayCommand(AddTag);
         RemoveTagCommand = new RelayCommand<string>(RemoveTag);
 
+        // v0.12: 异步加载项目标签（供 autocomplete 下拉）
+        _ = LoadAllProjectTagsAsync();
+
         Trace.WriteLine($"[EditTagsDialog] ctor: file={_file.FileName}, initialTags={Tags.Count}");
     }
 
@@ -110,6 +118,34 @@ public partial class EditTagsDialogViewModel : ObservableObject, ITagEditorHost
         return true;
     }
 
+    /// <summary>
+    /// v0.12: 从下拉候选选中 tag → 直接加入 Tags。
+    /// </summary>
+    [RelayCommand]
+    private void AddTagFromSuggestion(string? name)
+    {
+        AddTagFromInputRaw(name);
+    }
+
+    /// <summary>
+    /// v0.12: 加载项目所有标签到 AllProjectTags。
+    /// 失败静默：保持 AllProjectTags 为空。
+    /// </summary>
+    private async Task LoadAllProjectTagsAsync()
+    {
+        try
+        {
+            var tags = await _mediaRepo.GetTagsAsync(_file.ProjectPath);
+            AllProjectTags.Clear();
+            foreach (var t in tags) AllProjectTags.Add(t);
+            Trace.WriteLine($"[EditTagsDialog] LoadAllProjectTags: loaded={AllProjectTags.Count}");
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[EditTagsDialog] LoadAllProjectTags failed: {ex.Message}");
+        }
+    }
+
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
     {
@@ -123,6 +159,7 @@ public partial class EditTagsDialogViewModel : ObservableObject, ITagEditorHost
         {
             // 1. 乐观更新内存
             _file.Tags = newList;
+            _file.TagEditedManually = true;
 
             // 2. 写库
             var nowMs = System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();

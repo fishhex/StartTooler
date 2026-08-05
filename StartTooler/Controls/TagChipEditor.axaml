@@ -44,8 +44,9 @@
                                        Foreground="{DynamicResource Text.Primary}"
                                        VerticalAlignment="Center" />
                             <PathIcon Data="{StaticResource Icon.X}"
-                                      Width="8" Height="8"
-                                      VerticalAlignment="Center" />
+                                  Width="8" Height="8"
+                                  Classes="chip-x-icon"
+                                  VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
                 </DataTemplate>
@@ -56,7 +57,6 @@
         <TextBox IsVisible="{Binding ShowInputBox}"
                  Text="{Binding NewTagInput, Mode=TwoWay}"
                  KeyDown="OnInputKeyDown"
-                 LostFocus="OnInputLostFocus"
                  Watermark="{Binding Watermark}"
                  MaxLength="{Binding MaxTagLength}"
                  FontSize="12" />

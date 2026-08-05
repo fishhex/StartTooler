@@ -2685,6 +2685,7 @@ public partial class GalleryViewModel : ObservableObject
         var ok = 0;
         var fail = 0;
         var cancelled = 0;
+        var skipped = 0;
         var errors = new List<(string FileName, string Reason)>();
         var fatalError = (string?)null;
 
@@ -2695,6 +2696,14 @@ public partial class GalleryViewModel : ObservableObject
             foreach (var file in files)
             {
                 if (ct.IsCancellationRequested) break;
+
+                // 跳过手动编辑过的文件，防止 AI 覆盖手动修改
+                if (file.TagEditedManually)
+                {
+                    skipped++;
+                    TagCompletedCount++;
+                    continue;
+                }
 
                 try
                 {
@@ -2756,7 +2765,7 @@ public partial class GalleryViewModel : ObservableObject
             _tagCts?.Dispose();
             _tagCts = null;
             IsTagging = false;
-            Trace.WriteLine($"[Gallery] BatchTag 结束: ok={ok}, fail={fail}, cancelled={cancelled}, total={files.Count}");
+            Trace.WriteLine($"[Gallery] BatchTag 结束: ok={ok}, fail={fail}, cancelled={cancelled}, skipped={skipped}, total={files.Count}");
         }
 
         // 摘要 toast
@@ -2766,15 +2775,20 @@ public partial class GalleryViewModel : ObservableObject
         }
         else if (cancelled > 0)
         {
-            ShowToast($"打标已取消（完成 {ok + fail}/{files.Count}）");
+            var skipMsg = skipped > 0 ? $"（已跳过 {skipped} 个手动编辑文件）" : "";
+            ShowToast($"打标已取消（完成 {ok + fail}/{files.Count}）{skipMsg}");
         }
         else if (fail == 0)
         {
-            ShowToast($"打标完成：{ok} 个文件");
+            if (skipped > 0)
+                ShowToast($"打标完成：{ok} 个文件（已跳过 {skipped} 个手动编辑文件）");
+            else
+                ShowToast($"打标完成：{ok} 个文件");
         }
         else
         {
-            ShowToast($"打标完成：成功 {ok}，失败 {fail}");
+            var skipMsg = skipped > 0 ? $"（已跳过 {skipped} 个手动编辑文件）" : "";
+            ShowToast($"打标完成：成功 {ok}，失败 {fail}{skipMsg}");
         }
 
         // 失败详情弹窗（多的时候）
