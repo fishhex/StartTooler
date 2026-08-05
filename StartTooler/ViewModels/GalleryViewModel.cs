@@ -3618,8 +3618,8 @@ public partial class GalleryViewModel : ObservableObject
         Trace.WriteLine($"[Gallery] OnFileTagsChanged: file={file.FileName}, newTags={file.Tags?.Count ?? 0}");
         _tagChangeDebouncer.Trigger(async ct =>
         {
-            Trace.WriteLine($"[Gallery] TagChangeDebouncer fired: reloading TagGroups");
-            await LoadTagGroupsAsync(ct);
+            Trace.WriteLine($"[Gallery] TagChangeDebouncer fired: reloading TagGroups (autoSelectFirst=false)");
+            await LoadTagGroupsAsync(ct, autoSelectFirst: false);
         });
     }
 

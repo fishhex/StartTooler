@@ -125,6 +125,8 @@ public partial class MediaFile : ObservableObject
     /// UI 通过 HasTags 联动显示标签小条。
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasTags))]
+    [NotifyPropertyChangedFor(nameof(HasScoreOrTags))]
     private List<string> _tags = new();
 
     /// <summary>
