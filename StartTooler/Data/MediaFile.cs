@@ -201,6 +201,19 @@ public partial class MediaFile : ObservableObject
     public bool HasDeleted => DeletedAt.HasValue;
 
     /// <summary>
+    /// v0.12: 所属拍摄会话 ID。NULL = 未关联会话（聚类前的孤儿照片）。
+    /// DB 列 session_id TEXT。
+    /// </summary>
+    public string? SessionId { get; set; }
+
+    /// <summary>
+    /// v0.12: 是否为日记精选照片。1 = 在日记本中显示，0 = 仅参与统计。
+    /// DB 列 is_diary_featured INTEGER DEFAULT 0。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isDiaryFeatured;
+
+    /// <summary>
     /// 派生 SyncStatus，给右上角徽章 binding 用。
     /// 进度态（Uploading / Failed / Paused）期间返回 null —— 让同步态徽章全部隐藏，
     /// 由 UploadStatusToVisibilityConverter 系列徽章接管。

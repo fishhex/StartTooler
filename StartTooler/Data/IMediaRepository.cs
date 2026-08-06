@@ -134,6 +134,19 @@ public interface IMediaRepository
     /// 找不到返回 null。供 TrashViewModel 撤销后回填 ObservableCollection 用。
     /// </summary>
     Task<MediaFile?> GetByIdAsync(long fileId, CancellationToken ct = default);
+
+    // === v0.12: 拍摄日记查询 ===
+
+    Task<IReadOnlyList<MediaFile>> GetBySessionAsync(
+        string sessionId, SortMode sortMode = SortMode.TimeDesc,
+        int offset = 0, int limit = 2000, CancellationToken ct = default);
+
+    Task SetDiaryFeaturedAsync(long fileId, bool isFeatured, CancellationToken ct = default);
+
+    Task<IReadOnlyList<MediaFile>> GetDiaryFeaturedAsync(
+        string sessionId, int limit = 5, CancellationToken ct = default);
+
+    Task<SessionStats> GetSessionStatsAsync(string sessionId, CancellationToken ct = default);
 }
 
 public class ScanResult

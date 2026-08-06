@@ -143,6 +143,21 @@ public class MediaRepository : IMediaRepository
         // 一次性迁移：把 media_files.tags 从字符串数组 ["行星","月亮"] 转成 tag id 数组 [1,2]。
         // 幂等：转换后的列只含数字 / 中括号 / 逗号，不再匹配下面的 json_type='text'。
         MigrateTagsToIdArray(connection);
+
+        // === v0.12: 拍摄日记会话关联 ===
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "session_id",
+            "TEXT");
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "is_diary_featured",
+            "INTEGER NOT NULL DEFAULT 0");
+
+        using (var idxCmd = new SqliteCommand(
+            "CREATE INDEX IF NOT EXISTS idx_media_files_session ON media_files(session_id)",
+            connection))
+        {
+            idxCmd.ExecuteNonQuery();
+        }
     }
 
     private static void EnsureTagsTable(SqliteConnection connection)
@@ -403,7 +418,8 @@ public class MediaRepository : IMediaRepository
                 tags, score, tagged_at, tag_error,
                 quality_tags,
                 focal_length_35mm, iso, exposure_time,
-                deleted_at
+                deleted_at,
+                session_id, is_diary_featured
             FROM media_files
             WHERE project_path = @projectPath
               AND shot_at >= @startTime
@@ -461,7 +477,8 @@ public class MediaRepository : IMediaRepository
                 tags, score, tagged_at, tag_error,
                 quality_tags,
                 focal_length_35mm, iso, exposure_time,
-                deleted_at
+                deleted_at,
+                session_id, is_diary_featured
             FROM media_files
             WHERE project_path = @projectPath
               AND shot_at >= @startTime
@@ -937,7 +954,8 @@ public class MediaRepository : IMediaRepository
                 tags, score, tagged_at, tag_error,
                 quality_tags,
                 focal_length_35mm, iso, exposure_time,
-                deleted_at
+                deleted_at,
+                session_id, is_diary_featured
             FROM media_files
             WHERE project_path = @projectPath
               AND deleted_at IS NULL
@@ -1384,7 +1402,8 @@ public class MediaRepository : IMediaRepository
                 tags, score, tagged_at, tag_error,
                 quality_tags,
                 focal_length_35mm, iso, exposure_time,
-                deleted_at
+                deleted_at,
+                session_id, is_diary_featured
             FROM media_files
             WHERE project_path = @projectPath
               AND deleted_at IS NOT NULL
@@ -1465,7 +1484,8 @@ public class MediaRepository : IMediaRepository
                 tags, score, tagged_at, tag_error,
                 quality_tags,
                 focal_length_35mm, iso, exposure_time,
-                deleted_at
+                deleted_at,
+                session_id, is_diary_featured
             FROM media_files
             WHERE id = @id
             LIMIT 1";
@@ -1518,6 +1538,8 @@ public class MediaRepository : IMediaRepository
             FocalLength35Mm = GetOptionalDouble(reader, "focal_length_35mm"),
             Iso = GetOptionalInt(reader, "iso"),
             ExposureTimeSeconds = GetOptionalDouble(reader, "exposure_time"),
+            SessionId = reader.IsDBNull(reader.GetOrdinal("session_id")) ? null : reader.GetString(reader.GetOrdinal("session_id")),
+            IsDiaryFeatured = reader.GetInt32(reader.GetOrdinal("is_diary_featured")) == 1,
         };
     }
 
@@ -1603,5 +1625,177 @@ public class MediaRepository : IMediaRepository
         {
             return new List<long>();
         }
+    }
+
+    // === v0.12: 拍摄日记查询 ===
+
+    public async Task<IReadOnlyList<MediaFile>> GetBySessionAsync(string sessionId, SortMode sortMode = SortMode.TimeDesc, int offset = 0, int limit = 2000, CancellationToken ct = default)
+    {
+        var results = new List<MediaFile>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        // session_id 关联查询：先解析出 project_path 用于加载 tag 缓存
+        string projectPath = await ResolveProjectPathForSessionAsync(connection, sessionId, ct);
+        if (projectPath.Length == 0) return results;
+        await LoadTagCacheAsync(connection, projectPath, ct);
+
+        var orderBy = sortMode switch
+        {
+            SortMode.ScoreDesc => "ORDER BY score IS NULL, score DESC, shot_at DESC, file_name ASC",
+            _ => "ORDER BY shot_at DESC, file_name ASC",
+        };
+
+        var sql = $@"
+            SELECT
+                id, project_path, relative_path, file_name, media_type,
+                file_size, last_modified, shot_at, is_uploaded, local_exists,
+                thumbnail_path, remote_url, uploaded_at, scanned_at,
+                created_at, updated_at,
+                tags, score, tagged_at, tag_error,
+                quality_tags,
+                focal_length_35mm, iso, exposure_time,
+                deleted_at,
+                session_id, is_diary_featured
+            FROM media_files
+            WHERE session_id = @sessionId
+              AND deleted_at IS NULL
+            {orderBy}
+            LIMIT @limit OFFSET @offset";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@sessionId", sessionId);
+        cmd.Parameters.AddWithValue("@limit", limit);
+        cmd.Parameters.AddWithValue("@offset", offset);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            results.Add(ReadMediaFileRow(reader));
+        }
+        return results;
+    }
+
+    public async Task SetDiaryFeaturedAsync(long fileId, bool isFeatured, CancellationToken ct = default)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        const string sql = "UPDATE media_files SET is_diary_featured = @value WHERE id = @id";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@value", isFeatured ? 1 : 0);
+        cmd.Parameters.AddWithValue("@id", fileId);
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<MediaFile>> GetDiaryFeaturedAsync(string sessionId, int limit = 5, CancellationToken ct = default)
+    {
+        var results = new List<MediaFile>();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        string projectPath = await ResolveProjectPathForSessionAsync(connection, sessionId, ct);
+        if (projectPath.Length == 0) return results;
+        await LoadTagCacheAsync(connection, projectPath, ct);
+
+        const string sql = @"
+            SELECT
+                id, project_path, relative_path, file_name, media_type,
+                file_size, last_modified, shot_at, is_uploaded, local_exists,
+                thumbnail_path, remote_url, uploaded_at, scanned_at,
+                created_at, updated_at,
+                tags, score, tagged_at, tag_error,
+                quality_tags,
+                focal_length_35mm, iso, exposure_time,
+                deleted_at,
+                session_id, is_diary_featured
+            FROM media_files
+            WHERE session_id = @sessionId
+              AND is_diary_featured = 1
+              AND deleted_at IS NULL
+            ORDER BY score IS NULL, score DESC, shot_at DESC, file_name ASC
+            LIMIT @limit";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@sessionId", sessionId);
+        cmd.Parameters.AddWithValue("@limit", limit);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            results.Add(ReadMediaFileRow(reader));
+        }
+        return results;
+    }
+
+    public async Task<SessionStats> GetSessionStatsAsync(string sessionId, CancellationToken ct = default)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+
+        // 第一段：照片数 / 目标数 / 曝光时长（聚合扫描一次）
+        int totalPhotos;
+        int targetCount;
+        double exposureHours;
+        await using (var cmd = new SqliteCommand(@"
+            SELECT
+                COUNT(*),
+                COUNT(DISTINCT je.value),
+                COALESCE(SUM(exposure_time), 0) / 3600.0
+            FROM media_files m
+            LEFT JOIN json_each(m.tags) je
+            WHERE m.session_id = @sessionId
+              AND m.deleted_at IS NULL", connection))
+        {
+            cmd.Parameters.AddWithValue("@sessionId", sessionId);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct))
+            {
+                return new SessionStats();
+            }
+            totalPhotos = reader.GetInt32(0);
+            targetCount = reader.GetInt32(1);
+            exposureHours = reader.GetDouble(2);
+        }
+
+        // 第二段：Top 3 标签（按 tag 使用次数）
+        var topTags = new List<string>();
+        await using (var cmd = new SqliteCommand(@"
+            SELECT t.name, COUNT(*) AS usage_count
+            FROM tags t
+            JOIN media_files m ON m.project_path = t.project_path
+                AND m.deleted_at IS NULL
+                AND m.session_id = @sessionId
+            JOIN json_each(m.tags) je ON je.value = t.id
+            GROUP BY t.id, t.name
+            ORDER BY usage_count DESC
+            LIMIT 3", connection))
+        {
+            cmd.Parameters.AddWithValue("@sessionId", sessionId);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                topTags.Add(reader.GetString(0));
+            }
+        }
+
+        return new SessionStats
+        {
+            TotalPhotos = totalPhotos,
+            TargetCount = targetCount,
+            TotalExposureHours = exposureHours,
+            TopTags = topTags,
+        };
+    }
+
+    private static async Task<string> ResolveProjectPathForSessionAsync(SqliteConnection connection, string sessionId, CancellationToken ct)
+    {
+        await using var cmd = new SqliteCommand(
+            "SELECT project_path FROM sessions WHERE id = @id", connection);
+        cmd.Parameters.AddWithValue("@id", sessionId);
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return result is string s ? s : "";
     }
 }
