@@ -71,7 +71,7 @@
             </StackPanel>
         </Button>
 
-        <!-- v0.8: 垃圾筒按钮（紧贴统计，spec §9.2） -->
+        <!-- v0.8: 垃圾筒按钮（spec §9.2） -->
         <Button Grid.Row="3"
                 x:Name="TrashButton"
                 Height="56"

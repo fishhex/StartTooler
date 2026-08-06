@@ -341,7 +341,7 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// v0.11: 统计仪表盘 → Gallery 日期跳转（spec/19 §8）。
+    /// 跳转到 Gallery 并定位到指定日期。
     /// </summary>
     private async Task NavigateToGalleryAndDateAsync(DateTime date)
     {
@@ -358,7 +358,7 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// v0.11: 统计仪表盘 → Gallery 标签跳转（spec/19 §8）。
+    /// 跳转到 Gallery 并按标签筛选。
     /// </summary>
     private async Task NavigateToGalleryAndTagAsync(string tag)
     {

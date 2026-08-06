@@ -111,7 +111,7 @@ public class MediaRepository : IMediaRepository
             connection, "media_files", "deleted_at",
             "INTEGER");
 
-        // === v0.11: 统计仪表盘 EXIF 冗余字段（spec/19 §6.2）===
+        // === EXIF 冗余字段（spec/19 §6.2）===
         SqliteMigrations.AddColumnIfMissing(
             connection, "media_files", "focal_length_35mm",
             "REAL");

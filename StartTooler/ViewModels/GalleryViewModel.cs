@@ -46,8 +46,7 @@ public partial class GalleryViewModel : ObservableObject
     public Action? NavigateToOssSettings { set => _navigateToOssSettings = value; }
 
     /// <summary>
-    /// v0.11: 外部模块（统计仪表盘）请求跳转到指定日期。
-    /// 自动切回日期视图、加载时间轴并选中该日期节点。
+    /// 外部模块请求跳转到指定日期。自动切回日期视图、加载时间轴并选中该日期节点。
     /// </summary>
     public async Task NavigateToDateAsync(DateTime date)
     {
@@ -78,8 +77,7 @@ public partial class GalleryViewModel : ObservableObject
     }
 
     /// <summary>
-    /// v0.11: 外部模块（统计仪表盘）请求按标签筛选。
-    /// 自动切到标签视图并选中对应标签分组。
+    /// 外部模块请求按标签筛选。自动切到标签视图并选中对应标签分组。
     /// </summary>
     public async Task NavigateToTagAsync(string tag)
     {
