@@ -40,6 +40,8 @@ public partial class SettingsViewModel : ObservableObject
     private int _lastSavedTheme;  // 0=DeepSpace, 1=RedNight
     private string? _lastSavedFfmpegPath;
     private string? _lastSavedFfprobePath;
+    private int _lastSavedSessionIntervalHours;
+    private string? _lastSavedAmapApiKey;
 
     // OSS Tab 快照
     private OssConfig? _lastSavedOss;
@@ -113,6 +115,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private int selectedTheme;
     [ObservableProperty] private string? ffmpegPath;
     [ObservableProperty] private string? ffprobePath;
+
+    // === v0.12: 拍摄日记配置 ===
+    [ObservableProperty] private int sessionIntervalHours = 4;
+    [ObservableProperty] private string? amapApiKey;
 
     // 通用 Tab 验证错误（spec §3.2）—— null 表示无错
     [ObservableProperty] private string? ffmpegPathError;
@@ -229,6 +235,12 @@ public partial class SettingsViewModel : ObservableObject
             FfmpegPath = appConfig.FFmpegPath;
             _lastSavedFfprobePath = appConfig.FFprobePath;
             FfprobePath = appConfig.FFprobePath;
+
+            // v0.12: 拍摄日记配置
+            _lastSavedSessionIntervalHours = appConfig.SessionIntervalHours;
+            SessionIntervalHours = appConfig.SessionIntervalHours;
+            _lastSavedAmapApiKey = appConfig.AmapApiKey;
+            AmapApiKey = appConfig.AmapApiKey;
         }
 
         // 先设置 _lastSavedDirectory
@@ -377,6 +389,26 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     partial void OnFfprobePathChanged(string? value)
+    {
+        if (!_isInitialized) return;
+        RecomputeDirty();
+        StatusMessage = null;
+        SaveCommand.NotifyCanExecuteChanged();
+    }
+
+    // === v0.12: 拍摄日记配置变更 ===
+    partial void OnSessionIntervalHoursChanged(int value)
+    {
+        // 钳制到 1-24，避免 NumericUpDown 之外的边界
+        if (value < 1) { SessionIntervalHours = 1; return; }
+        if (value > 24) { SessionIntervalHours = 24; return; }
+        if (!_isInitialized) return;
+        RecomputeDirty();
+        StatusMessage = null;
+        SaveCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnAmapApiKeyChanged(string? value)
     {
         if (!_isInitialized) return;
         RecomputeDirty();
@@ -565,7 +597,9 @@ public partial class SettingsViewModel : ObservableObject
         var generalDirty = SelectedProjectDirectory != _lastSavedDirectory
                         || SelectedTheme != _lastSavedTheme
                         || FfmpegPath != _lastSavedFfmpegPath
-                        || FfprobePath != _lastSavedFfprobePath;
+                        || FfprobePath != _lastSavedFfprobePath
+                        || SessionIntervalHours != _lastSavedSessionIntervalHours
+                        || AmapApiKey != _lastSavedAmapApiKey;
 
         var currentOss = BuildOssConfigFromVm();
         var ossDirty = !OssConfigEquals(currentOss, _lastSavedOss);
@@ -609,6 +643,8 @@ public partial class SettingsViewModel : ObservableObject
         SelectedTheme = _lastSavedTheme;
         FfmpegPath = _lastSavedFfmpegPath;
         FfprobePath = _lastSavedFfprobePath;
+        SessionIntervalHours = _lastSavedSessionIntervalHours;
+        AmapApiKey = _lastSavedAmapApiKey;
 
         RecentDirectories.Clear();
         if (_projectConfig != null)
@@ -957,6 +993,12 @@ public partial class SettingsViewModel : ObservableObject
                 FfmpegPath = appConfig.FFmpegPath;
                 _lastSavedFfprobePath = appConfig.FFprobePath;
                 FfprobePath = appConfig.FFprobePath;
+
+                // v0.12: 拍摄日记配置
+                _lastSavedSessionIntervalHours = appConfig.SessionIntervalHours;
+                SessionIntervalHours = appConfig.SessionIntervalHours;
+                _lastSavedAmapApiKey = appConfig.AmapApiKey;
+                AmapApiKey = appConfig.AmapApiKey;
             }
             _lastSavedDirectory = _projectConfig.CurrentDirectory;
             SelectedProjectDirectory = _projectConfig.CurrentDirectory;
@@ -1068,6 +1110,8 @@ public partial class SettingsViewModel : ObservableObject
                 Theme = theme,
                 FFmpegPath = trimmedFfmpegPath,
                 FFprobePath = trimmedFfprobePath,
+                SessionIntervalHours = SessionIntervalHours,
+                AmapApiKey = string.IsNullOrWhiteSpace(AmapApiKey) ? null : AmapApiKey.Trim(),
             };
             await _configService.SetAsync(ConfigKeys.App, appConfig);
             ThemeManager.SetTheme(SelectedTheme == 1);
@@ -1098,6 +1142,8 @@ public partial class SettingsViewModel : ObservableObject
             _lastSavedTheme = SelectedTheme;
             _lastSavedFfmpegPath = trimmedFfmpegPath;
             _lastSavedFfprobePath = trimmedFfprobePath;
+            _lastSavedSessionIntervalHours = SessionIntervalHours;
+            _lastSavedAmapApiKey = appConfig.AmapApiKey;
             _lastSavedOss = ossConfig;
             _lastSavedAI = aiConfig;
 

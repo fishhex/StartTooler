@@ -46,7 +46,7 @@
         <Border Grid.Row="3" Background="{DynamicResource Bg.Surface}">
          <Panel>
             <!-- 通用 Tab -->
-            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*"
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*"
                   IsVisible="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:SettingsTab.General}}">
                 <!-- 项目目录 FormRow -->
                 <Border Grid.Row="0" Padding="40,16" Background="{DynamicResource Bg.Surface}">
@@ -229,8 +229,50 @@
                     </Grid>
                 </Border>
 
+                <!-- v0.12: 拍摄日记 - 会话间隔阈值 -->
+                <Border Grid.Row="6" Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*">
+                        <TextBlock Grid.Column="0" Text="会话间隔阈值"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <NumericUpDown Value="{Binding SessionIntervalHours, Mode=TwoWay}"
+                                            Minimum="1" Maximum="24"
+                                            MinWidth="120" Height="36"
+                                            Increment="1"
+                                            FormatString="0 小时"/>
+                            <TextBlock Text="同一会话内相邻照片的最大间隔"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Text.Secondary}"
+                                       VerticalAlignment="Center"
+                                       ToolTip.Tip="同一会话内相邻照片的最大间隔。超出则视为新会话。范围 1-24 小时。"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- v0.12: 拍摄日记 - 高德 API Key -->
+                <Border Grid.Row="7" Padding="40,16" Background="{DynamicResource Bg.Surface}">
+                    <Grid ColumnDefinitions="160,*">
+                        <TextBlock Grid.Column="0" Text="高德 API Key"
+                                   FontSize="13" Foreground="{DynamicResource Text.Primary}"
+                                   VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <TextBox Text="{Binding AmapApiKey, Mode=TwoWay}"
+                                     MinWidth="280" Height="36"
+                                     Watermark="留空则使用 Nominatim（免费，1 req/s 限速）"
+                                     Classes.placeholder="{Binding AmapApiKey, Converter={StaticResource NullOrEmptyToPlaceholderClass}}"
+                                     PasswordChar="•"
+                                     ToolTip.Tip="用于日记页逆地理编码。空 = Nominatim 回退。https://lbs.amap.com/dev/key"/>
+                            <TextBlock Text="（可选）用于日记页逆地理编码"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Text.Secondary}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
                 <!-- 空区域填充 -->
-                <Border Grid.Row="6" Background="{DynamicResource Bg.Surface}"/>
+                <Border Grid.Row="8" Background="{DynamicResource Bg.Surface}"/>
             </Grid>
 
             <!-- OSS Tab -->
