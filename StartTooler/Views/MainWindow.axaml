@@ -37,7 +37,7 @@
         <KeyBinding Gesture="Ctrl+2" Command="{Binding NavigateToUploadServerCommand}"/>
         <KeyBinding Gesture="Ctrl+3" Command="{Binding NavigateToTrashCommand}"/>
         <KeyBinding Gesture="Ctrl+4" Command="{Binding NavigateToSettingsCommand}"/>
-        <KeyBinding Gesture="Ctrl+5" Command="{Binding NavigateToStatsCommand}"/>
+        <KeyBinding Gesture="Ctrl+5" Command="{Binding NavigateToDiaryCommand}"/>
     </Window.KeyBindings>
     <Grid ColumnDefinitions="80,*"
           RowDefinitions="38,40,*,28">
@@ -350,9 +350,9 @@
                 <DataTemplate DataType="{x:Type vm:TrashViewModel}">
                     <views:TrashView DataContext="{Binding}"/>
                 </DataTemplate>
-                <!-- v0.11: 统计仪表盘（spec/19 §4.3） -->
-                <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
-                    <views:DashboardView DataContext="{Binding}"/>
+                <!-- v0.12: 拍摄日记 — 占位，Phase 5 替换为 DiaryViewModel -->
+                <DataTemplate DataType="{x:Type vm:DiaryViewModel}">
+                    <views:DiaryView DataContext="{Binding}"/>
                 </DataTemplate>
             </ContentControl.DataTemplates>
         </ContentControl>

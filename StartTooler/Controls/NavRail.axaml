@@ -52,22 +52,22 @@
             </StackPanel>
         </Button>
 
-        <!-- v0.11: 统计按钮（spec/19 §4.1，位于上传与垃圾筒之间） -->
+        <!-- v0.12: 拍摄日记按钮 -->
         <Button Grid.Row="2"
-                x:Name="StatsButton"
+                x:Name="DiaryButton"
                 Height="56"
                 Classes="nav-item"
-                Classes.active="{Binding IsStatsActive}"
-                Command="{Binding NavigateToStatsCommand}"
-                ToolTip.Tip="{Binding NavStatsTooltip}"
+                Classes.active="{Binding IsDiaryActive}"
+                Command="{Binding NavigateToDiaryCommand}"
+                ToolTip.Tip="{Binding NavDiaryTooltip}"
                 VerticalAlignment="Center"
                 HorizontalContentAlignment="Center"
                 VerticalContentAlignment="Center"
                 Padding="0">
             <StackPanel Spacing="4" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <PathIcon Data="{DynamicResource Icon.Stats}"
+                <PathIcon Data="{DynamicResource Icon.Diary}"
                           Width="18" Height="18" />
-                <TextBlock Text="统计" FontSize="11" TextAlignment="Center" />
+                <TextBlock Text="日记" FontSize="11" TextAlignment="Center" />
             </StackPanel>
         </Button>
 

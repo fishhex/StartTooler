@@ -33,8 +33,8 @@
     <!-- 上传图标 (Upload) - 16x16 -->
     <StreamGeometry x:Key="Icon.Upload">M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4m4-5l5-5 5 5m-5-5v12</StreamGeometry>
 
-    <!-- v0.11: 统计仪表盘入口图标（条形图） -->
-    <StreamGeometry x:Key="Icon.Stats">M18 20V10m-6 10V4M6 20v-6</StreamGeometry>
+    <!-- v0.12: 拍摄日记入口图标（书本） -->
+    <StreamGeometry x:Key="Icon.Diary">M4 6h16v12H4zM4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2M9 9h6M9 13h6</StreamGeometry>
 
     <!-- 删除图标 (Trash) - 16x16 -->
     <StreamGeometry x:Key="Icon.Trash">M3 6h18m-2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2m-6 5v6m4-6v6</StreamGeometry>

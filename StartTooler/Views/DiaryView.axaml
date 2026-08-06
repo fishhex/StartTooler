@@ -2,9 +2,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:local="using:StartTooler.Controls"
              mc:Ignorable="d"
-             x:Class="StartTooler.Controls.SkiaBarChart"
-             x:DataType="local:SkiaBarChart">
-    <ContentControl x:Name="SkiaHost" HorizontalAlignment="Stretch" VerticalAlignment="Top" />
+             x:Class="StartTooler.Views.DiaryView">
+    <TextBlock Text="拍摄日记 — 即将问世"
+               FontSize="20"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Center"/>
 </UserControl>
