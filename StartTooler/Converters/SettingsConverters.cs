@@ -1,7 +1,9 @@
 using System;
 using System.Globalization;
+using Avalonia;
 using Avalonia.Data.Converters;
 using Avalonia.Media;
+using Avalonia.Styling;
 
 namespace StartTooler.Converters;
 
@@ -179,6 +181,25 @@ public class IsSavingToButtonEnabledConverter : IValueConverter
         if (value is bool isSaving && isSaving)
             return false;
         return true;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
+
+/// <summary>
+/// v0.12: string 资源 key（如 "Icon.Weather.Sunny"）→ 应用级资源对象（StreamGeometry）。
+/// 给 Path.Data 动态绑定用 —— 不能直接 DynamicResource 写字符串。
+/// 空 key / 找不到 → 返回 null（Path 自动隐藏）。
+/// </summary>
+public class StringToResourceConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not string key || string.IsNullOrEmpty(key)) return null;
+        if (Application.Current?.Resources.TryGetResource(key, ThemeVariant.Default, out var res) == true)
+            return res;
+        return null;
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

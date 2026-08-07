@@ -3,10 +3,15 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:data="using:StartTooler.Data"
+             xmlns:converters="using:StartTooler.Converters"
              xmlns:vm="using:StartTooler.ViewModels"
              mc:Ignorable="d"
              x:Class="StartTooler.Controls.DiaryPage"
              x:DataType="vm:DiaryViewModel">
+
+    <UserControl.Resources>
+        <converters:StringToResourceConverter x:Key="StringToResource"/>
+    </UserControl.Resources>
 
     <Border Background="{DynamicResource Bg.Surface}"
             BorderBrush="{DynamicResource Bg.Divider}"
@@ -60,10 +65,10 @@
                 <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
                             Orientation="Horizontal" Spacing="12" Margin="0,12,0,0">
                     <Path Width="20" Height="20"
-                          Data="{DynamicResource Icon.Weather.Sunny}"
+                          Data="{Binding CurrentPage.WeatherIconKey, Converter={StaticResource StringToResource}}"
                           Fill="{DynamicResource Text.Secondary}"
                           Stretch="Uniform"
-                          IsVisible="{Binding CurrentPage.WeatherText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                          IsVisible="{Binding CurrentPage.WeatherIconKey, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     <TextBlock Text="{Binding CurrentPage.WeatherText}"
                                FontSize="14"
                                Foreground="{DynamicResource Text.Secondary}"
@@ -85,18 +90,22 @@
 
             <!-- 精选照片网格 -->
             <ItemsControl ItemsSource="{Binding CurrentPage.FeaturedPhotos}">
-                <ItemsPanelTemplate>
-                    <WrapPanel Orientation="Horizontal"/>
-                </ItemsPanelTemplate>
-                <DataTemplate DataType="data:MediaFile">
-                    <Border Width="120" Height="120"
-                            Margin="0,0,8,8"
-                            CornerRadius="4"
-                            ClipToBounds="True"
-                            Background="{DynamicResource Bg.Outer}">
-                        <Image Source="{Binding ThumbnailPath}" Stretch="UniformToFill"/>
-                    </Border>
-                </DataTemplate>
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="data:MediaFile">
+                        <Border Width="120" Height="120"
+                                Margin="0,0,8,8"
+                                CornerRadius="4"
+                                ClipToBounds="True"
+                                Background="{DynamicResource Bg.Outer}">
+                            <Image Source="{Binding ThumbnailPath}" Stretch="UniformToFill"/>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
             </ItemsControl>
 
             <Border Height="1" Background="{DynamicResource Bg.Divider}"/>
@@ -153,19 +162,23 @@
                                FontSize="11"
                                Foreground="{DynamicResource Text.Tertiary}"/>
                     <ItemsControl ItemsSource="{Binding CurrentPage.TopTags}">
-                        <ItemsPanelTemplate>
-                            <WrapPanel Orientation="Horizontal"/>
-                        </ItemsPanelTemplate>
-                        <DataTemplate>
-                            <Border Background="{DynamicResource Bg.Outer}"
-                                    Padding="6,2"
-                                    Margin="0,0,4,4"
-                                    CornerRadius="3">
-                                <TextBlock Text="{Binding}"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource Text.Secondary}"/>
-                            </Border>
-                        </DataTemplate>
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource Bg.Outer}"
+                                        Padding="6,2"
+                                        Margin="0,0,4,4"
+                                        CornerRadius="3">
+                                    <TextBlock Text="{Binding}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Text.Secondary}"/>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </StackPanel>
             </Grid>

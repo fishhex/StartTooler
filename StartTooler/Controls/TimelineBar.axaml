@@ -15,21 +15,25 @@
         <ScrollViewer HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Disabled">
             <ItemsControl ItemsSource="{Binding TimelineDots}">
-                <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal" Spacing="6"/>
-                </ItemsPanelTemplate>
-                <DataTemplate DataType="models:TimelineDot">
-                    <Button Classes="timeline-dot"
-                            Command="{Binding $parent[ItemsControl].((vm:DiaryViewModel)DataContext).NavigateToPageCommand}"
-                            CommandParameter="{Binding Index}"
-                            Width="14" Height="14"
-                            Padding="0"
-                            Background="Transparent"
-                            ToolTip.Tip="{Binding TooltipText}">
-                        <Ellipse Width="10" Height="10"
-                                 Fill="{Binding DotBrush, FallbackValue={DynamicResource Text.Tertiary}}"/>
-                    </Button>
-                </DataTemplate>
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="6"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="models:TimelineDot">
+                        <Button Classes="timeline-dot"
+                                Command="{Binding NavigateToPageCommand}"
+                                CommandParameter="{Binding Index}"
+                                Width="14" Height="14"
+                                Padding="0"
+                                Background="Transparent"
+                                ToolTip.Tip="{Binding TooltipText}">
+                            <Ellipse Width="10" Height="10"
+                                     Fill="{Binding DotBrush, FallbackValue={DynamicResource Text.Tertiary}}"/>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ScrollViewer>
     </Border>

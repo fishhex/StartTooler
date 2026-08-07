@@ -1,3 +1,4 @@
+using System.Windows.Input;
 using Avalonia.Media;
 
 namespace StartTooler.Models;
@@ -8,6 +9,7 @@ namespace StartTooler.Models;
 /// - IsCurrent: 是否为当前页（高亮）
 /// - TooltipText: hover 显示
 /// - DotBrush: 由 VM 根据 IsCurrent 设置（高亮 vs 普通）
+/// - NavigateToPageCommand: VM 注入的跳转命令（参数 = Index）
 /// </summary>
 public sealed class TimelineDot
 {
@@ -15,4 +17,5 @@ public sealed class TimelineDot
     public bool IsCurrent { get; init; }
     public string TooltipText { get; init; } = "";
     public IBrush? DotBrush { get; init; }
+    public ICommand? NavigateToPageCommand { get; init; }
 }

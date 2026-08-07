@@ -311,6 +311,7 @@ public partial class DiaryViewModel : ObservableObject
                 DotBrush = i == CurrentPageIndex
                     ? new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(0x4F, 0xC3, 0xF7))
                     : null,  // null → 走 XAML FallbackValue
+                NavigateToPageCommand = NavigateToPageCommand,
             });
         }
     }
@@ -436,7 +437,7 @@ public partial class DiaryViewModel : ObservableObject
         return $"{(int)Math.Round(hours * 60)}m";
     }
 
-    private static string WeatherCoverToIconKey(string cloudCover) => cloudCover switch
+    private static string? WeatherCoverToIconKey(string cloudCover) => cloudCover switch
     {
         "晴" => "Icon.Weather.Sunny",
         "少云" => "Icon.Weather.PartlyCloudy",
