@@ -11,6 +11,7 @@
 
     <UserControl.Resources>
         <converters:StringToResourceConverter x:Key="StringToResource"/>
+        <converters:FilePathToBitmapConverter x:Key="FilePathToBitmap"/>
     </UserControl.Resources>
 
     <Border Background="{DynamicResource Bg.Surface}"
@@ -102,7 +103,7 @@
                                 CornerRadius="4"
                                 ClipToBounds="True"
                                 Background="{DynamicResource Bg.Outer}">
-                            <Image Source="{Binding ThumbnailPath}" Stretch="UniformToFill"/>
+                            <Image Source="{Binding ThumbnailPath, Converter={StaticResource FilePathToBitmap}}" Stretch="UniformToFill"/>
                         </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
