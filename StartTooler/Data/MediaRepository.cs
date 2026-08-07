@@ -1632,7 +1632,7 @@ public class MediaRepository : IMediaRepository
 
     // === v0.12: 拍摄日记查询 ===
 
-    public async Task SetSessionBatchAsync(IReadOnlyList<(long FileId, string SessionId)> assignments, CancellationToken ct = default)
+    public async Task SetSessionBatchAsync(IReadOnlyList<(long FileId, string? SessionId)> assignments, CancellationToken ct = default)
     {
         if (assignments.Count == 0) return;
 
@@ -1642,7 +1642,7 @@ public class MediaRepository : IMediaRepository
 
         try
         {
-            // 按 session_id 分组，每组一条 UPDATE IN (...)
+            // 按 session_id 分组（nullable key），每组一条 UPDATE IN (...)
             foreach (var group in assignments.GroupBy(a => a.SessionId))
             {
                 var ids = group.Select(g => g.FileId).ToList();
@@ -1650,7 +1650,8 @@ public class MediaRepository : IMediaRepository
                 var sql = $"UPDATE media_files SET session_id = @sid WHERE id IN ({placeholders})";
 
                 await using var cmd = new SqliteCommand(sql, connection, tx);
-                cmd.Parameters.AddWithValue("@sid", group.Key);
+                cmd.Parameters.AddWithValue("@sid",
+                    group.Key is null ? (object)DBNull.Value : group.Key);
                 for (int i = 0; i < ids.Count; i++)
                 {
                     cmd.Parameters.AddWithValue($"@id{i}", ids[i]);

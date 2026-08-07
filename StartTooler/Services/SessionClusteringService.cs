@@ -48,7 +48,7 @@ public class SessionClusteringService
         // 用一个非常大的时间窗口覆盖整个项目
         var earliest = new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var latest = DateTimeOffset.UtcNow.AddDays(1);
-        var allFiles = await _mediaRepo.GetByTimeRangeAsync(normalizedPath, earliest, latest, SortMode.TimeAsc, limit: int.MaxValue, ct: ct);
+        var allFiles = await _mediaRepo.GetByTimeRangeAsync(normalizedPath, earliest, latest, SortMode.TimeAsc, ct: ct, limit: int.MaxValue);
 
         // 过滤出孤儿照片：session_id 为空、未删除、有 shot_at
         var orphans = allFiles
@@ -59,7 +59,7 @@ public class SessionClusteringService
 
         // 单趟扫描聚类
         var sessions = new List<Session>();
-        var assignments = new List<(long FileId, string SessionId)>();
+        var assignments = new List<(long FileId, string? SessionId)>();
 
         Session current = null!;
         DateTimeOffset currentStart = default, currentEnd = default;

@@ -1,0 +1,175 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:data="using:StartTooler.Data"
+             xmlns:vm="using:StartTooler.ViewModels"
+             mc:Ignorable="d"
+             x:Class="StartTooler.Controls.DiaryPage"
+             x:DataType="vm:DiaryViewModel">
+
+    <Border Background="{DynamicResource Bg.Surface}"
+            BorderBrush="{DynamicResource Bg.Divider}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Padding="32">
+        <StackPanel Spacing="20">
+
+            <!-- 头部 -->
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+
+                <!-- 日期 + 标题 + 时长 -->
+                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="2">
+                    <TextBlock Text="{Binding CurrentPage.Date, StringFormat='{}{0:yyyy年M月d日 dddd}', TargetNullValue=''}"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Primary}"/>
+                    <TextBlock Text="{Binding CurrentPage.Title}"
+                               FontSize="14"
+                               Foreground="{DynamicResource Text.Secondary}"/>
+                    <TextBlock Text="{Binding CurrentPage.DurationText, StringFormat='{}{0} 时长'}"
+                               FontSize="12"
+                               Foreground="{DynamicResource Text.Tertiary}"/>
+                </StackPanel>
+
+                <!-- 操作按钮 -->
+                <StackPanel Grid.Row="0" Grid.Column="1"
+                            Orientation="Horizontal" Spacing="8"
+                            VerticalAlignment="Top">
+                    <Button Classes="secondary-button"
+                            Command="{Binding RefreshEnvironmentCommand}"
+                            ToolTip.Tip="从首张照片 GPS 重新获取地点和天气">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Data="{DynamicResource Icon.Refresh}" Width="12" Height="12"
+                                  Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
+                            <TextBlock Text="刷新环境" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="danger-button"
+                            Command="{Binding DeleteCurrentSessionCommand}"
+                            ToolTip.Tip="删除整个会话（其下照片 session_id 会被清空）">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Data="{DynamicResource Icon.Trash}" Width="12" Height="12"
+                                  Fill="{DynamicResource State.Danger}" Stretch="Uniform"/>
+                            <TextBlock Text="删除会话" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <!-- 天气 + 地点 -->
+                <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                            Orientation="Horizontal" Spacing="12" Margin="0,12,0,0">
+                    <Path Width="20" Height="20"
+                          Data="{DynamicResource Icon.Weather.Sunny}"
+                          Fill="{DynamicResource Text.Secondary}"
+                          Stretch="Uniform"
+                          IsVisible="{Binding CurrentPage.WeatherText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="{Binding CurrentPage.WeatherText}"
+                               FontSize="14"
+                               Foreground="{DynamicResource Text.Secondary}"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="·"
+                               FontSize="14"
+                               Foreground="{DynamicResource Text.Tertiary}"
+                               VerticalAlignment="Center"
+                               IsVisible="{Binding CurrentPage.Location, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="{Binding CurrentPage.Location}"
+                               FontSize="14"
+                               Foreground="{DynamicResource Text.Secondary}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+
+            </Grid>
+
+            <Border Height="1" Background="{DynamicResource Bg.Divider}"/>
+
+            <!-- 精选照片网格 -->
+            <ItemsControl ItemsSource="{Binding CurrentPage.FeaturedPhotos}">
+                <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal"/>
+                </ItemsPanelTemplate>
+                <DataTemplate DataType="data:MediaFile">
+                    <Border Width="120" Height="120"
+                            Margin="0,0,8,8"
+                            CornerRadius="4"
+                            ClipToBounds="True"
+                            Background="{DynamicResource Bg.Outer}">
+                        <Image Source="{Binding ThumbnailPath}" Stretch="UniformToFill"/>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl>
+
+            <Border Height="1" Background="{DynamicResource Bg.Divider}"/>
+
+            <!-- 笔记 -->
+            <StackPanel Spacing="8">
+                <TextBlock Text="拍摄笔记"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text.Primary}"/>
+                <TextBox Text="{Binding CurrentPage.Notes, Mode=TwoWay}"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         MinHeight="80"
+                         MaxHeight="200"
+                         FontSize="13"
+                         Watermark="记录这次拍摄的所见所思…"
+                         LostFocus="OnNotesLostFocus"/>
+            </StackPanel>
+
+            <Border Height="1" Background="{DynamicResource Bg.Divider}"/>
+
+            <!-- 统计条 -->
+            <Grid ColumnDefinitions="*,*,*,*">
+                <StackPanel Grid.Column="0" Spacing="2">
+                    <TextBlock Text="拍摄张数"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text.Tertiary}"/>
+                    <TextBlock Text="{Binding CurrentPage.TotalPhotoCount}"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Primary}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="2">
+                    <TextBlock Text="目标数"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text.Tertiary}"/>
+                    <TextBlock Text="{Binding CurrentPage.TargetCount}"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Primary}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Spacing="2">
+                    <TextBlock Text="累计曝光"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text.Tertiary}"/>
+                    <TextBlock Text="{Binding CurrentPage.TotalExposureText}"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Primary}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="3" Spacing="2">
+                    <TextBlock Text="常用标签"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text.Tertiary}"/>
+                    <ItemsControl ItemsSource="{Binding CurrentPage.TopTags}">
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                        <DataTemplate>
+                            <Border Background="{DynamicResource Bg.Outer}"
+                                    Padding="6,2"
+                                    Margin="0,0,4,4"
+                                    CornerRadius="3">
+                                <TextBlock Text="{Binding}"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource Text.Secondary}"/>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Grid>
+
+        </StackPanel>
+    </Border>
+</UserControl>

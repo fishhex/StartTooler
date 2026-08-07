@@ -139,9 +139,10 @@ public interface IMediaRepository
 
     /// <summary>
     /// 批量设置照片所属 Session（用于聚类结果写入）。分组事务：每个 Session 一条 UPDATE。
+    /// SessionId 为 null 时清空（用于删除会话后的清理）。
     /// </summary>
     Task SetSessionBatchAsync(
-        IReadOnlyList<(long FileId, string SessionId)> assignments,
+        IReadOnlyList<(long FileId, string? SessionId)> assignments,
         CancellationToken ct = default);
 
     Task<IReadOnlyList<MediaFile>> GetBySessionAsync(

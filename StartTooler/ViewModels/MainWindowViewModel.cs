@@ -36,6 +36,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private SettingsViewModel settingsViewModel;
     [ObservableProperty] private UploadServerViewModel uploadServerViewModel;
     [ObservableProperty] private TrashViewModel trashViewModel;  // v0.8
+    [ObservableProperty] private DiaryViewModel diaryViewModel;  // v0.12
     [ObservableProperty] private object currentView;
     [ObservableProperty] private bool isSettingsPage;
     [ObservableProperty] private ViewPage currentPage = ViewPage.Gallery;
@@ -144,6 +145,16 @@ public partial class MainWindowViewModel : ObservableObject
             dontAskAgain: dontAskAgain,
             onOssNotConfigured: ShowOssNotConfiguredDialogAsync,
             onNavigateToFile: NavigateToGalleryAndLocateFile);
+
+        // v0.12: 拍摄日记 ViewModel
+        var sessionRepo = new SessionRepository();
+        var httpClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        var envService = new EnvironmentService(httpClient, _configService);
+        var clusteringService = new SessionClusteringService(_mediaRepository, sessionRepo);
+        DiaryViewModel = new DiaryViewModel(
+            _mediaRepository, sessionRepo, _configService, clusteringService, envService);
+        DiaryViewModel.NavigateToGalleryDate = date => _ = NavigateToGalleryAndDateAsync(date);
+        DiaryViewModel.NavigateToGalleryTag = tag => _ = NavigateToGalleryAndTagAsync(tag);
 
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;
@@ -386,8 +397,14 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task NavigateToDiary()
     {
-        // TODO: Phase 5 实现 DiaryViewModel 后替换此占位
-        await Task.CompletedTask;
+        CurrentPage = ViewPage.Diary;
+        CurrentView = DiaryViewModel;
+        // 触发日记加载（聚类 + 列表），等待完成以便 IsLoading 状态反映
+        var projectPath = GalleryViewModel?.ProjectPath ?? string.Empty;
+        if (DiaryViewModel != null && !string.IsNullOrEmpty(projectPath))
+        {
+            await DiaryViewModel.LoadAsync(projectPath);
+        }
     }
 
     [RelayCommand]
