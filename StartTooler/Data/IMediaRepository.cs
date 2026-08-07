@@ -137,6 +137,13 @@ public interface IMediaRepository
 
     // === v0.12: 拍摄日记查询 ===
 
+    /// <summary>
+    /// 批量设置照片所属 Session（用于聚类结果写入）。分组事务：每个 Session 一条 UPDATE。
+    /// </summary>
+    Task SetSessionBatchAsync(
+        IReadOnlyList<(long FileId, string SessionId)> assignments,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<MediaFile>> GetBySessionAsync(
         string sessionId, SortMode sortMode = SortMode.TimeDesc,
         int offset = 0, int limit = 2000, CancellationToken ct = default);

@@ -32,12 +32,13 @@ public enum GroupMode
 }
 
 /// <summary>
-/// Gallery 文件排序方式。TimeDesc = 拍摄时间倒序（现有默认）；ScoreDesc = AI 评分降序（v0.6 新增，null 排最后）。
+/// Gallery 文件排序方式。TimeDesc = 拍摄时间倒序（现有默认）；ScoreDesc = AI 评分降序（v0.6 新增，null 排最后）；TimeAsc = 拍摄时间升序（v0.12 会话聚类用）。
 /// </summary>
 public enum SortMode
 {
     TimeDesc,
     ScoreDesc,
+    TimeAsc,
 }
 
 /// <summary>

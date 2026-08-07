@@ -406,6 +406,7 @@ public class MediaRepository : IMediaRepository
         var orderBy = sortMode switch
         {
             SortMode.ScoreDesc => "ORDER BY score IS NULL, score DESC, shot_at DESC, file_name ASC",
+            SortMode.TimeAsc => "ORDER BY shot_at ASC, file_name ASC",
             _ => "ORDER BY shot_at DESC, file_name ASC",
         };
 
@@ -465,6 +466,7 @@ public class MediaRepository : IMediaRepository
         var orderBy = sortMode switch
         {
             SortMode.ScoreDesc => "ORDER BY score IS NULL, score DESC, shot_at DESC, file_name ASC",
+            SortMode.TimeAsc => "ORDER BY shot_at ASC, file_name ASC",
             _ => "ORDER BY shot_at DESC, file_name ASC",
         };
 
@@ -938,6 +940,7 @@ public class MediaRepository : IMediaRepository
         var orderBy = sortMode switch
         {
             SortMode.ScoreDesc => "ORDER BY score IS NULL, score DESC, shot_at DESC, file_name ASC",
+            SortMode.TimeAsc => "ORDER BY shot_at ASC, file_name ASC",
             _ => "ORDER BY shot_at DESC, file_name ASC",
         };
 
@@ -1629,6 +1632,41 @@ public class MediaRepository : IMediaRepository
 
     // === v0.12: 拍摄日记查询 ===
 
+    public async Task SetSessionBatchAsync(IReadOnlyList<(long FileId, string SessionId)> assignments, CancellationToken ct = default)
+    {
+        if (assignments.Count == 0) return;
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        var tx = (SqliteTransaction)await connection.BeginTransactionAsync(ct);
+
+        try
+        {
+            // 按 session_id 分组，每组一条 UPDATE IN (...)
+            foreach (var group in assignments.GroupBy(a => a.SessionId))
+            {
+                var ids = group.Select(g => g.FileId).ToList();
+                var placeholders = string.Join(",", ids.Select((_, i) => $"@id{i}"));
+                var sql = $"UPDATE media_files SET session_id = @sid WHERE id IN ({placeholders})";
+
+                await using var cmd = new SqliteCommand(sql, connection, tx);
+                cmd.Parameters.AddWithValue("@sid", group.Key);
+                for (int i = 0; i < ids.Count; i++)
+                {
+                    cmd.Parameters.AddWithValue($"@id{i}", ids[i]);
+                }
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
+
+            await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
+    }
+
     public async Task<IReadOnlyList<MediaFile>> GetBySessionAsync(string sessionId, SortMode sortMode = SortMode.TimeDesc, int offset = 0, int limit = 2000, CancellationToken ct = default)
     {
         var results = new List<MediaFile>();
@@ -1644,6 +1682,7 @@ public class MediaRepository : IMediaRepository
         var orderBy = sortMode switch
         {
             SortMode.ScoreDesc => "ORDER BY score IS NULL, score DESC, shot_at DESC, file_name ASC",
+            SortMode.TimeAsc => "ORDER BY shot_at ASC, file_name ASC",
             _ => "ORDER BY shot_at DESC, file_name ASC",
         };
 

@@ -40,6 +40,15 @@ public sealed class ExifData
     /// <summary>35mm 等效焦距，mm（用于统计）。</summary>
     public double? FocalLength35Mm { get; set; }
 
+    /// <summary>v0.12: GPS 纬度，十进制度（-90..90）。正 = 北纬。</summary>
+    public double? GpsLatitude { get; set; }
+
+    /// <summary>v0.12: GPS 经度，十进制度（-180..180）。正 = 东经。</summary>
+    public double? GpsLongitude { get; set; }
+
+    /// <summary>v0.12: 是否携带 GPS 坐标。</summary>
+    public bool HasGps => GpsLatitude.HasValue && GpsLongitude.HasValue;
+
     public string? Camera => string.IsNullOrEmpty(CameraModel) ? CameraMake : CameraModel;
     public bool HasAny => !string.IsNullOrEmpty(Camera)
         || !string.IsNullOrEmpty(Aperture)
@@ -63,6 +72,108 @@ internal static class ExifReader
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// v0.12: 仅解析 GPS 坐标（十进制度）。失败 / 非 JPEG / 无 GPS → 返回 null。
+    /// 与 Read() 独立调用 —— 调用方按需读取，避免覆盖照片主元数据路径的开销。
+    /// </summary>
+    public static (double Latitude, double Longitude)? ReadGps(string? path)
+    {
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
+        try
+        {
+            using var fs = File.OpenRead(path);
+            var data = ParseFromStream(fs);
+            if (data == null || !data.HasGps) return null;
+            return (data.GpsLatitude!.Value, data.GpsLongitude!.Value);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 解析 GPS 子 IFD（IFD0 → tag 0x8825 指向）。
+    /// 关键字段：GPSLatitudeRef(0x0001) / GPSLatitude(0x0002) / GPSLongitudeRef(0x0003) / GPSLongitude(0x0004)。
+    /// </summary>
+    private static (double lat, double lon)? ParseGpsSubIfd(byte[] tiff, int offset, bool littleEndian)
+    {
+        if (offset < 0 || offset + 2 > tiff.Length) return null;
+        int numEntries = ReadUInt16(tiff, offset, littleEndian);
+
+        string? latRef = null;
+        double? lat = null;
+        string? lonRef = null;
+        double? lon = null;
+
+        for (int i = 0; i < numEntries; i++)
+        {
+            int entryOffset = offset + 2 + i * 12;
+            if (entryOffset + 12 > tiff.Length) break;
+
+            int tag = ReadUInt16(tiff, entryOffset, littleEndian);
+            int count = (int)ReadUInt32(tiff, entryOffset + 4, littleEndian);
+            int valueOffset = entryOffset + 8;
+
+            if (tag == 0x0001) // GPSLatitudeRef (ASCII "N"/"S")
+            {
+                latRef = ReadAsciiInline(tiff, valueOffset, count);
+            }
+            else if (tag == 0x0002) // GPSLatitude (3 rationals: 度/分/秒)
+            {
+                var r = ReadThreeRationals(tiff, valueOffset, littleEndian);
+                if (r.HasValue) lat = r.Value;
+            }
+            else if (tag == 0x0003) // GPSLongitudeRef (ASCII "E"/"W")
+            {
+                lonRef = ReadAsciiInline(tiff, valueOffset, count);
+            }
+            else if (tag == 0x0004) // GPSLongitude
+            {
+                var r = ReadThreeRationals(tiff, valueOffset, littleEndian);
+                if (r.HasValue) lon = r.Value;
+            }
+        }
+
+        if (!lat.HasValue || !lon.HasValue) return null;
+
+        // 度分秒 → 十进制度
+        var latitude = lat.Value;
+        var longitude = lon.Value;
+        if (latRef == "S") latitude = -latitude;
+        if (lonRef == "W") longitude = -longitude;
+        return (latitude, longitude);
+    }
+
+    /// <summary>
+    /// 读 3 个连续 RATIONAL（度/分/秒）。tag 值 8 字节内能放下 3 个？不行，
+    /// 因此总是按 valueOffset 指向的位置读 24 字节。
+    /// </summary>
+    private static double? ReadThreeRationals(byte[] tiff, int valueOffset, bool littleEndian)
+    {
+        if (valueOffset + 24 > tiff.Length) return null;
+
+        // IFD valueOffset 对 type=RATIONAL(5) 且 count>1 时指向首 RATIONAL 位置
+        var d = ReadRational(tiff, valueOffset, littleEndian);
+        var m = ReadRational(tiff, valueOffset + 8, littleEndian);
+        var s = ReadRational(tiff, valueOffset + 16, littleEndian);
+        if (!d.HasValue || !m.HasValue || !s.HasValue) return null;
+        if (d.Value.d == 0) return null;
+
+        return d.Value.n / (double)d.Value.d
+             + m.Value.n / (double)m.Value.d / 60.0
+             + s.Value.n / (double)s.Value.d / 3600.0;
+    }
+
+    /// <summary>读取 4 字节内 ASCII 字符串（N/S/E/W 等单字符 ref 标记）。</summary>
+    private static string? ReadAsciiInline(byte[] buf, int offset, int count)
+    {
+        if (count < 1 || offset + count > buf.Length) return null;
+        var bytes = new byte[count];
+        Array.Copy(buf, offset, bytes, 0, count);
+        return System.Text.Encoding.ASCII.GetString(bytes).TrimEnd('\0', ' ').Trim();
     }
 
     private static ExifData? ParseFromStream(Stream stream)
@@ -126,6 +237,7 @@ internal static class ExifReader
         // 4. IFD0 entries
         int numEntries = ReadUInt16(tiff, ifd0Offset, littleEndian);
         int exifSubIfdOffset = -1;
+        int gpsIfdOffset = -1;
         for (int i = 0; i < numEntries; i++)
         {
             int entryOffset = ifd0Offset + 2 + i * 12;
@@ -143,6 +255,21 @@ internal static class ExifReader
             else if (tag == 0x8769) // ExifIFDPointer
             {
                 exifSubIfdOffset = (int)ReadUInt32(tiff, valueOffset, littleEndian);
+            }
+            else if (tag == 0x8825) // v0.12: GPSIFDPointer
+            {
+                gpsIfdOffset = (int)ReadUInt32(tiff, valueOffset, littleEndian);
+            }
+        }
+
+        // v0.12: 解析 GPS 子 IFD（独立子例程，失败不影响主 ExifData）
+        if (gpsIfdOffset >= 0)
+        {
+            var gps = ParseGpsSubIfd(tiff, gpsIfdOffset, littleEndian);
+            if (gps.HasValue)
+            {
+                data.GpsLatitude = gps.Value.lat;
+                data.GpsLongitude = gps.Value.lon;
             }
         }
 

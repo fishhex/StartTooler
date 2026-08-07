@@ -31,4 +31,10 @@ public static class ConfigKeys
     /// 首次使用引导完成状态（v0.11 spec/07 §4.3）。DTO: OnboardingState { Completed, CompletedAt }。
     /// </summary>
     public const string Onboarding = "onboarding_v1";
+
+    /// <summary>
+    /// v0.12: 高德地图 API Key。供 EnvironmentService 逆地理编码使用。
+    /// 实际持久化字段在 AppConfig.AmapApiKey 内，但查询路径走独立 key 以避免读取整个 AppConfig。
+    /// </summary>
+    public const string DiaryAmapApiKey = "diary_amap_api_key";
 }
