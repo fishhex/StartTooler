@@ -11,6 +11,7 @@ using CommunityToolkit.Mvvm.Input;
 using StartTooler.Data;
 using StartTooler.Helpers;
 using StartTooler.Services;
+using StartTooler.Views;
 
 namespace StartTooler.ViewModels;
 
@@ -155,6 +156,22 @@ public partial class MainWindowViewModel : ObservableObject
             _mediaRepository, sessionRepo, _configService, clusteringService, envService);
         DiaryViewModel.NavigateToGalleryDate = date => _ = NavigateToGalleryAndDateAsync(date);
         DiaryViewModel.NavigateToGalleryTag = tag => _ = NavigateToGalleryAndTagAsync(tag);
+        DiaryViewModel.NavigateToLightbox = (photos, index) =>
+        {
+            var lightboxVm = new LightboxViewModel(photos, index, new SystemShellService(), _mediaRepository, GalleryViewModel);
+            var window = new LightboxWindow { DataContext = lightboxVm };
+            window.Show();
+        };
+
+        // v0.12: 扫描完成后触发会话聚类
+        GalleryViewModel.ScanCompleted = () =>
+        {
+            var projectPath = GalleryViewModel?.ProjectPath ?? string.Empty;
+            if (!string.IsNullOrEmpty(projectPath))
+            {
+                _ = DiaryViewModel.LoadAsync(projectPath);
+            }
+        };
 
         CurrentView = GalleryViewModel;
         IsSettingsPage = false;

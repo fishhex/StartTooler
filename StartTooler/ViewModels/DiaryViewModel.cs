@@ -139,8 +139,8 @@ public partial class DiaryViewModel : ObservableObject
                 AllPages.Add(page);
             }
 
-            // 3. 默认定位到最新一页
-            CurrentPageIndex = AllPages.Count > 0 ? AllPages.Count - 1 : -1;
+            // 3. 默认定位到最新一页（AllPages 已按时间倒序，索引 0 为最新）
+            CurrentPageIndex = AllPages.Count > 0 ? 0 : -1;
             RebuildTimelineDots();
 
             // 4. 加载当前页详情
@@ -465,5 +465,11 @@ public partial class DiaryViewModel : ObservableObject
     private void NavigateToDate(DateTime date)
     {
         NavigateToGalleryDate?.Invoke(date);
+    }
+
+    [RelayCommand]
+    private void NavigateToTag(string tag)
+    {
+        NavigateToGalleryTag?.Invoke(tag);
     }
 }

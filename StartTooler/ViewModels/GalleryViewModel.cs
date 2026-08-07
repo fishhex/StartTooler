@@ -1990,12 +1990,18 @@ public partial class GalleryViewModel : ObservableObject
     {
     }
 
+    /// <summary>v0.12: 扫描完成后触发，供 MainWindow 订阅以触发会话聚类。</summary>
+    public Action? ScanCompleted { get; set; }
+
     partial void OnRefreshStateChanged(RefreshState value)
     {
         if (value == RefreshState.Completed)
         {
             ScanStatusMessage = $"扫描完成 · 共 {ScanProgress?.Total} 个文件";
             _ = Task.Delay(2000).ContinueWith(_ => ScanStatusMessage = null);
+
+            // v0.12: 扫描完成后触发会话聚类
+            ScanCompleted?.Invoke();
 
             // v0.11 spec/07: 扫描完成时刷新引导状态(Step2Complete)
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>

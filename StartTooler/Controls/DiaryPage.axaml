@@ -26,10 +26,16 @@
 
                 <!-- 日期 + 标题 + 时长 -->
                 <StackPanel Grid.Row="0" Grid.Column="0" Spacing="2">
-                    <TextBlock Text="{Binding CurrentPage.Date, StringFormat='{}{0:yyyy年M月d日 dddd}', TargetNullValue=''}"
-                               FontSize="20"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource Text.Primary}"/>
+                    <Button Padding="0" Background="Transparent" BorderThickness="0"
+                            HorizontalAlignment="Left"
+                            Command="{Binding NavigateToDateCommand}"
+                            CommandParameter="{Binding CurrentPage.Date}"
+                            ToolTip.Tip="在媒体库中查看这一天">
+                        <TextBlock Text="{Binding CurrentPage.Date, StringFormat='{}{0:yyyy年M月d日 dddd}', TargetNullValue=''}"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}"/>
+                    </Button>
                     <TextBlock Text="{Binding CurrentPage.Title}"
                                FontSize="14"
                                Foreground="{DynamicResource Text.Secondary}"/>
@@ -97,14 +103,20 @@
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="data:MediaFile">
-                        <Border Width="120" Height="120"
+                    <DataTemplate x:DataType="data:MediaFile">
+                        <Button Width="120" Height="120"
                                 Margin="0,0,8,8"
-                                CornerRadius="4"
-                                ClipToBounds="True"
-                                Background="{DynamicResource Bg.Outer}">
-                            <Image Source="{Binding ThumbnailPath, Converter={StaticResource FilePathToBitmap}}" Stretch="UniformToFill"/>
-                        </Border>
+                                Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Command="{Binding $parent[UserControl].DataContext.OpenPhotoCommand}"
+                                CommandParameter="{Binding}">
+                            <Border CornerRadius="4"
+                                    ClipToBounds="True"
+                                    Background="{DynamicResource Bg.Outer}">
+                                <Image Source="{Binding ThumbnailPath, Converter={StaticResource FilePathToBitmap}}" Stretch="UniformToFill"/>
+                            </Border>
+                        </Button>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -169,15 +181,20 @@
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="{DynamicResource Bg.Outer}"
-                                        Padding="6,2"
-                                        Margin="0,0,4,4"
-                                        CornerRadius="3">
-                                    <TextBlock Text="{Binding}"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource Text.Secondary}"/>
-                                </Border>
+                            <DataTemplate x:DataType="x:String">
+                                <Button Padding="0" Background="Transparent" BorderThickness="0"
+                                        Command="{Binding $parent[UserControl].DataContext.NavigateToTagCommand}"
+                                        CommandParameter="{Binding}"
+                                        ToolTip.Tip="在媒体库中按此标签筛选">
+                                    <Border Background="{DynamicResource Bg.Outer}"
+                                            Padding="6,2"
+                                            Margin="0,0,4,4"
+                                            CornerRadius="3">
+                                        <TextBlock Text="{Binding}"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource Text.Secondary}"/>
+                                    </Border>
+                                </Button>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
