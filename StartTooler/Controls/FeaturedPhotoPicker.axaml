@@ -108,7 +108,10 @@
                                             IsVisible="{Binding IsSelected}">
                                         <Path Data="{DynamicResource Icon.Check}"
                                               Width="18" Height="18"
-                                              Fill="White"
+                                              Stroke="White"
+                                              StrokeThickness="3"
+                                              StrokeLineCap="Round"
+                                              StrokeJoin="Round"
                                               Stretch="Uniform"
                                               HorizontalAlignment="Center"
                                               VerticalAlignment="Center"/>
