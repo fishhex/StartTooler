@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -77,5 +78,15 @@ public partial class DiaryPage : UserControl
                 tb.SelectAll();
             }
         }, DispatcherPriority.Render);
+    }
+
+    /// <summary>
+    /// 点击天气胶囊或"添加天气"按钮后打开天气选择器。
+    /// </summary>
+    private async void OnWeatherEditClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not DiaryViewModel vm) return;
+
+        await vm.OpenWeatherPickerCommand.ExecuteAsync(null);
     }
 }

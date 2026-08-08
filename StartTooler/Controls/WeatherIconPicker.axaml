@@ -1,0 +1,67 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:models="using:StartTooler.Models"
+        xmlns:converters="using:StartTooler.Converters"
+        mc:Ignorable="d"
+        x:Class="StartTooler.Controls.WeatherIconPicker"
+        Title="选择天气"
+        Width="320"
+        Height="360"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Background="{DynamicResource Bg.Surface}">
+
+    <Window.Resources>
+        <converters:StringToResourceConverter x:Key="StringToResource"/>
+    </Window.Resources>
+
+    <Border Background="{DynamicResource Bg.Surface}"
+            Padding="20">
+        <StackPanel Spacing="16">
+            <TextBlock Text="选择天气"
+                       FontSize="16"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text.Primary}"/>
+
+            <ItemsControl x:Name="OptionsItemsControl">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="models:WeatherOption">
+                        <Button Click="OnOptionClick"
+                                Padding="0" Background="Transparent" BorderThickness="0"
+                                Margin="0,0,8,8">
+                            <Border Background="{DynamicResource Bg.Outer}"
+                                    CornerRadius="8"
+                                    Padding="12,8"
+                                    Width="80">
+                                <StackPanel Orientation="Vertical" Spacing="4"
+                                            HorizontalAlignment="Center">
+                                    <Path Data="{Binding IconKey, Converter={StaticResource StringToResource}}"
+                                          Width="24" Height="24"
+                                          Fill="{DynamicResource Text.Secondary}"
+                                          Stretch="Uniform"/>
+                                    <TextBlock Text="{Binding Text}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Text.Secondary}"
+                                               HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Button Classes="secondary-button"
+                    HorizontalAlignment="Stretch"
+                    Click="OnCancelClick">
+                <TextBlock Text="取消" HorizontalAlignment="Center"/>
+            </Button>
+        </StackPanel>
+    </Border>
+</Window>

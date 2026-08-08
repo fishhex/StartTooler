@@ -5,8 +5,12 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using StartTooler.Controls;
 using StartTooler.Data;
 using StartTooler.Helpers;
 using StartTooler.Models;
@@ -547,5 +551,121 @@ public partial class DiaryViewModel : ObservableObject
     private void NavigateToTag(string tag)
     {
         NavigateToGalleryTag?.Invoke(tag);
+    }
+
+    // === 天气选择器 ===
+
+    [RelayCommand]
+    private async Task OpenWeatherPickerAsync()
+    {
+        var page = CurrentPage;
+        if (page == null) return;
+
+        var options = new List<WeatherOption>
+        {
+            new() { Text = "晴", IconKey = "Icon.Weather.Sunny", CloudCover = "晴" },
+            new() { Text = "少云", IconKey = "Icon.Weather.PartlyCloudy", CloudCover = "少云" },
+            new() { Text = "多云", IconKey = "Icon.Weather.Cloudy", CloudCover = "多云" },
+            new() { Text = "阴", IconKey = "Icon.Weather.Overcast", CloudCover = "阴" },
+            new() { Text = "雨", IconKey = "Icon.Weather.Rain", CloudCover = "雨" },
+            new() { Text = "雪", IconKey = "Icon.Weather.Snow", CloudCover = "雪" },
+        };
+
+        var picker = new WeatherIconPicker
+        {
+            WeatherOptions = options,
+        };
+
+        var owner = GetCurrentWindow();
+        var selected = await picker.ShowDialogAsync(owner);
+        if (selected == null) return;
+
+        page.WeatherText = selected.Text;
+        page.WeatherIconKey = selected.IconKey;
+
+        var session = await _sessionRepo.GetByIdAsync(page.SessionId);
+        if (session != null)
+        {
+            session.CloudCover = selected.CloudCover;
+            await _sessionRepo.UpsertAsync(session);
+        }
+
+        StatusMessage = "天气已更新";
+    }
+
+    // === 精选照片管理 ===
+
+    [RelayCommand]
+    private async Task OpenFeaturedPhotoPickerAsync()
+    {
+        var page = CurrentPage;
+        if (page == null) return;
+
+        try
+        {
+            var photos = await _mediaRepo.GetBySessionAsync(page.SessionId, SortMode.TimeAsc, limit: int.MaxValue);
+            if (photos.Count == 0) return;
+
+            var featuredIds = new HashSet<long>(page.FeaturedPhotos.Select(p => p.Id));
+            var items = new ObservableCollection<FeaturedPhotoSelectableItem>(
+                photos.Select(p => new FeaturedPhotoSelectableItem
+                {
+                    Photo = p,
+                    IsSelected = featuredIds.Contains(p.Id),
+                }));
+
+            var picker = new FeaturedPhotoPicker
+            {
+                Items = items,
+            };
+
+            var owner = GetCurrentWindow();
+            var selectedIds = await picker.ShowDialogAsync(owner);
+            if (selectedIds == null) return; // 取消
+
+            var selectedSet = new HashSet<long>(selectedIds);
+            foreach (var photo in photos)
+            {
+                var shouldBeFeatured = selectedSet.Contains(photo.Id);
+                if (photo.IsDiaryFeatured != shouldBeFeatured)
+                {
+                    await _mediaRepo.SetDiaryFeaturedAsync(photo.Id, shouldBeFeatured);
+                }
+            }
+
+            await LoadCurrentPageDetails();
+            StatusMessage = "精选照片已更新";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"更新精选照片失败：{ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task RemoveFeaturedPhotoAsync(MediaFile? photo)
+    {
+        var page = CurrentPage;
+        if (page == null || photo == null) return;
+
+        try
+        {
+            await _mediaRepo.SetDiaryFeaturedAsync(photo.Id, false);
+            await LoadCurrentPageDetails();
+            StatusMessage = "已移除精选照片";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"移除精选照片失败：{ex.Message}";
+        }
+    }
+
+    private static Window? GetCurrentWindow()
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            return desktop.MainWindow;
+        }
+        return null;
     }
 }
