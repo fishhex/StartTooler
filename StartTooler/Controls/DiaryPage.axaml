@@ -149,19 +149,61 @@
                                        VerticalAlignment="Center"/>
                         </StackPanel>
                     </Border>
+                    <!-- 地点胶囊：显示 -->
                     <Border Background="{DynamicResource Bg.Outer}"
                             CornerRadius="12"
                             Padding="8,4"
-                            IsVisible="{Binding CurrentPage.Location, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                            <Path Data="{DynamicResource Icon.Globe}" Width="12" Height="12"
-                                  Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
-                            <TextBlock Text="{Binding CurrentPage.Location}"
-                                       FontSize="12"
-                                       Foreground="{DynamicResource Text.Secondary}"
-                                       VerticalAlignment="Center"/>
-                        </StackPanel>
+                            IsVisible="{Binding CurrentPage.IsLocationDisplayVisible}">
+                        <Button Click="OnLocationEditClick"
+                                Padding="0" Background="Transparent" BorderThickness="0">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <Path Data="{DynamicResource Icon.Globe}" Width="12" Height="12"
+                                      Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
+                                <TextBlock Text="{Binding CurrentPage.Location}"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource Text.Secondary}"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
                     </Border>
+
+                    <!-- 地点编辑框 -->
+                    <Border Background="{DynamicResource Bg.Outer}"
+                            CornerRadius="12"
+                            Padding="8,4"
+                            IsVisible="{Binding CurrentPage.IsLocationEditVisible}">
+                        <TextBox x:Name="LocationTextBox"
+                                 Text="{Binding CurrentPage.EditableLocation, Mode=TwoWay}"
+                                 FontSize="12"
+                                 Background="Transparent"
+                                 BorderBrush="{DynamicResource Text.Secondary}"
+                                 BorderThickness="0,0,0,1"
+                                 Padding="8,0"
+                                 VerticalAlignment="Center"
+                                 VerticalContentAlignment="Center"
+                                 MinWidth="80"
+                                 CaretBrush="{DynamicResource Text.Primary}"
+                                 LostFocus="OnLocationLostFocus"
+                                 KeyDown="OnLocationKeyDown"/>
+                    </Border>
+
+                    <!-- 添加地点按钮 -->
+                    <Button Click="OnLocationEditClick"
+                            Padding="0" Background="Transparent" BorderThickness="0"
+                            IsVisible="{Binding CurrentPage.IsAddLocationVisible}">
+                        <Border Background="{DynamicResource Bg.Outer}"
+                                CornerRadius="12"
+                                Padding="8,4">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <Path Data="{DynamicResource Icon.Globe}" Width="12" Height="12"
+                                      Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
+                                <TextBlock Text="添加地点"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource Text.Secondary}"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </Button>
                 </StackPanel>
 
             </Grid>
@@ -191,10 +233,11 @@
                         </Border>
                     </StackPanel>
                     <ComboBox Grid.Column="1"
-                              SelectedIndex="0"
                               FontSize="12"
-                              VerticalAlignment="Center">
-                        <ComboBoxItem Content="按拍摄时间排序"/>
+                              VerticalAlignment="Center"
+                              SelectedIndex="{Binding CurrentPage.FeaturedSortModeIndex}">
+                        <ComboBoxItem Content="按拍摄时间升序"/>
+                        <ComboBoxItem Content="按拍摄时间降序"/>
                         <ComboBoxItem Content="按评分排序"/>
                     </ComboBox>
                 </Grid>

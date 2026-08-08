@@ -311,6 +311,43 @@ public partial class DiaryViewModel : ObservableObject
         }
     }
 
+    // === 地点编辑 ===
+
+    [RelayCommand]
+    private void EditLocation()
+    {
+        var page = CurrentPage;
+        if (page == null) return;
+        page.EditableLocation = page.Location;
+        page.IsEditingLocation = true;
+    }
+
+    [RelayCommand]
+    private async Task SaveLocationAsync()
+    {
+        var page = CurrentPage;
+        if (page == null) return;
+
+        var newLocation = page.EditableLocation?.Trim() ?? "";
+        page.IsEditingLocation = false;
+
+        if (newLocation == page.Location) return;
+
+        try
+        {
+            var session = await _sessionRepo.GetByIdAsync(page.SessionId);
+            if (session == null) return;
+            session.Location = newLocation;
+            await _sessionRepo.UpsertAsync(session);
+            page.Location = newLocation;
+            StatusMessage = "地点已保存";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"地点保存失败：{ex.Message}";
+        }
+    }
+
     // === 内部 ===
 
     partial void OnCurrentPageIndexChanged(int value)
@@ -356,7 +393,6 @@ public partial class DiaryViewModel : ObservableObject
         try
         {
             // 1. 加载精选照片
-            const int DisplayedLimit = 6;
             var featured = await _mediaRepo.GetDiaryFeaturedAsync(page.SessionId, limit: 12, ct);
             if (featured.Count == 0)
             {
@@ -364,17 +400,8 @@ public partial class DiaryViewModel : ObservableObject
                 featured = await AutoSelectFeaturedAsync(page.SessionId, 12, ct);
             }
             page.FeaturedPhotos = featured;
-            page.DisplayedFeaturedPhotos = featured
-                .Take(DisplayedLimit)
-                .Select((photo, i) => new FeaturedPhotoItem
-                {
-                    Photo = photo,
-                    Index = i + 1,
-                    TimeText = photo.ShotAtDateTime?.ToLocalTime().ToString("HH:mm") ?? "",
-                })
-                .ToList();
-            page.HiddenFeaturedCount = Math.Max(0, featured.Count - DisplayedLimit);
-            page.HasMoreFeaturedPhotos = page.HiddenFeaturedCount > 0;
+            // DisplayedFeaturedPhotos / HiddenFeaturedCount / HasMoreFeaturedPhotos
+            // 由 DiaryPageData.OnFeaturedPhotosChanged 自动处理
 
             // 2. 加载统计
             var stats = await _mediaRepo.GetSessionStatsAsync(page.SessionId, ct);
