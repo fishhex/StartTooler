@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using StartTooler.Data;
+using StartTooler.Helpers;
 using StartTooler.Models;
 using StartTooler.Services;
 
@@ -74,6 +75,10 @@ public partial class DiaryViewModel : ObservableObject
     [ObservableProperty]
     private string _statusMessage = "";
 
+    /// <summary>刷新环境数据进行中，用于禁用按钮防止重复点击。</summary>
+    [ObservableProperty]
+    private bool _isRefreshingEnvironment;
+
     public DiaryPageData? CurrentPage =>
         CurrentPageIndex >= 0 && CurrentPageIndex < AllPages.Count
             ? AllPages[CurrentPageIndex]
@@ -123,11 +128,15 @@ public partial class DiaryViewModel : ObservableObject
             AllPages.Clear();
             foreach (var s in sessions)
             {
+                var localDate = s.StartTime.ToLocalTime();
                 var page = new DiaryPageData
                 {
                     SessionId = s.Id,
                     Title = s.Title,
-                    Date = s.StartTime.ToLocalTime(),
+                    Date = localDate,
+                    LunarDateText = LunarDateHelper.GetLunarDateText(localDate),
+                    WeekdayText = LunarDateHelper.GetWeekdayText(localDate),
+                    WeekLabel = LunarDateHelper.GetMonthWeekLabel(localDate),
                     DurationText = s.DurationText,
                     Location = s.Location,
                     WeatherText = s.WeatherText ?? "",
@@ -208,10 +217,12 @@ public partial class DiaryViewModel : ObservableObject
             if (session == null) return;
             session.Description = page.Notes;
             await _sessionRepo.UpsertAsync(session);
+            page.NotesSaveStatus = $"已自动保存 · {DateTime.Now:HH:mm}";
             StatusMessage = "笔记已保存";
         }
         catch (Exception ex)
         {
+            page.NotesSaveStatus = $"保存失败 · {DateTime.Now:HH:mm}";
             StatusMessage = $"保存失败：{ex.Message}";
         }
     }
@@ -237,6 +248,8 @@ public partial class DiaryViewModel : ObservableObject
 
         await _sessionRepo.DeleteAsync(page.SessionId);
         AllPages.RemoveAt(CurrentPageIndex);
+        // AllPages 按时间倒序（索引 0 为最新）。删除后优先保持当前索引（显示下一页/更旧），
+        // 若删除的是最后一页则回退到上一页（更新），避免越界。
         if (CurrentPageIndex >= AllPages.Count)
         {
             CurrentPageIndex = Math.Max(0, AllPages.Count - 1);
@@ -250,44 +263,52 @@ public partial class DiaryViewModel : ObservableObject
     private async Task RefreshEnvironmentAsync()
     {
         var page = CurrentPage;
-        if (page == null) return;
+        if (page == null || IsRefreshingEnvironment) return;
 
-        var photos = await _mediaRepo.GetBySessionAsync(page.SessionId, SortMode.TimeAsc, limit: 5);
-        if (photos.Count == 0) return;
-
-        var firstPhoto = photos[0];
-        var path = string.IsNullOrEmpty(firstPhoto.RelativePath) || string.IsNullOrEmpty(firstPhoto.ProjectPath)
-            ? null
-            : Path.Combine(firstPhoto.ProjectPath, firstPhoto.RelativePath);
-
-        var env = await _envService.FetchAsync(path, page.Date);
-        if (env == null)
+        IsRefreshingEnvironment = true;
+        try
         {
-            StatusMessage = "未找到 GPS 或网络异常";
-            return;
-        }
+            var photos = await _mediaRepo.GetBySessionAsync(page.SessionId, SortMode.TimeAsc, limit: 5);
+            if (photos.Count == 0) return;
 
-        // 更新 page 显示
-        if (!string.IsNullOrEmpty(env.Location))
-        {
-            page.Location = env.Location;
-        }
-        if (env.Weather != null)
-        {
-            page.WeatherText = env.Weather.CloudCover;
-            page.WeatherIconKey = WeatherCoverToIconKey(env.Weather.CloudCover);
-        }
+            var firstPhoto = photos[0];
+            var path = string.IsNullOrEmpty(firstPhoto.RelativePath) || string.IsNullOrEmpty(firstPhoto.ProjectPath)
+                ? null
+                : Path.Combine(firstPhoto.ProjectPath, firstPhoto.RelativePath);
 
-        // 持久化到 session
-        var session = await _sessionRepo.GetByIdAsync(page.SessionId);
-        if (session != null)
-        {
-            if (!string.IsNullOrEmpty(env.Location)) session.Location = env.Location;
-            if (env.Weather != null) session.CloudCover = env.Weather.CloudCover;
-            await _sessionRepo.UpsertAsync(session);
-        }
+            var env = await _envService.FetchAsync(path, page.Date);
+            if (env == null)
+            {
+                StatusMessage = "未找到 GPS 或网络异常";
+                return;
+            }
 
-        StatusMessage = "环境数据已更新";
+            // 更新 page 显示
+            if (!string.IsNullOrEmpty(env.Location))
+            {
+                page.Location = env.Location;
+            }
+            if (env.Weather != null)
+            {
+                page.WeatherText = env.Weather.CloudCover;
+                page.WeatherIconKey = WeatherCoverToIconKey(env.Weather.CloudCover);
+            }
+
+            // 持久化到 session
+            var session = await _sessionRepo.GetByIdAsync(page.SessionId);
+            if (session != null)
+            {
+                if (!string.IsNullOrEmpty(env.Location)) session.Location = env.Location;
+                if (env.Weather != null) session.CloudCover = env.Weather.CloudCover;
+                await _sessionRepo.UpsertAsync(session);
+            }
+
+            StatusMessage = "环境数据已更新";
+        }
+        finally
+        {
+            IsRefreshingEnvironment = false;
+        }
     }
 
     // === 内部 ===
@@ -300,17 +321,25 @@ public partial class DiaryViewModel : ObservableObject
     private void RebuildTimelineDots()
     {
         TimelineDots.Clear();
+        var accentBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(0x4F, 0xC3, 0xF7));
+        // 非当前节点使用更亮的灰色，确保在深色背景下可见
+        var defaultLabelBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(0xB0, 0xB8, 0xD0));
+
         for (int i = 0; i < AllPages.Count; i++)
         {
             var page = AllPages[i];
+            var isCurrent = i == CurrentPageIndex;
+            // 默认全部显示日期标签，节点密集时由 ScrollViewer 横向滚动承载
             TimelineDots.Add(new TimelineDot
             {
                 Index = i,
-                IsCurrent = i == CurrentPageIndex,
+                IsCurrent = isCurrent,
                 TooltipText = $"{page.Date:yyyy-MM-dd} · {page.Title}",
-                DotBrush = i == CurrentPageIndex
-                    ? new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(0x4F, 0xC3, 0xF7))
-                    : null,  // null → 走 XAML FallbackValue
+                DateLabel = page.Date.ToString("MM/dd"),
+                ShowDateLabel = true,
+                DotSize = isCurrent ? 14 : 10,
+                DotBrush = isCurrent ? accentBrush : null,  // null → 走 XAML FallbackValue
+                LabelForeground = isCurrent ? accentBrush : defaultLabelBrush,
                 NavigateToPageCommand = NavigateToPageCommand,
             });
         }
@@ -327,6 +356,7 @@ public partial class DiaryViewModel : ObservableObject
         try
         {
             // 1. 加载精选照片
+            const int DisplayedLimit = 6;
             var featured = await _mediaRepo.GetDiaryFeaturedAsync(page.SessionId, limit: 12, ct);
             if (featured.Count == 0)
             {
@@ -334,13 +364,31 @@ public partial class DiaryViewModel : ObservableObject
                 featured = await AutoSelectFeaturedAsync(page.SessionId, 12, ct);
             }
             page.FeaturedPhotos = featured;
+            page.DisplayedFeaturedPhotos = featured
+                .Take(DisplayedLimit)
+                .Select((photo, i) => new FeaturedPhotoItem
+                {
+                    Photo = photo,
+                    Index = i + 1,
+                    TimeText = photo.ShotAtDateTime?.ToLocalTime().ToString("HH:mm") ?? "",
+                })
+                .ToList();
+            page.HiddenFeaturedCount = Math.Max(0, featured.Count - DisplayedLimit);
+            page.HasMoreFeaturedPhotos = page.HiddenFeaturedCount > 0;
 
             // 2. 加载统计
             var stats = await _mediaRepo.GetSessionStatsAsync(page.SessionId, ct);
             page.TotalPhotoCount = stats.TotalPhotos;
             page.TargetCount = stats.TargetCount;
+            page.TotalExposureHours = stats.TotalExposureHours;
             page.TotalExposureText = FormatExposureHours(stats.TotalExposureHours);
             page.TopTags = stats.TopTags;
+            page.TargetLabelsText = stats.TopTags.Count > 0
+                ? string.Join(" / ", stats.TopTags)
+                : "";
+
+            // 初始化笔记字数（已有内容时）
+            page.NotesCharacterCount = page.Notes?.Length ?? 0;
 
             // 3. 环境数据为空时尝试异步获取（不影响手动输入）
             if (string.IsNullOrEmpty(page.Location) || string.IsNullOrEmpty(page.WeatherText))
@@ -462,9 +510,10 @@ public partial class DiaryViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void NavigateToDate(DateTime date)
+    private void NavigateToDate(DateTime? date)
     {
-        NavigateToGalleryDate?.Invoke(date);
+        if (date.HasValue)
+            NavigateToGalleryDate?.Invoke(date.Value);
     }
 
     [RelayCommand]

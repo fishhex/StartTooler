@@ -12,29 +12,85 @@
             BorderBrush="{DynamicResource Bg.Divider}"
             BorderThickness="0,1,0,0"
             Padding="20,12">
-        <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Disabled">
-            <ItemsControl ItemsSource="{Binding TimelineDots}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal" Spacing="6"/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="models:TimelineDot">
-                        <Button Classes="timeline-dot"
-                                Command="{Binding NavigateToPageCommand}"
-                                CommandParameter="{Binding Index}"
-                                Width="14" Height="14"
-                                Padding="0"
-                                Background="Transparent"
-                                ToolTip.Tip="{Binding TooltipText}">
-                            <Ellipse Width="10" Height="10"
-                                     Fill="{Binding DotBrush, FallbackValue={DynamicResource Text.Tertiary}}"/>
-                        </Button>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
+        <Grid RowDefinitions="Auto,Auto">
+
+            <!-- 标题行：时间轴信息 + 翻页按钮 -->
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal" Spacing="8"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="时间轴"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text.Primary}"/>
+                    <TextBlock Text="{Binding AllPages.Count, StringFormat='全部会话 {0}个'}"
+                               FontSize="12"
+                               Foreground="{DynamicResource Text.Tertiary}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal" Spacing="6"
+                            VerticalAlignment="Center">
+                    <Button Classes="secondary-button"
+                            Command="{Binding NavigatePrevCommand}"
+                            IsEnabled="{Binding HasPrev}"
+                            Width="28" Height="28"
+                            Padding="0"
+                            ToolTip.Tip="上一页">
+                        <Path Data="{DynamicResource Icon.ChevronLeft}"
+                              Width="14" Height="14"
+                              Fill="{DynamicResource Text.Secondary}"
+                              Stretch="Uniform"/>
+                    </Button>
+                    <Button Classes="secondary-button"
+                            Command="{Binding NavigateNextCommand}"
+                            IsEnabled="{Binding HasNext}"
+                            Width="28" Height="28"
+                            Padding="0"
+                            ToolTip.Tip="下一页">
+                        <Path Data="{DynamicResource Icon.ChevronRight}"
+                              Width="14" Height="14"
+                              Fill="{DynamicResource Text.Secondary}"
+                              Stretch="Uniform"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- 时间轴节点 -->
+            <ScrollViewer Grid.Row="1"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding TimelineDots}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="12"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="models:TimelineDot">
+                            <Button Background="Transparent"
+                                    BorderThickness="0"
+                                    Padding="0"
+                                    Command="{Binding NavigateToPageCommand}"
+                                    CommandParameter="{Binding Index}"
+                                    ToolTip.Tip="{Binding TooltipText}">
+                                <StackPanel Spacing="4" Width="32">
+                                    <Ellipse Width="{Binding DotSize}"
+                                             Height="{Binding DotSize}"
+                                             Fill="{Binding DotBrush, FallbackValue={x:Static Brushes.Gray}}"
+                                             HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding DateLabel}"
+                                               FontSize="10"
+                                               Foreground="{Binding LabelForeground, FallbackValue={x:Static Brushes.Gray}}"
+                                               HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+        </Grid>
     </Border>
 </UserControl>
