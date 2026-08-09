@@ -316,6 +316,51 @@ public partial class DiaryViewModel : ObservableObject
         }
     }
 
+    // === 标题编辑 ===
+
+    [RelayCommand]
+    private void EditTitle()
+    {
+        var page = CurrentPage;
+        if (page == null) return;
+        page.EditableTitle = page.Title;
+        page.IsEditingTitle = true;
+    }
+
+    [RelayCommand]
+    private async Task SaveTitleAsync()
+    {
+        var page = CurrentPage;
+        if (page == null) return;
+
+        var newTitle = page.EditableTitle?.Trim() ?? "";
+        page.IsEditingTitle = false;
+
+        if (newTitle == page.Title) return;
+
+        try
+        {
+            var session = await _sessionRepo.GetByIdAsync(page.SessionId);
+            if (session == null) return;
+            session.Title = newTitle;
+            await _sessionRepo.UpsertAsync(session);
+            page.Title = newTitle;
+            StatusMessage = "标题已保存";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"标题保存失败：{ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void CancelEditTitle()
+    {
+        var page = CurrentPage;
+        if (page == null) return;
+        page.IsEditingTitle = false;
+    }
+
     // === 地点编辑 ===
 
     [RelayCommand]

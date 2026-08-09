@@ -89,4 +89,34 @@ public partial class DiaryPage : UserControl
 
         await vm.OpenWeatherPickerCommand.ExecuteAsync(null);
     }
+
+    /// <summary>
+    /// 标题 TextBox 失焦时保存。
+    /// </summary>
+    private void OnTitleLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is DiaryViewModel vm)
+        {
+            _ = vm.SaveTitleCommand.ExecuteAsync(null);
+        }
+    }
+
+    /// <summary>
+    /// 标题编辑框按 Enter 保存、按 Esc 取消。
+    /// </summary>
+    private void OnTitleKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (DataContext is not DiaryViewModel vm || sender is not TextBox tb) return;
+
+        if (e.Key == Key.Enter)
+        {
+            _ = vm.SaveTitleCommand.ExecuteAsync(null);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            vm.CancelEditTitleCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
 }

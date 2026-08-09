@@ -32,6 +32,11 @@ public sealed partial class DiaryPageData : ObservableObject
             OnPropertyChanged(new PropertyChangedEventArgs(nameof(IsPeriodDisplayVisible)));
             OnPropertyChanged(new PropertyChangedEventArgs(nameof(IsPeriodEditVisible)));
         }
+        if (e.PropertyName is nameof(IsEditingTitle))
+        {
+            OnPropertyChanged(new PropertyChangedEventArgs(nameof(IsTitleDisplayVisible)));
+            OnPropertyChanged(new PropertyChangedEventArgs(nameof(IsTitleEditVisible)));
+        }
     }
 
     [ObservableProperty]
@@ -40,6 +45,20 @@ public sealed partial class DiaryPageData : ObservableObject
     /// <summary>标题（默认 "{date} 出摊"，可手动改）。</summary>
     [ObservableProperty]
     private string _title = "";
+
+    /// <summary>是否正在编辑标题。</summary>
+    [ObservableProperty]
+    private bool _isEditingTitle;
+
+    /// <summary>标题编辑框中的临时文本。</summary>
+    [ObservableProperty]
+    private string _editableTitle = "";
+
+    /// <summary>标题展示态是否可见。</summary>
+    public bool IsTitleDisplayVisible => !IsEditingTitle;
+
+    /// <summary>标题编辑态是否可见。</summary>
+    public bool IsTitleEditVisible => IsEditingTitle;
 
     /// <summary>会话起始日期（本地时间）。</summary>
     [ObservableProperty]
@@ -69,8 +88,10 @@ public sealed partial class DiaryPageData : ObservableObject
     [ObservableProperty]
     private DateTime _endTime;
 
-    /// <summary>时段展示文本，例如 "20:30-21:50"。</summary>
-    public string PeriodText => $"{StartTime:HH:mm}-{EndTime:HH:mm}";
+    /// <summary>时段展示文本，例如 "20:30-21:50"，跨天时追加 (+1)。</summary>
+    public string PeriodText => StartTime.Date == EndTime.Date
+        ? $"{StartTime:HH:mm}-{EndTime:HH:mm}"
+        : $"{StartTime:HH:mm}-{EndTime:HH:mm}(+1)";
 
     /// <summary>是否正在编辑时段。</summary>
     [ObservableProperty]

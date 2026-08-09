@@ -22,12 +22,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Border Background="{DynamicResource Bg.Surface}"
-            BorderBrush="{DynamicResource Bg.Divider}"
-            BorderThickness="1"
-            CornerRadius="8"
-            Padding="32">
-        <StackPanel Spacing="20">
+    <StackPanel Spacing="20" Margin="32">
 
             <!-- 头部 -->
             <Grid ColumnDefinitions="*,Auto">
@@ -73,6 +68,61 @@
                         </StackPanel>
                     </Button>
 
+                    <!-- 标题 -->
+                    <!-- 标题展示 -->
+                    <Button Command="{Binding EditTitleCommand}"
+                            Padding="0" Background="Transparent" BorderThickness="0"
+                            HorizontalAlignment="Left"
+                            IsVisible="{Binding CurrentPage.IsTitleDisplayVisible}">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock Text="{Binding CurrentPage.Title}"
+                                       FontSize="14"
+                                       Foreground="{DynamicResource Text.Secondary}"
+                                       VerticalAlignment="Center"/>
+                            <Path Data="{DynamicResource Icon.Edit}" Width="12" Height="12"
+                                  Fill="{DynamicResource Text.Tertiary}" Stretch="Uniform"
+                                  VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 标题编辑 -->
+                    <StackPanel Orientation="Horizontal" Spacing="4"
+                                IsVisible="{Binding CurrentPage.IsTitleEditVisible}">
+                        <TextBox x:Name="TitleTextBox"
+                                 Text="{Binding CurrentPage.EditableTitle, Mode=TwoWay}"
+                                 FontSize="14"
+                                 Foreground="{DynamicResource Text.Primary}"
+                                 Background="{DynamicResource Bg.Outer}"
+                                 BorderBrush="{DynamicResource Bg.Divider}"
+                                 CornerRadius="4"
+                                 Padding="8,4"
+                                 MinWidth="200"
+                                 CaretBrush="{DynamicResource Text.Primary}"
+                                 LostFocus="OnTitleLostFocus"
+                                 KeyDown="OnTitleKeyDown"/>
+                        <Button Command="{Binding SaveTitleCommand}"
+                                Padding="4,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                VerticalAlignment="Center">
+                            <Path Data="{DynamicResource Icon.Check}"
+                                  Width="14" Height="14"
+                                  Stroke="{DynamicResource Text.Secondary}"
+                                  StrokeThickness="2"
+                                  Stretch="Uniform"/>
+                        </Button>
+                        <Button Command="{Binding CancelEditTitleCommand}"
+                                Padding="4,2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                VerticalAlignment="Center">
+                            <Path Data="{DynamicResource Icon.X}"
+                                  Width="14" Height="14"
+                                  Fill="{DynamicResource Text.Tertiary}"
+                                  Stretch="Uniform"/>
+                        </Button>
+                    </StackPanel>
+
                     <!-- 星期 · 农历 -->
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <TextBlock Text="{Binding CurrentPage.WeekdayText}"
@@ -85,11 +135,6 @@
                                    FontSize="13"
                                    Foreground="{DynamicResource Text.Secondary}"/>
                     </StackPanel>
-
-                    <!-- 标题 -->
-                    <TextBlock Text="{Binding CurrentPage.Title}"
-                               FontSize="14"
-                               Foreground="{DynamicResource Text.Secondary}"/>
 
                     <!-- 天气 + 地点 胶囊 -->
                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
@@ -194,46 +239,8 @@
                 <StackPanel Grid.Column="1"
                             Width="200"
                             Margin="24,0,0,0"
-                            VerticalAlignment="Bottom"
+                            VerticalAlignment="Top"
                             Spacing="16">
-                    <StackPanel Orientation="Horizontal" Spacing="24">
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="拍摄张数"
-                                       FontSize="11"
-                                       Foreground="{DynamicResource Text.Tertiary}"/>
-                            <StackPanel Orientation="Horizontal" Spacing="2"
-                                        VerticalAlignment="Bottom">
-                                <TextBlock Text="{Binding CurrentPage.TotalPhotoCount}"
-                                           FontSize="24"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Text.Primary}"/>
-                                <TextBlock Text="张"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource Text.Tertiary}"
-                                           VerticalAlignment="Bottom"
-                                           Margin="0,0,0,4"/>
-                            </StackPanel>
-                        </StackPanel>
-
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="目标数"
-                                       FontSize="11"
-                                       Foreground="{DynamicResource Text.Tertiary}"/>
-                            <StackPanel Orientation="Horizontal" Spacing="2"
-                                        VerticalAlignment="Bottom">
-                                <TextBlock Text="{Binding CurrentPage.TargetCount}"
-                                           FontSize="24"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Text.Primary}"/>
-                                <TextBlock Text="个"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource Text.Tertiary}"
-                                           VerticalAlignment="Bottom"
-                                           Margin="0,0,0,4"/>
-                            </StackPanel>
-                        </StackPanel>
-                    </StackPanel>
-
                     <StackPanel Spacing="4">
                         <TextBlock Text="时段"
                                    FontSize="11"
@@ -288,6 +295,44 @@
                                       Fill="{DynamicResource Text.Tertiary}"
                                       Stretch="Uniform"/>
                             </Button>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="24">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="照片"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Text.Tertiary}"/>
+                            <StackPanel Orientation="Horizontal" Spacing="2"
+                                        VerticalAlignment="Bottom">
+                                <TextBlock Text="{Binding CurrentPage.TotalPhotoCount}"
+                                           FontSize="24"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text.Primary}"/>
+                                <TextBlock Text="张"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource Text.Tertiary}"
+                                           VerticalAlignment="Bottom"
+                                           Margin="0,0,0,4"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="目标"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Text.Tertiary}"/>
+                            <StackPanel Orientation="Horizontal" Spacing="2"
+                                        VerticalAlignment="Bottom">
+                                <TextBlock Text="{Binding CurrentPage.TargetCount}"
+                                           FontSize="24"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text.Primary}"/>
+                                <TextBlock Text="个"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource Text.Tertiary}"
+                                           VerticalAlignment="Bottom"
+                                           Margin="0,0,0,4"/>
+                            </StackPanel>
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
@@ -518,5 +563,4 @@
             </StackPanel>
 
         </StackPanel>
-    </Border>
 </UserControl>
