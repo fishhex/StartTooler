@@ -30,212 +30,267 @@
         <StackPanel Spacing="20">
 
             <!-- 头部 -->
-            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+            <Grid ColumnDefinitions="*,Auto">
 
-                <!-- 面包屑 -->
-                <StackPanel Grid.Row="0" Grid.Column="0"
-                            Orientation="Horizontal" Spacing="6"
-                            VerticalAlignment="Center">
-                    <TextBlock Text="DIARY"
-                               FontSize="11"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource Text.Tertiary}"/>
-                    <TextBlock Text="·"
-                               FontSize="11"
-                               Foreground="{DynamicResource Text.Tertiary}"/>
-                    <TextBlock Text="{Binding CurrentPage.WeekLabel}"
-                               FontSize="11"
-                               Foreground="{DynamicResource Text.Tertiary}"/>
-                </StackPanel>
+                <!-- 左侧：日期、星期、标题、目标标签、天气/地点 -->
+                <StackPanel Grid.Column="0" Spacing="8">
 
-                <!-- 操作按钮 -->
-                <StackPanel Grid.Row="0" Grid.Column="1"
-                            Orientation="Horizontal" Spacing="8"
-                            VerticalAlignment="Center">
-                    <Button Classes="secondary-button"
-                            Command="{Binding RefreshEnvironmentCommand}"
-                            IsEnabled="{Binding IsRefreshingEnvironment, Converter={x:Static BoolConverters.Not}}"
-                            ToolTip.Tip="从首张照片 GPS 重新获取地点和天气">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Path Data="{DynamicResource Icon.Refresh}" Width="12" Height="12"
-                                  Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
-                            <TextBlock Text="刷新环境" FontSize="12"/>
-                        </StackPanel>
-                    </Button>
-                    <Button Classes="danger-button"
-                            Command="{Binding DeleteCurrentSessionCommand}"
-                            ToolTip.Tip="删除整个会话（其下照片 session_id 会被清空）">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Path Data="{DynamicResource Icon.Trash}" Width="12" Height="12"
-                                  Fill="{DynamicResource State.Danger}" Stretch="Uniform"/>
-                            <TextBlock Text="删除会话" FontSize="12"/>
-                        </StackPanel>
-                    </Button>
-                </StackPanel>
-
-                <!-- 大日期 -->
-                <Button Grid.Row="1" Grid.Column="0"
-                        Padding="0" Background="Transparent" BorderThickness="0"
-                        HorizontalAlignment="Left"
-                        Command="{Binding NavigateToDateCommand}"
-                        CommandParameter="{Binding CurrentPage.Date}"
-                        ToolTip.Tip="在媒体库中查看这一天"
-                        Margin="0,8,0,0">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
-                        <TextBlock Text="{Binding CurrentPage.Date, StringFormat='{}{0:MM}'}"
-                                   FontSize="64"
-                                   FontWeight="Bold"
-                                   Foreground="{DynamicResource Text.Primary}"
-                                   LineHeight="64"/>
-                        <TextBlock Text=" "
-                                   FontSize="64"
-                                   LineHeight="64"/>
-                        <TextBlock Text="{Binding CurrentPage.Date, StringFormat='{}{0:dd}'}"
-                                   FontSize="64"
-                                   FontWeight="Bold"
-                                   Foreground="{DynamicResource Text.Primary}"
-                                   LineHeight="64"/>
+                    <!-- 面包屑 -->
+                    <StackPanel Orientation="Horizontal" Spacing="6"
+                                VerticalAlignment="Center">
+                        <TextBlock Text="DIARY"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Tertiary}"/>
+                        <TextBlock Text="·"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text.Tertiary}"/>
+                        <TextBlock Text="{Binding CurrentPage.WeekLabel}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text.Tertiary}"/>
                     </StackPanel>
-                </Button>
 
-                <!-- 时长 -->
-                <TextBlock Grid.Row="1" Grid.Column="1"
-                           Text="{Binding CurrentPage.DurationText}"
-                           FontSize="24"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource Text.Primary}"
-                           VerticalAlignment="Bottom"
-                           HorizontalAlignment="Right"
-                           Margin="0,0,0,8"/>
+                    <!-- 大日期 -->
+                    <Button Padding="0" Background="Transparent" BorderThickness="0"
+                            HorizontalAlignment="Left"
+                            Command="{Binding NavigateToDateCommand}"
+                            CommandParameter="{Binding CurrentPage.Date}"
+                            ToolTip.Tip="在媒体库中查看这一天">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
+                            <TextBlock Text="{Binding CurrentPage.Date, StringFormat='{}{0:MM}'}"
+                                       FontSize="64"
+                                       FontWeight="Bold"
+                                       Foreground="{DynamicResource Text.Primary}"
+                                       LineHeight="64"/>
+                            <TextBlock Text=" "
+                                       FontSize="64"
+                                       LineHeight="64"/>
+                            <TextBlock Text="{Binding CurrentPage.Date, StringFormat='{}{0:dd}'}"
+                                       FontSize="64"
+                                       FontWeight="Bold"
+                                       Foreground="{DynamicResource Text.Primary}"
+                                       LineHeight="64"/>
+                        </StackPanel>
+                    </Button>
 
-                <!-- 星期 · 农历 -->
-                <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
-                            Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
-                    <TextBlock Text="{Binding CurrentPage.WeekdayText}"
-                               FontSize="13"
+                    <!-- 星期 · 农历 -->
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="{Binding CurrentPage.WeekdayText}"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource Text.Secondary}"/>
+                        <TextBlock Text="·"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource Text.Tertiary}"/>
+                        <TextBlock Text="{Binding CurrentPage.LunarDateText}"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource Text.Secondary}"/>
+                    </StackPanel>
+
+                    <!-- 标题 -->
+                    <TextBlock Text="{Binding CurrentPage.Title}"
+                               FontSize="14"
                                Foreground="{DynamicResource Text.Secondary}"/>
-                    <TextBlock Text="·"
-                               FontSize="13"
-                               Foreground="{DynamicResource Text.Tertiary}"/>
-                    <TextBlock Text="{Binding CurrentPage.LunarDateText}"
-                               FontSize="13"
-                               Foreground="{DynamicResource Text.Secondary}"/>
-                </StackPanel>
 
-                <!-- 标题 -->
-                <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="{Binding CurrentPage.Title}"
-                           FontSize="14"
-                           Foreground="{DynamicResource Text.Secondary}"
-                           Margin="0,4,0,0"/>
+                    <!-- 天气 + 地点 胶囊 -->
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                        <!-- 天气胶囊：显示 -->
+                        <Border Background="{DynamicResource Bg.Outer}"
+                                CornerRadius="12"
+                                Padding="8,4"
+                                IsVisible="{Binding CurrentPage.WeatherText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                            <Button Click="OnWeatherEditClick"
+                                    Padding="0" Background="Transparent" BorderThickness="0">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <Path Width="14" Height="14"
+                                          Data="{Binding CurrentPage.WeatherIconKey, Converter={StaticResource StringToResource}}"
+                                          Fill="{DynamicResource Text.Secondary}"
+                                          Stretch="Uniform"
+                                          IsVisible="{Binding CurrentPage.WeatherIconKey, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    <TextBlock Text="{Binding CurrentPage.WeatherText}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Text.Secondary}"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </Border>
 
-                <!-- 目标标签 -->
-                <TextBlock Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="{Binding CurrentPage.TargetLabelsText}"
-                           FontSize="13"
-                           Foreground="{DynamicResource Text.Tertiary}"
-                           Margin="0,8,0,0"
-                           IsVisible="{Binding CurrentPage.TargetLabelsText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-
-                <!-- 天气 + 地点 胶囊 -->
-                <StackPanel Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2"
-                            Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
-                    <!-- 天气胶囊：显示 -->
-                    <Border Background="{DynamicResource Bg.Outer}"
-                            CornerRadius="12"
-                            Padding="8,4"
-                            IsVisible="{Binding CurrentPage.WeatherText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <!-- 添加天气按钮 -->
                         <Button Click="OnWeatherEditClick"
-                                Padding="0" Background="Transparent" BorderThickness="0">
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <Path Width="14" Height="14"
-                                      Data="{Binding CurrentPage.WeatherIconKey, Converter={StaticResource StringToResource}}"
-                                      Fill="{DynamicResource Text.Secondary}"
-                                      Stretch="Uniform"
-                                      IsVisible="{Binding CurrentPage.WeatherIconKey, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                <TextBlock Text="{Binding CurrentPage.WeatherText}"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource Text.Secondary}"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
+                                Padding="0" Background="Transparent" BorderThickness="0"
+                                IsVisible="{Binding CurrentPage.WeatherText, Converter={x:Static StringConverters.IsNullOrEmpty}}">
+                            <Border Background="{DynamicResource Bg.Outer}"
+                                    CornerRadius="12"
+                                    Padding="8,4">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <Path Data="{DynamicResource Icon.CloudSun}" Width="14" Height="14"
+                                          Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
+                                    <TextBlock Text="添加天气"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Text.Secondary}"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
                         </Button>
-                    </Border>
 
-                    <!-- 添加天气按钮 -->
-                    <Button Click="OnWeatherEditClick"
-                            Padding="0" Background="Transparent" BorderThickness="0"
-                            IsVisible="{Binding CurrentPage.WeatherText, Converter={x:Static StringConverters.IsNullOrEmpty}}">
+                        <!-- 地点胶囊：显示 -->
                         <Border Background="{DynamicResource Bg.Outer}"
                                 CornerRadius="12"
-                                Padding="8,4">
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <Path Data="{DynamicResource Icon.CloudSun}" Width="14" Height="14"
-                                      Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
-                                <TextBlock Text="添加天气"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource Text.Secondary}"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
+                                Padding="8,4"
+                                IsVisible="{Binding CurrentPage.IsLocationDisplayVisible}">
+                            <Button Click="OnLocationEditClick"
+                                    Padding="0" Background="Transparent" BorderThickness="0">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <Path Data="{DynamicResource Icon.Globe}" Width="12" Height="12"
+                                          Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
+                                    <TextBlock Text="{Binding CurrentPage.Location}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Text.Secondary}"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
                         </Border>
-                    </Button>
 
-                    <!-- 地点胶囊：显示 -->
-                    <Border Background="{DynamicResource Bg.Outer}"
-                            CornerRadius="12"
-                            Padding="8,4"
-                            IsVisible="{Binding CurrentPage.IsLocationDisplayVisible}">
+                        <!-- 地点编辑框 -->
+                        <Border Background="{DynamicResource Bg.Outer}"
+                                CornerRadius="12"
+                                Padding="8,4"
+                                IsVisible="{Binding CurrentPage.IsLocationEditVisible}">
+                            <TextBox x:Name="LocationTextBox"
+                                     Text="{Binding CurrentPage.EditableLocation, Mode=TwoWay}"
+                                     FontSize="12"
+                                     Background="Transparent"
+                                     BorderBrush="{DynamicResource Text.Secondary}"
+                                     BorderThickness="0,0,0,1"
+                                     Padding="8,0"
+                                     VerticalAlignment="Center"
+                                     VerticalContentAlignment="Center"
+                                     MinWidth="80"
+                                     CaretBrush="{DynamicResource Text.Primary}"
+                                     LostFocus="OnLocationLostFocus"
+                                     KeyDown="OnLocationKeyDown"/>
+                        </Border>
+
+                        <!-- 添加地点按钮 -->
                         <Button Click="OnLocationEditClick"
-                                Padding="0" Background="Transparent" BorderThickness="0">
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <Path Data="{DynamicResource Icon.Globe}" Width="12" Height="12"
-                                      Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
-                                <TextBlock Text="{Binding CurrentPage.Location}"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource Text.Secondary}"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
+                                Padding="0" Background="Transparent" BorderThickness="0"
+                                IsVisible="{Binding CurrentPage.IsAddLocationVisible}">
+                            <Border Background="{DynamicResource Bg.Outer}"
+                                    CornerRadius="12"
+                                    Padding="8,4">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <Path Data="{DynamicResource Icon.Globe}" Width="12" Height="12"
+                                          Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
+                                    <TextBlock Text="添加地点"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Text.Secondary}"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
                         </Button>
-                    </Border>
-
-                    <!-- 地点编辑框 -->
-                    <Border Background="{DynamicResource Bg.Outer}"
-                            CornerRadius="12"
-                            Padding="8,4"
-                            IsVisible="{Binding CurrentPage.IsLocationEditVisible}">
-                        <TextBox x:Name="LocationTextBox"
-                                 Text="{Binding CurrentPage.EditableLocation, Mode=TwoWay}"
-                                 FontSize="12"
-                                 Background="Transparent"
-                                 BorderBrush="{DynamicResource Text.Secondary}"
-                                 BorderThickness="0,0,0,1"
-                                 Padding="8,0"
-                                 VerticalAlignment="Center"
-                                 VerticalContentAlignment="Center"
-                                 MinWidth="80"
-                                 CaretBrush="{DynamicResource Text.Primary}"
-                                 LostFocus="OnLocationLostFocus"
-                                 KeyDown="OnLocationKeyDown"/>
-                    </Border>
-
-                    <!-- 添加地点按钮 -->
-                    <Button Click="OnLocationEditClick"
-                            Padding="0" Background="Transparent" BorderThickness="0"
-                            IsVisible="{Binding CurrentPage.IsAddLocationVisible}">
-                        <Border Background="{DynamicResource Bg.Outer}"
-                                CornerRadius="12"
-                                Padding="8,4">
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <Path Data="{DynamicResource Icon.Globe}" Width="12" Height="12"
-                                      Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
-                                <TextBlock Text="添加地点"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource Text.Secondary}"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
-                    </Button>
+                    </StackPanel>
                 </StackPanel>
 
+                <!-- 右侧：核心统计 -->
+                <StackPanel Grid.Column="1"
+                            Width="200"
+                            Margin="24,0,0,0"
+                            VerticalAlignment="Bottom"
+                            Spacing="16">
+                    <StackPanel Orientation="Horizontal" Spacing="24">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="拍摄张数"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Text.Tertiary}"/>
+                            <StackPanel Orientation="Horizontal" Spacing="2"
+                                        VerticalAlignment="Bottom">
+                                <TextBlock Text="{Binding CurrentPage.TotalPhotoCount}"
+                                           FontSize="24"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text.Primary}"/>
+                                <TextBlock Text="张"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource Text.Tertiary}"
+                                           VerticalAlignment="Bottom"
+                                           Margin="0,0,0,4"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="目标数"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Text.Tertiary}"/>
+                            <StackPanel Orientation="Horizontal" Spacing="2"
+                                        VerticalAlignment="Bottom">
+                                <TextBlock Text="{Binding CurrentPage.TargetCount}"
+                                           FontSize="24"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text.Primary}"/>
+                                <TextBlock Text="个"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource Text.Tertiary}"
+                                           VerticalAlignment="Bottom"
+                                           Margin="0,0,0,4"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="时段"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text.Tertiary}"/>
+
+                        <!-- 时段展示 -->
+                        <Button Command="{Binding EditPeriodCommand}"
+                                Padding="0" Background="Transparent" BorderThickness="0"
+                                IsVisible="{Binding CurrentPage.IsPeriodDisplayVisible}">
+                            <TextBlock Text="{Binding CurrentPage.PeriodText}"
+                                       FontSize="24"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Accent.Stellar}"/>
+                        </Button>
+
+                        <!-- 时段编辑 -->
+                        <StackPanel Orientation="Horizontal" Spacing="4"
+                                    VerticalAlignment="Bottom"
+                                    IsVisible="{Binding CurrentPage.IsPeriodEditVisible}">
+                            <TextBox Text="{Binding CurrentPage.EditableStartTime, Mode=TwoWay}"
+                                     Watermark="开始"
+                                     FontSize="16"
+                                     Width="56"
+                                     VerticalAlignment="Center"/>
+                            <TextBlock Text="-"
+                                       FontSize="16"
+                                       Foreground="{DynamicResource Text.Tertiary}"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Text="{Binding CurrentPage.EditableEndTime, Mode=TwoWay}"
+                                     Watermark="结束"
+                                     FontSize="16"
+                                     Width="56"
+                                     VerticalAlignment="Center"/>
+                            <Button Command="{Binding SavePeriodCommand}"
+                                    Padding="4,2"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    VerticalAlignment="Center">
+                                <Path Data="{DynamicResource Icon.Check}"
+                                      Width="14" Height="14"
+                                      Stroke="{DynamicResource Text.Secondary}"
+                                      StrokeThickness="2"
+                                      Stretch="Uniform"/>
+                            </Button>
+                            <Button Command="{Binding CancelEditPeriodCommand}"
+                                    Padding="4,2"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    VerticalAlignment="Center">
+                                <Path Data="{DynamicResource Icon.X}"
+                                      Width="14" Height="14"
+                                      Fill="{DynamicResource Text.Tertiary}"
+                                      Stretch="Uniform"/>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
             </Grid>
 
             <Border Height="1" Background="{DynamicResource Bg.Divider}"/>
@@ -312,7 +367,7 @@
                                         </Border>
                                         <!-- 编号 -->
                                         <Border HorizontalAlignment="Left" VerticalAlignment="Top"
-                                                Background="#80000000"
+                                                Background="{DynamicResource Overlay.PhotoBadge}"
                                                 CornerRadius="8,0,8,0"
                                                 Padding="6,4">
                                             <TextBlock Text="{Binding IndexText}"
@@ -322,7 +377,7 @@
                                         </Border>
                                         <!-- 时间戳 -->
                                         <Border HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                                Background="#80000000"
+                                                Background="{DynamicResource Overlay.PhotoBadge}"
                                                 CornerRadius="8,0,8,0"
                                                 Padding="6,4"
                                                 IsVisible="{Binding TimeText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
@@ -337,7 +392,7 @@
                                                 Margin="4"
                                                 Width="24" Height="24"
                                                 Padding="0"
-                                                Background="#CC000000"
+                                                Background="{DynamicResource Overlay.PhotoBadgeStrong}"
                                                 BorderThickness="0"
                                                 CornerRadius="12"
                                                 Opacity="0"
@@ -429,87 +484,38 @@
 
             <Border Height="1" Background="{DynamicResource Bg.Divider}"/>
 
-            <!-- 统计条 -->
-            <Grid ColumnDefinitions="*,*,*,*">
-                <StackPanel Grid.Column="0" Spacing="4">
-                    <TextBlock Text="拍摄张数"
-                               FontSize="11"
-                               Foreground="{DynamicResource Text.Tertiary}"/>
-                    <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Bottom">
-                        <TextBlock Text="{Binding CurrentPage.TotalPhotoCount}"
-                                   FontSize="24"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource Text.Primary}"/>
-                        <TextBlock Text="张"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource Text.Tertiary}"
-                                   VerticalAlignment="Bottom"
-                                   Margin="0,0,0,4"/>
-                    </StackPanel>
-                </StackPanel>
-                <StackPanel Grid.Column="1" Spacing="4">
-                    <TextBlock Text="目标数"
-                               FontSize="11"
-                               Foreground="{DynamicResource Text.Tertiary}"/>
-                    <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Bottom">
-                        <TextBlock Text="{Binding CurrentPage.TargetCount}"
-                                   FontSize="24"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource Text.Primary}"/>
-                        <TextBlock Text="个"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource Text.Tertiary}"
-                                   VerticalAlignment="Bottom"
-                                   Margin="0,0,0,4"/>
-                    </StackPanel>
-                </StackPanel>
-                <StackPanel Grid.Column="2" Spacing="4">
-                    <TextBlock Text="累计曝光"
-                               FontSize="11"
-                               Foreground="{DynamicResource Text.Tertiary}"/>
-                    <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Bottom">
-                        <TextBlock Text="{Binding CurrentPage.TotalExposureHours, StringFormat='{}{0:F1}'}"
-                                   FontSize="24"
-                                   FontWeight="SemiBold"
-                                   Foreground="#4FC3F7"/>
-                        <TextBlock Text="h"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource Text.Tertiary}"
-                                   VerticalAlignment="Bottom"
-                                   Margin="0,0,0,4"/>
-                    </StackPanel>
-                </StackPanel>
-                <StackPanel Grid.Column="3" Spacing="4">
-                    <TextBlock Text="常用标签"
-                               FontSize="11"
-                               Foreground="{DynamicResource Text.Tertiary}"/>
-                    <ItemsControl ItemsSource="{Binding CurrentPage.TopTags}"
-                                  IsVisible="{Binding CurrentPage.TopTags.Count, Converter={x:Static converters:Int32Converters.IsGreaterThanZero}}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel Orientation="Horizontal"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Button Padding="0" Background="Transparent" BorderThickness="0"
-                                        Command="{Binding $parent[UserControl].DataContext.NavigateToTagCommand}"
-                                        CommandParameter="{Binding}"
-                                        ToolTip.Tip="在媒体库中按此标签筛选">
-                                    <Border Background="{DynamicResource Bg.Outer}"
-                                            Padding="6,3"
-                                            Margin="0,0,4,4"
-                                            CornerRadius="10">
-                                        <TextBlock Text="{Binding ., StringFormat='#{0}'}"
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource Text.Secondary}"/>
-                                    </Border>
-                                </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </Grid>
+            <!-- 常用标签 -->
+            <StackPanel Spacing="8">
+                <TextBlock Text="常用标签"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text.Primary}"/>
+                <ItemsControl ItemsSource="{Binding CurrentPage.TopTags}"
+                              IsVisible="{Binding CurrentPage.TopTags.Count, Converter={x:Static converters:Int32Converters.IsGreaterThanZero}}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Padding="0" Background="Transparent" BorderThickness="0"
+                                    Command="{Binding $parent[UserControl].DataContext.NavigateToTagCommand}"
+                                    CommandParameter="{Binding}"
+                                    ToolTip.Tip="在媒体库中按此标签筛选">
+                                <Border Background="{DynamicResource Bg.Outer}"
+                                        Padding="6,3"
+                                        Margin="0,0,4,4"
+                                        CornerRadius="10">
+                                    <TextBlock Text="{Binding ., StringFormat='#{0}'}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Text.Secondary}"/>
+                                </Border>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
 
         </StackPanel>
     </Border>

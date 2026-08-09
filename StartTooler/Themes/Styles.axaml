@@ -489,8 +489,8 @@
 
     <!-- v0.8: 垃圾筒卡片底部小按钮（缩略图上的「恢复/下载/清理」） -->
     <Style Selector="Button.trash-action">
-        <Setter Property="Background" Value="#33FFFFFF"/>
-        <Setter Property="Foreground" Value="#E6FFFFFF"/>
+        <Setter Property="Background" Value="{DynamicResource Chip.ActionBg}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Card.FooterText}"/>
         <Setter Property="FontSize" Value="10"/>
         <Setter Property="Padding" Value="6,2"/>
         <Setter Property="CornerRadius" Value="4"/>
@@ -500,7 +500,7 @@
         <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
     <Style Selector="Button.trash-action:pointerover">
-        <Setter Property="Background" Value="#66FFFFFF"/>
+        <Setter Property="Background" Value="{DynamicResource Chip.ActionBgHover}"/>
     </Style>
     <Style Selector="Button.trash-action:disabled">
         <Setter Property="Opacity" Value="0.4"/>
@@ -508,8 +508,8 @@
 
     <!-- v0.8: 垃圾筒卡片底部危险按钮（清理 = 彻底删除） -->
     <Style Selector="Button.trash-action-danger">
-        <Setter Property="Background" Value="#33FFFFFF"/>
-        <Setter Property="Foreground" Value="#FFCC6666"/>
+        <Setter Property="Background" Value="{DynamicResource Chip.ActionBg}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Chip.ActionDangerFg}"/>
         <Setter Property="FontSize" Value="10"/>
         <Setter Property="Padding" Value="6,2"/>
         <Setter Property="CornerRadius" Value="4"/>
@@ -519,7 +519,7 @@
         <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
     <Style Selector="Button.trash-action-danger:pointerover">
-        <Setter Property="Background" Value="#66FF6666"/>
+        <Setter Property="Background" Value="{DynamicResource Chip.ActionDangerBgHover}"/>
     </Style>
     <Style Selector="Button.trash-action-danger:disabled">
         <Setter Property="Opacity" Value="0.4"/>
@@ -527,8 +527,8 @@
 
     <!-- v0.11: 垃圾筒卡片底部恢复按钮（绿色调，区别于白色/红色，spec §8.1） -->
     <Style Selector="Button.trash-action-restore">
-        <Setter Property="Background" Value="#33A5D6A7"/>
-        <Setter Property="Foreground" Value="#A5D6A7"/>
+        <Setter Property="Background" Value="{DynamicResource State.Recovery.Subtle}"/>
+        <Setter Property="Foreground" Value="{DynamicResource State.Recovery}"/>
         <Setter Property="FontSize" Value="10"/>
         <Setter Property="Padding" Value="6,2"/>
         <Setter Property="CornerRadius" Value="4"/>
@@ -536,11 +536,11 @@
         <Setter Property="Height" Value="22"/>
         <Setter Property="MinWidth" Value="36"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
-        <Setter Property="BorderBrush" Value="#66BB6A40"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource State.Recovery.Border}"/>
         <Setter Property="BorderThickness" Value="1"/>
     </Style>
     <Style Selector="Button.trash-action-restore:pointerover">
-        <Setter Property="Background" Value="#4CA5D6A7"/>
+        <Setter Property="Background" Value="{DynamicResource State.Recovery.SubtleHover}"/>
     </Style>
     <Style Selector="Button.trash-action-restore:disabled">
         <Setter Property="Opacity" Value="0.4"/>
@@ -549,7 +549,7 @@
     <!-- v0.11: Toast 横幅内的链接按钮（撤销/跳转，spec §6.2） -->
     <Style Selector="Button.link-button">
         <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="Foreground" Value="#4DD0E1"/>
+        <Setter Property="Foreground" Value="{DynamicResource Accent.Link}"/>
         <Setter Property="FontSize" Value="13"/>
         <Setter Property="Padding" Value="8,2"/>
         <Setter Property="BorderThickness" Value="0"/>
@@ -557,7 +557,7 @@
         <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
     <Style Selector="Button.link-button:pointerover">
-        <Setter Property="Foreground" Value="#80DEEA"/>
+        <Setter Property="Foreground" Value="{DynamicResource Accent.LinkHover}"/>
     </Style>
 
     <!-- 导航 Rail 按钮样式 (C15 NavItem) -->

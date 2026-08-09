@@ -25,6 +25,22 @@
     <Color x:Key="State.Success">#FF8080</Color>
     <Color x:Key="State.Warning">#FFAA80</Color>
     <Color x:Key="State.Danger">#FF3030</Color>
+    <Color x:Key="State.Danger.Subtle">#1AFF3030</Color>
+    <Color x:Key="State.Recovery">#FF8080</Color>
+    <Color x:Key="State.Recovery.Subtle">#33FF8080</Color>
+    <Color x:Key="State.Recovery.SubtleHover">#4CFF8080</Color>
+    <Color x:Key="State.Recovery.Border">#66FF8080</Color>
+
+    <Color x:Key="Accent.Link">#FF8080</Color>
+    <Color x:Key="Accent.LinkHover">#FFAAAA</Color>
+
+    <Color x:Key="Overlay.PhotoBadge">#80000000</Color>
+    <Color x:Key="Overlay.PhotoBadgeMedium">#B2000000</Color>
+    <Color x:Key="Overlay.PhotoBadgeStrong">#CC000000</Color>
+    <Color x:Key="Overlay.DragScrim">#88000000</Color>
+    <Color x:Key="Overlay.DragCard">#CC0A0000</Color>
+
+    <Color x:Key="Chip.ActionDangerBgHover">#66FF3030</Color>
 
     <!-- 状态图标色（v0.11 spec/10 §3.4 红光覆盖） -->
     <Color x:Key="StatusIcon.Synced">#E57373</Color>

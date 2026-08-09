@@ -47,7 +47,7 @@
             <controls:TagChipEditor DataContext="{Binding}" />
 
             <!-- AI 覆盖警告 -->
-            <Border Background="#1AFF5252"
+            <Border Background="{DynamicResource State.Danger.Subtle}"
                     CornerRadius="4"
                     Padding="8,6">
                 <StackPanel Orientation="Horizontal" Spacing="6">

@@ -2,7 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="StartTooler.Components.LoadingOverlay">
 
-    <Border Background="#880A0E1A"
+    <Border Background="{DynamicResource Overlay.DragScrim}"
             IsHitTestVisible="False"
             ZIndex="100">
         <StackPanel HorizontalAlignment="Center"

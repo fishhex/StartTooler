@@ -138,10 +138,11 @@ public partial class DiaryViewModel : ObservableObject
                     SessionId = s.Id,
                     Title = s.Title,
                     Date = localDate,
+                    StartTime = s.StartTime.ToLocalTime(),
+                    EndTime = s.EndTime.ToLocalTime(),
                     LunarDateText = LunarDateHelper.GetLunarDateText(localDate),
                     WeekdayText = LunarDateHelper.GetWeekdayText(localDate),
                     WeekLabel = LunarDateHelper.GetMonthWeekLabel(localDate),
-                    DurationText = s.DurationText,
                     Location = s.Location,
                     WeatherText = s.WeatherText ?? "",
                     Notes = s.Description,
@@ -352,6 +353,79 @@ public partial class DiaryViewModel : ObservableObject
         }
     }
 
+    // === 时段编辑 ===
+
+    [RelayCommand]
+    private void EditPeriod()
+    {
+        var page = CurrentPage;
+        if (page == null) return;
+        page.EditableStartTime = page.StartTime.ToString("HH:mm");
+        page.EditableEndTime = page.EndTime.ToString("HH:mm");
+        page.IsEditingPeriod = true;
+    }
+
+    [RelayCommand]
+    private async Task SavePeriodAsync()
+    {
+        var page = CurrentPage;
+        if (page == null) return;
+
+        if (!TryParseTime(page.EditableStartTime, out var startTimeOfDay))
+        {
+            StatusMessage = "开始时间格式错误，请使用 HH:mm";
+            return;
+        }
+        if (!TryParseTime(page.EditableEndTime, out var endTimeOfDay))
+        {
+            StatusMessage = "结束时间格式错误，请使用 HH:mm";
+            return;
+        }
+
+        try
+        {
+            var session = await _sessionRepo.GetByIdAsync(page.SessionId);
+            if (session == null) return;
+
+            var baseDate = page.Date.Date;
+            var newStart = baseDate + startTimeOfDay;
+            var newEnd = baseDate + endTimeOfDay;
+            if (newEnd < newStart)
+            {
+                newEnd = newEnd.AddDays(1);
+            }
+
+            session.StartTime = newStart;
+            session.EndTime = newEnd;
+            await _sessionRepo.UpsertAsync(session);
+
+            page.StartTime = newStart;
+            page.EndTime = newEnd;
+            page.IsEditingPeriod = false;
+            StatusMessage = "时段已保存";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"时段保存失败：{ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void CancelEditPeriod()
+    {
+        var page = CurrentPage;
+        if (page == null) return;
+        page.IsEditingPeriod = false;
+    }
+
+    private static bool TryParseTime(string? input, out TimeSpan time)
+    {
+        time = TimeSpan.Zero;
+        if (string.IsNullOrWhiteSpace(input)) return false;
+        return TimeSpan.TryParseExact(input.Trim(), "hh\\:mm", null, out time)
+            || TimeSpan.TryParseExact(input.Trim(), "HH\\:mm", null, out time);
+    }
+
     // === 内部 ===
 
     partial void OnCurrentPageIndexChanged(int value)
@@ -411,8 +485,6 @@ public partial class DiaryViewModel : ObservableObject
             var stats = await _mediaRepo.GetSessionStatsAsync(page.SessionId, ct);
             page.TotalPhotoCount = stats.TotalPhotos;
             page.TargetCount = stats.TargetCount;
-            page.TotalExposureHours = stats.TotalExposureHours;
-            page.TotalExposureText = FormatExposureHours(stats.TotalExposureHours);
             page.TopTags = stats.TopTags;
             page.TargetLabelsText = stats.TopTags.Count > 0
                 ? string.Join(" / ", stats.TopTags)
@@ -502,18 +574,6 @@ public partial class DiaryViewModel : ObservableObject
     {
         var config = await _configService.GetAsync<AppConfig>(ConfigKeys.App);
         return config?.SessionIntervalHours ?? 4;
-    }
-
-    private static string FormatExposureHours(double hours)
-    {
-        if (hours <= 0) return "0m";
-        if (hours >= 1)
-        {
-            var h = (int)hours;
-            var m = (int)Math.Round((hours - h) * 60);
-            return m > 0 ? $"{h}h{m}m" : $"{h}h";
-        }
-        return $"{(int)Math.Round(hours * 60)}m";
     }
 
     private static string? WeatherCoverToIconKey(string cloudCover) => cloudCover switch

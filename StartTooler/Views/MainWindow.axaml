@@ -73,6 +73,34 @@
                 BorderBrush="{DynamicResource Bg.Divider}"
                 BorderThickness="0,0,0,1">
             <DockPanel>
+                <!-- 日记页操作按钮（右侧） -->
+                <StackPanel DockPanel.Dock="Right"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            Margin="0,0,16,0"
+                            VerticalAlignment="Center"
+                            IsVisible="{Binding IsDiaryActive}">
+                    <Button Classes="secondary-button"
+                            Command="{Binding DiaryViewModel.RefreshEnvironmentCommand}"
+                            IsEnabled="{Binding DiaryViewModel.IsRefreshingEnvironment, Converter={x:Static BoolConverters.Not}}"
+                            ToolTip.Tip="从首张照片 GPS 重新获取地点和天气">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Data="{DynamicResource Icon.Refresh}" Width="12" Height="12"
+                                  Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
+                            <TextBlock Text="刷新环境" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="danger-button"
+                            Command="{Binding DiaryViewModel.DeleteCurrentSessionCommand}"
+                            ToolTip.Tip="删除整个会话（其下照片 session_id 会被清空）">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Data="{DynamicResource Icon.Trash}" Width="12" Height="12"
+                                  Fill="{DynamicResource State.Danger}" Stretch="Uniform"/>
+                            <TextBlock Text="删除会话" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
                 <!-- 最右：返回按钮（设置页 / 垃圾筒页，v0.11 加 ← 箭头 spec demand/06 §9.） -->
                 <Button Classes="secondary-button"
                         DockPanel.Dock="Right"
@@ -451,12 +479,12 @@
                 Grid.Column="0" Grid.ColumnSpan="2"
                 Grid.Row="0" Grid.RowSpan="4"
                 IsVisible="False"
-                Background="#880A0E1A"
+                Background="{DynamicResource Overlay.DragScrim}"
                 ZIndex="9999"
                 IsHitTestVisible="False">
             <Border HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    Background="#CC1A1E2E"
+                    Background="{DynamicResource Overlay.DragCard}"
                     CornerRadius="12"
                     Padding="48,32">
                 <StackPanel Spacing="12" HorizontalAlignment="Center">

@@ -375,7 +375,7 @@
                     VerticalAlignment="Top"
                     Margin="0,16,0,0"
                     Padding="16,10"
-                    Background="#E60A0E1A"
+                    Background="{DynamicResource Overlay.Toast}"
                     BorderBrush="{DynamicResource Bg.Divider}"
                     BorderThickness="1"
                     CornerRadius="8"
@@ -383,7 +383,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <TextBlock Text="{Binding ToastMessage}"
                                FontSize="13"
-                               Foreground="#E6FFFFFF"
+                               Foreground="{DynamicResource Card.FooterText}"
                                VerticalAlignment="Center"/>
                     <Button Content="{Binding ToastActionText}"
                             Classes="link-button"

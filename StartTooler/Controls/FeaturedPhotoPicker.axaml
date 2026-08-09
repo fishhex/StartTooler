@@ -96,7 +96,7 @@
 
                                     <!-- 选中遮罩 -->
                                     <Border CornerRadius="8"
-                                            Background="#B2000000"
+                                            Background="{DynamicResource Overlay.PhotoBadgeMedium}"
                                             IsVisible="{Binding IsSelected}"/>
 
                                     <!-- 选中勾 -->
@@ -120,7 +120,7 @@
                                     <!-- 评分角标 -->
                                     <Border HorizontalAlignment="Right"
                                             VerticalAlignment="Top"
-                                            Background="#80000000"
+                                            Background="{DynamicResource Overlay.PhotoBadge}"
                                             CornerRadius="0,8,0,8"
                                             Padding="6,4"
                                             IsVisible="{Binding Photo.Score, Converter={x:Static ObjectConverters.IsNotNull}}">

@@ -25,12 +25,19 @@
     <Color x:Key="Accent.Stellar.Subtle">#1F4A5F</Color>     <!-- 15% Accent.Stellar ↔ 85% Bg.Outer 混合观感 -->
     <Color x:Key="Accent.Nebula">#B388FF</Color>
     <Color x:Key="Accent.Aurora">#4DD0E1</Color>
+    <Color x:Key="Accent.Link">#4DD0E1</Color>
+    <Color x:Key="Accent.LinkHover">#80DEEA</Color>
 
     <!-- 状态色 -->
     <Color x:Key="State.Quiet">#4A5273</Color>
     <Color x:Key="State.Warning">#FFA726</Color>
     <Color x:Key="State.Danger">#FF5252</Color>
+    <Color x:Key="State.Danger.Subtle">#1AFF5252</Color>
     <Color x:Key="State.Success">#4DD0E1</Color>
+    <Color x:Key="State.Recovery">#A5D6A7</Color>
+    <Color x:Key="State.Recovery.Subtle">#33A5D6A7</Color>
+    <Color x:Key="State.Recovery.SubtleHover">#4CA5D6A7</Color>
+    <Color x:Key="State.Recovery.Border">#66BB6A40</Color>
 
     <!-- 状态图标色（v0.11 spec/10 §3.2） -->
     <Color x:Key="StatusIcon.Synced">#4DD0E1</Color>
@@ -57,6 +64,11 @@
     <Color x:Key="Overlay.Light">#CCFFFFFF</Color>
     <Color x:Key="Overlay.Selection">#334FC3F7</Color>
     <Color x:Key="Overlay.Scrim">#80000000</Color>
+    <Color x:Key="Overlay.PhotoBadge">#80000000</Color>
+    <Color x:Key="Overlay.PhotoBadgeMedium">#B2000000</Color>
+    <Color x:Key="Overlay.PhotoBadgeStrong">#CC000000</Color>
+    <Color x:Key="Overlay.DragScrim">#880A0E1A</Color>
+    <Color x:Key="Overlay.DragCard">#CC1A1E2E</Color>
     <Color x:Key="Overlay.MarqueeFill">#204FC3F7</Color>
     <Color x:Key="Overlay.MarqueeStroke">#4FC3F7</Color>
     <Color x:Key="Overlay.Toast">#E60A0E1A</Color>
@@ -91,6 +103,7 @@
     <Color x:Key="Chip.ActionBg">#33FFFFFF</Color>
     <Color x:Key="Chip.ActionBgHover">#66FFFFFF</Color>
     <Color x:Key="Chip.ActionDangerFg">#FFCC6666</Color>
+    <Color x:Key="Chip.ActionDangerBgHover">#66FF6666</Color>
 
     <!-- 批量标签编辑 diff 预览用色 -->
     <Color x:Key="Tag.DiffAddedBg">#CC1E5B3A</Color>

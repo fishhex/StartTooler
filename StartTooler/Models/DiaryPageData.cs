@@ -23,6 +23,15 @@ public sealed partial class DiaryPageData : ObservableObject
             OnPropertyChanged(new PropertyChangedEventArgs(nameof(IsLocationEditVisible)));
             OnPropertyChanged(new PropertyChangedEventArgs(nameof(IsAddLocationVisible)));
         }
+        if (e.PropertyName is nameof(StartTime) or nameof(EndTime))
+        {
+            OnPropertyChanged(new PropertyChangedEventArgs(nameof(PeriodText)));
+        }
+        if (e.PropertyName is nameof(IsEditingPeriod))
+        {
+            OnPropertyChanged(new PropertyChangedEventArgs(nameof(IsPeriodDisplayVisible)));
+            OnPropertyChanged(new PropertyChangedEventArgs(nameof(IsPeriodEditVisible)));
+        }
     }
 
     [ObservableProperty]
@@ -52,9 +61,34 @@ public sealed partial class DiaryPageData : ObservableObject
     [ObservableProperty]
     private string _targetLabelsText = "";
 
-    /// <summary>会话时长文本（"1h20m" / "45m"）。</summary>
+    /// <summary>会话开始时间（本地时间）。</summary>
     [ObservableProperty]
-    private string _durationText = "";
+    private DateTime _startTime;
+
+    /// <summary>会话结束时间（本地时间）。</summary>
+    [ObservableProperty]
+    private DateTime _endTime;
+
+    /// <summary>时段展示文本，例如 "20:30-21:50"。</summary>
+    public string PeriodText => $"{StartTime:HH:mm}-{EndTime:HH:mm}";
+
+    /// <summary>是否正在编辑时段。</summary>
+    [ObservableProperty]
+    private bool _isEditingPeriod;
+
+    /// <summary>时段编辑框中的开始时间文本（HH:mm）。</summary>
+    [ObservableProperty]
+    private string _editableStartTime = "";
+
+    /// <summary>时段编辑框中的结束时间文本（HH:mm）。</summary>
+    [ObservableProperty]
+    private string _editableEndTime = "";
+
+    /// <summary>时段展示态是否可见。</summary>
+    public bool IsPeriodDisplayVisible => !IsEditingPeriod;
+
+    /// <summary>时段编辑态是否可见。</summary>
+    public bool IsPeriodEditVisible => IsEditingPeriod;
 
     /// <summary>地点（行政区域级）。空 = 未填/未获取。</summary>
     [ObservableProperty]
@@ -191,14 +225,6 @@ public sealed partial class DiaryPageData : ObservableObject
     /// <summary>目标数（去重 tags）。</summary>
     [ObservableProperty]
     private int _targetCount;
-
-    /// <summary>累计曝光时长文本（"1.5h" / "45m"）。</summary>
-    [ObservableProperty]
-    private string _totalExposureText = "";
-
-    /// <summary>累计曝光小时数（原始数值，用于统计条大字号显示）。</summary>
-    [ObservableProperty]
-    private double _totalExposureHours;
 
     /// <summary>Top 3 标签。</summary>
     [ObservableProperty]
