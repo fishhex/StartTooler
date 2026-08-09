@@ -488,14 +488,11 @@ public partial class DiaryViewModel : ObservableObject
     {
         TimelineDots.Clear();
         var accentBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(0x4F, 0xC3, 0xF7));
-        // 非当前节点使用更亮的灰色，确保在深色背景下可见
-        var defaultLabelBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(0xB0, 0xB8, 0xD0));
 
         for (int i = 0; i < AllPages.Count; i++)
         {
             var page = AllPages[i];
             var isCurrent = i == CurrentPageIndex;
-            // 默认全部显示日期标签，节点密集时由 ScrollViewer 横向滚动承载
             var monthLabel = $"{page.Date:MM}月";
             var isMonthStart = i == 0 || monthLabel != $"{AllPages[i - 1].Date:MM}月";
 
@@ -509,8 +506,8 @@ public partial class DiaryViewModel : ObservableObject
                 ShowMonthLabel = isMonthStart,
                 ShowDateLabel = true,
                 DotSize = isCurrent ? 14 : 10,
-                DotBrush = isCurrent ? accentBrush : null,  // null → 走 XAML FallbackValue
-                LabelForeground = isCurrent ? accentBrush : defaultLabelBrush,
+                DotBrush = isCurrent ? accentBrush : null,    // 非当前 → XAML FallbackValue
+                LabelForeground = isCurrent ? accentBrush : null,  // 非当前 → XAML FallbackValue
                 NavigateToPageCommand = NavigateToPageCommand,
             });
         }

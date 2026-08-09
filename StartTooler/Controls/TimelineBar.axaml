@@ -104,43 +104,42 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="16"/>
                                         <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="24"/>
                                     </Grid.RowDefinitions>
 
                                     <!-- 日期标签：仅当前节点显示 -->
                                     <TextBlock Grid.Row="0"
                                                Text="{Binding DateLabel}"
                                                FontSize="10"
-                                               Foreground="{Binding LabelForeground, FallbackValue={x:Static Brushes.Gray}}"
+                                               Foreground="{Binding LabelForeground, TargetNullValue={DynamicResource Text.Secondary}}"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Bottom"/>
+
+                                    <!-- 月份标签：仅在月份切换处显示 -->
+                                    <TextBlock Grid.Row="1"
+                                               Text="{Binding MonthLabel}"
+                                               FontSize="10"
+                                               Foreground="{Binding LabelForeground, TargetNullValue={DynamicResource Text.Tertiary}}"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Bottom"
-                                               IsVisible="{Binding IsCurrent}"/>
+                                               IsVisible="{Binding ShowMonthLabel}"/>
 
                                     <!-- 节点 -->
-                                    <Grid Grid.Row="1" Height="24">
+                                    <Grid Grid.Row="2" Height="24">
                                         <Ellipse Width="{Binding DotSize}"
                                                  Height="{Binding DotSize}"
-                                                 Fill="{Binding DotBrush, FallbackValue={x:Static Brushes.Gray}}"
+                                                 Fill="{Binding DotBrush, TargetNullValue={DynamicResource Text.Secondary}}"
                                                  HorizontalAlignment="Center"
                                                  VerticalAlignment="Center"/>
                                         <!-- 当前节点发光环 -->
                                         <Ellipse Width="20" Height="20"
-                                                 Stroke="{Binding DotBrush, FallbackValue={x:Static Brushes.Gray}}"
+                                                 Stroke="{Binding DotBrush, TargetNullValue={DynamicResource Accent.Stellar}}"
                                                  StrokeThickness="1"
                                                  HorizontalAlignment="Center"
                                                  VerticalAlignment="Center"
                                                  IsVisible="{Binding IsCurrent}"
                                                  Opacity="0.4"/>
                                     </Grid>
-
-                                    <!-- 月份标签：仅在月份切换处显示 -->
-                                    <TextBlock Grid.Row="2"
-                                               Text="{Binding MonthLabel}"
-                                               FontSize="10"
-                                               Foreground="{Binding LabelForeground, FallbackValue={x:Static Brushes.Gray}}"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Top"
-                                               IsVisible="{Binding ShowMonthLabel}"/>
                                 </Grid>
                             </Button>
                         </DataTemplate>
