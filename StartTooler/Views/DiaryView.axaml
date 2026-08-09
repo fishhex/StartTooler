@@ -43,40 +43,10 @@
         <!-- 内容态 -->
         <Grid Grid.Row="0"
               IsVisible="{Binding IsContentVisible}">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-
-                <!-- 上一页 -->
-                <Button Grid.Column="0"
-                        Classes="paging-button"
-                        Command="{Binding NavigatePrevCommand}"
-                        IsVisible="{Binding HasPrev}"
-                        Margin="12,0"
-                        VerticalAlignment="Center"
-                        ToolTip.Tip="上一页（←）">
-                    <Path Data="{DynamicResource Icon.ChevronLeft}" Width="20" Height="20"
-                          Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
-                </Button>
-
-                <!-- 日记页 -->
-                <ScrollViewer Grid.Column="1"
-                              HorizontalScrollBarVisibility="Disabled"
-                              VerticalScrollBarVisibility="Auto">
-                    <controls:DiaryPage DataContext="{Binding}"/>
-                </ScrollViewer>
-
-                <!-- 下一页 -->
-                <Button Grid.Column="2"
-                        Classes="paging-button"
-                        Command="{Binding NavigateNextCommand}"
-                        IsVisible="{Binding HasNext}"
-                        Margin="12,0"
-                        VerticalAlignment="Center"
-                        ToolTip.Tip="下一页（→）">
-                    <Path Data="{DynamicResource Icon.ChevronRight}" Width="20" Height="20"
-                          Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
-                </Button>
-
-            </Grid>
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+                <controls:DiaryPage DataContext="{Binding}"/>
+            </ScrollViewer>
         </Grid>
 
         <!-- 时间轴 -->
