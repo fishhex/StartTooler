@@ -17,6 +17,8 @@ public sealed class TimelineDot
     public bool IsCurrent { get; init; }
     public string TooltipText { get; init; } = "";
     public string DateLabel { get; init; } = "";
+    public string MonthLabel { get; init; } = "";
+    public bool ShowMonthLabel { get; init; }
     public bool ShowDateLabel { get; init; } = true;
     public int DotSize { get; init; } = 10;
     public IBrush? DotBrush { get; init; }

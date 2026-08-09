@@ -67,6 +67,7 @@ public partial class DiaryViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CurrentPage))]
     [NotifyPropertyChangedFor(nameof(HasPrev))]
     [NotifyPropertyChangedFor(nameof(HasNext))]
+    [NotifyPropertyChangedFor(nameof(CurrentPositionText))]
     private int _currentPageIndex;
 
     [ObservableProperty]
@@ -93,6 +94,11 @@ public partial class DiaryViewModel : ObservableObject
 
     public bool IsEmpty => !IsLoading && AllPages.Count == 0;
     public bool IsContentVisible => !IsLoading && AllPages.Count > 0;
+
+    public string CurrentPositionText =>
+        AllPages.Count > 0 && CurrentPageIndex >= 0
+            ? $"{CurrentPageIndex + 1} / {AllPages.Count}"
+            : "0 / 0";
 
     // === 生命周期 ===
 
@@ -490,12 +496,17 @@ public partial class DiaryViewModel : ObservableObject
             var page = AllPages[i];
             var isCurrent = i == CurrentPageIndex;
             // 默认全部显示日期标签，节点密集时由 ScrollViewer 横向滚动承载
+            var monthLabel = $"{page.Date:MM}月";
+            var isMonthStart = i == 0 || monthLabel != $"{AllPages[i - 1].Date:MM}月";
+
             TimelineDots.Add(new TimelineDot
             {
                 Index = i,
                 IsCurrent = isCurrent,
                 TooltipText = $"{page.Date:yyyy-MM-dd} · {page.Title}",
                 DateLabel = page.Date.ToString("MM/dd"),
+                MonthLabel = monthLabel,
+                ShowMonthLabel = isMonthStart,
                 ShowDateLabel = true,
                 DotSize = isCurrent ? 14 : 10,
                 DotBrush = isCurrent ? accentBrush : null,  // null → 走 XAML FallbackValue

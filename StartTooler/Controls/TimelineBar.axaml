@@ -14,41 +14,65 @@
             Padding="20,12">
         <Grid RowDefinitions="Auto,Auto">
 
-            <!-- 标题行：时间轴信息 + 翻页按钮 -->
+            <!-- 标题行：时间轴信息 + 当前位置 + 翻页按钮 -->
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
                 <StackPanel Grid.Column="0"
                             Orientation="Horizontal" Spacing="8"
                             VerticalAlignment="Center">
+                    <Path Data="{DynamicResource Icon.Clock}" Width="14" Height="14"
+                          Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
                     <TextBlock Text="时间轴"
                                FontSize="13"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource Text.Primary}"/>
-                    <TextBlock Text="{Binding AllPages.Count, StringFormat='全部会话 {0}个'}"
+                    <TextBlock Text="·"
+                               FontSize="13"
+                               Foreground="{DynamicResource Text.Tertiary}"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding AllPages.Count, StringFormat='全部会话 {0} 个会话'}"
                                FontSize="12"
                                Foreground="{DynamicResource Text.Tertiary}"
                                VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1"
-                            Orientation="Horizontal" Spacing="6"
+                            Orientation="Horizontal" Spacing="8"
                             VerticalAlignment="Center">
+                    <!-- 当前位置胶囊 -->
+                    <Border Background="{DynamicResource Accent.Stellar.Subtle}"
+                            CornerRadius="12"
+                            Padding="8,4"
+                            VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Width="6" Height="6"
+                                     Fill="{DynamicResource Accent.Stellar}"
+                                     VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding CurrentPositionText}"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Accent.Stellar}"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="当前位置"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Accent.Stellar}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
                     <Button Classes="secondary-button"
-                            Command="{Binding NavigatePrevCommand}"
-                            IsEnabled="{Binding HasPrev}"
+                            Click="OnScrollLeftClick"
                             Width="28" Height="28"
                             Padding="0"
-                            ToolTip.Tip="上一页">
+                            ToolTip.Tip="向左滚动">
                         <Path Data="{DynamicResource Icon.ChevronLeft}"
                               Width="14" Height="14"
                               Fill="{DynamicResource Text.Secondary}"
                               Stretch="Uniform"/>
                     </Button>
                     <Button Classes="secondary-button"
-                            Command="{Binding NavigateNextCommand}"
-                            IsEnabled="{Binding HasNext}"
+                            Click="OnScrollRightClick"
                             Width="28" Height="28"
                             Padding="0"
-                            ToolTip.Tip="下一页">
+                            ToolTip.Tip="向右滚动">
                         <Path Data="{DynamicResource Icon.ChevronRight}"
                               Width="14" Height="14"
                               Fill="{DynamicResource Text.Secondary}"
@@ -58,7 +82,8 @@
             </Grid>
 
             <!-- 时间轴节点 -->
-            <ScrollViewer Grid.Row="1"
+            <ScrollViewer x:Name="TimelineScrollViewer"
+                          Grid.Row="1"
                           HorizontalScrollBarVisibility="Auto"
                           VerticalScrollBarVisibility="Disabled">
                 <ItemsControl ItemsSource="{Binding TimelineDots}">
@@ -75,16 +100,48 @@
                                     Command="{Binding NavigateToPageCommand}"
                                     CommandParameter="{Binding Index}"
                                     ToolTip.Tip="{Binding TooltipText}">
-                                <StackPanel Spacing="4" Width="32">
-                                    <Ellipse Width="{Binding DotSize}"
-                                             Height="{Binding DotSize}"
-                                             Fill="{Binding DotBrush, FallbackValue={x:Static Brushes.Gray}}"
-                                             HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding DateLabel}"
+                                <Grid Width="40">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="16"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <!-- 日期标签：仅当前节点显示 -->
+                                    <TextBlock Grid.Row="0"
+                                               Text="{Binding DateLabel}"
                                                FontSize="10"
                                                Foreground="{Binding LabelForeground, FallbackValue={x:Static Brushes.Gray}}"
-                                               HorizontalAlignment="Center"/>
-                                </StackPanel>
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Bottom"
+                                               IsVisible="{Binding IsCurrent}"/>
+
+                                    <!-- 节点 -->
+                                    <Grid Grid.Row="1" Height="24">
+                                        <Ellipse Width="{Binding DotSize}"
+                                                 Height="{Binding DotSize}"
+                                                 Fill="{Binding DotBrush, FallbackValue={x:Static Brushes.Gray}}"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"/>
+                                        <!-- 当前节点发光环 -->
+                                        <Ellipse Width="20" Height="20"
+                                                 Stroke="{Binding DotBrush, FallbackValue={x:Static Brushes.Gray}}"
+                                                 StrokeThickness="1"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"
+                                                 IsVisible="{Binding IsCurrent}"
+                                                 Opacity="0.4"/>
+                                    </Grid>
+
+                                    <!-- 月份标签：仅在月份切换处显示 -->
+                                    <TextBlock Grid.Row="2"
+                                               Text="{Binding MonthLabel}"
+                                               FontSize="10"
+                                               Foreground="{Binding LabelForeground, FallbackValue={x:Static Brushes.Gray}}"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Top"
+                                               IsVisible="{Binding ShowMonthLabel}"/>
+                                </Grid>
                             </Button>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
