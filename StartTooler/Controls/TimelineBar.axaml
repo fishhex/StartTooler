@@ -14,7 +14,7 @@
             Padding="20,12">
         <Grid RowDefinitions="Auto,Auto">
 
-            <!-- 标题行：时间轴信息 + 当前位置 + 翻页按钮 -->
+            <!-- 标题行：时间轴信息 + 当前位置 -->
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
                 <StackPanel Grid.Column="0"
                             Orientation="Horizontal" Spacing="8"
@@ -35,117 +35,127 @@
                                VerticalAlignment="Center"/>
                 </StackPanel>
 
-                <StackPanel Grid.Column="1"
-                            Orientation="Horizontal" Spacing="8"
-                            VerticalAlignment="Center">
-                    <!-- 当前位置胶囊 -->
-                    <Border Background="{DynamicResource Accent.Stellar.Subtle}"
-                            CornerRadius="12"
-                            Padding="8,4"
-                            VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Ellipse Width="6" Height="6"
-                                     Fill="{DynamicResource Accent.Stellar}"
-                                     VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding CurrentPositionText}"
-                                       FontSize="12"
-                                       Foreground="{DynamicResource Accent.Stellar}"
-                                       VerticalAlignment="Center"/>
-                            <TextBlock Text="当前位置"
-                                       FontSize="12"
-                                       Foreground="{DynamicResource Accent.Stellar}"
-                                       VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Border>
-
-                    <Button Classes="secondary-button"
-                            Click="OnScrollLeftClick"
-                            Width="28" Height="28"
-                            Padding="0"
-                            ToolTip.Tip="向左滚动">
-                        <Path Data="{DynamicResource Icon.ChevronLeft}"
-                              Width="14" Height="14"
-                              Fill="{DynamicResource Text.Secondary}"
-                              Stretch="Uniform"/>
-                    </Button>
-                    <Button Classes="secondary-button"
-                            Click="OnScrollRightClick"
-                            Width="28" Height="28"
-                            Padding="0"
-                            ToolTip.Tip="向右滚动">
-                        <Path Data="{DynamicResource Icon.ChevronRight}"
-                              Width="14" Height="14"
-                              Fill="{DynamicResource Text.Secondary}"
-                              Stretch="Uniform"/>
-                    </Button>
-                </StackPanel>
+                <!-- 当前位置胶囊 -->
+                <Border Grid.Column="1"
+                        Background="{DynamicResource Accent.Stellar.Subtle}"
+                        CornerRadius="12"
+                        Padding="8,4"
+                        VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Ellipse Width="6" Height="6"
+                                 Fill="{DynamicResource Accent.Stellar}"
+                                 VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding CurrentPositionText}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource Accent.Stellar}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Text="当前位置"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource Accent.Stellar}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
             </Grid>
 
-            <!-- 时间轴节点 -->
-            <ScrollViewer x:Name="TimelineScrollViewer"
-                          Grid.Row="1"
-                          HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Disabled">
-                <ItemsControl ItemsSource="{Binding TimelineDots}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" Spacing="12"/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="models:TimelineDot">
-                            <Button Background="Transparent"
-                                    BorderThickness="0"
-                                    Padding="0"
-                                    Command="{Binding NavigateToPageCommand}"
-                                    CommandParameter="{Binding Index}"
-                                    ToolTip.Tip="{Binding TooltipText}">
-                                <Grid Width="40">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="16"/>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="24"/>
-                                    </Grid.RowDefinitions>
+            <!-- 时间轴行：左按钮 + ScrollViewer + 右按钮 -->
+            <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto">
 
-                                    <!-- 日期标签：仅当前节点显示 -->
-                                    <TextBlock Grid.Row="0"
-                                               Text="{Binding DateLabel}"
-                                               FontSize="10"
-                                               Foreground="{Binding LabelForeground, TargetNullValue={DynamicResource Text.Secondary}}"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Bottom"/>
+                <!-- 左翻页按钮 -->
+                <Button Grid.Column="0"
+                        Classes="secondary-button"
+                        Click="OnScrollLeftClick"
+                        Width="28" Height="28"
+                        Padding="0"
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center"
+                        ToolTip.Tip="向左滚动">
+                    <Path Data="{DynamicResource Icon.ChevronLeft}"
+                          Width="14" Height="14"
+                          Fill="{DynamicResource Text.Secondary}"
+                          Stretch="Uniform"/>
+                </Button>
 
-                                    <!-- 月份标签：仅在月份切换处显示 -->
-                                    <TextBlock Grid.Row="1"
-                                               Text="{Binding MonthLabel}"
-                                               FontSize="10"
-                                               Foreground="{Binding LabelForeground, TargetNullValue={DynamicResource Text.Tertiary}}"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Bottom"
-                                               IsVisible="{Binding ShowMonthLabel}"/>
+                <!-- 时间轴节点 -->
+                <ScrollViewer x:Name="TimelineScrollViewer"
+                              Grid.Column="1"
+                              HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding TimelineDots}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="12"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="models:TimelineDot">
+                                <Button Background="Transparent"
+                                        BorderThickness="0"
+                                        Padding="0"
+                                        Command="{Binding NavigateToPageCommand}"
+                                        CommandParameter="{Binding Index}"
+                                        ToolTip.Tip="{Binding TooltipText}">
+                                    <Grid Width="40">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="16"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="24"/>
+                                        </Grid.RowDefinitions>
 
-                                    <!-- 节点 -->
-                                    <Grid Grid.Row="2" Height="24">
-                                        <Ellipse Width="{Binding DotSize}"
-                                                 Height="{Binding DotSize}"
-                                                 Fill="{Binding DotBrush, TargetNullValue={DynamicResource Text.Secondary}}"
-                                                 HorizontalAlignment="Center"
-                                                 VerticalAlignment="Center"/>
-                                        <!-- 当前节点发光环 -->
-                                        <Ellipse Width="20" Height="20"
-                                                 Stroke="{Binding DotBrush, TargetNullValue={DynamicResource Accent.Stellar}}"
-                                                 StrokeThickness="1"
-                                                 HorizontalAlignment="Center"
-                                                 VerticalAlignment="Center"
-                                                 IsVisible="{Binding IsCurrent}"
-                                                 Opacity="0.4"/>
+                                        <!-- 日期标签 -->
+                                        <TextBlock Grid.Row="0"
+                                                   Text="{Binding DateLabel}"
+                                                   FontSize="10"
+                                                   Foreground="{Binding LabelForeground, TargetNullValue={DynamicResource Text.Secondary}}"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Bottom"/>
+
+                                        <!-- 月份标签：仅在月份切换处显示 -->
+                                        <TextBlock Grid.Row="1"
+                                                   Text="{Binding MonthLabel}"
+                                                   FontSize="10"
+                                                   Foreground="{Binding LabelForeground, TargetNullValue={DynamicResource Text.Tertiary}}"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Bottom"
+                                                   IsVisible="{Binding ShowMonthLabel}"/>
+
+                                        <!-- 节点 -->
+                                        <Grid Grid.Row="2" Height="24">
+                                            <Ellipse Width="{Binding DotSize}"
+                                                     Height="{Binding DotSize}"
+                                                     Fill="{Binding DotBrush, TargetNullValue={DynamicResource Text.Secondary}}"
+                                                     HorizontalAlignment="Center"
+                                                     VerticalAlignment="Center"/>
+                                            <!-- 当前节点发光环 -->
+                                            <Ellipse Width="20" Height="20"
+                                                     Stroke="{Binding DotBrush, TargetNullValue={DynamicResource Accent.Stellar}}"
+                                                     StrokeThickness="1"
+                                                     HorizontalAlignment="Center"
+                                                     VerticalAlignment="Center"
+                                                     IsVisible="{Binding IsCurrent}"
+                                                     Opacity="0.4"/>
+                                        </Grid>
                                     </Grid>
-                                </Grid>
-                            </Button>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!-- 右翻页按钮 -->
+                <Button Grid.Column="2"
+                        Classes="secondary-button"
+                        Click="OnScrollRightClick"
+                        Width="28" Height="28"
+                        Padding="0"
+                        Margin="8,0,0,0"
+                        VerticalAlignment="Center"
+                        ToolTip.Tip="向右滚动">
+                    <Path Data="{DynamicResource Icon.ChevronRight}"
+                          Width="14" Height="14"
+                          Fill="{DynamicResource Text.Secondary}"
+                          Stretch="Uniform"/>
+                </Button>
+            </Grid>
 
         </Grid>
     </Border>
