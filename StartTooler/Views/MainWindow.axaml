@@ -410,8 +410,8 @@
                 Background="{DynamicResource Bg.Outer}"
                 BorderBrush="{DynamicResource Bg.Divider}"
                 BorderThickness="0,1,0,0"
-                Padding="16,0,0,0">
-            <Grid ColumnDefinitions="*,Auto">
+                Padding="16,0,16,0">
+            <Grid ColumnDefinitions="Auto,*,Auto">
                 <!-- 左侧：上次刷新时间（仅 Gallery 页显示） -->
                 <TextBlock Grid.Column="0"
                            Text="{Binding GalleryViewModel.LastRefreshText}"
@@ -423,8 +423,20 @@
                     </TextBlock.IsVisible>
                 </TextBlock>
 
+                <!-- 中间：本地媒体资源占用空间（仅 Gallery 页显示，Mock 数据） -->
+                <TextBlock Grid.Column="1"
+                           Text="{Binding MockStorageText}"
+                           FontSize="11"
+                           Foreground="{DynamicResource Text.Secondary}"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center">
+                    <TextBlock.IsVisible>
+                        <Binding Path="IsGalleryPage"/>
+                    </TextBlock.IsVisible>
+                </TextBlock>
+
                 <!-- 右侧：通知历史入口 -->
-                <Button Grid.Column="1"
+                <Button Grid.Column="2"
                         Classes="toolbar-button"
                         ToolTip.Tip="通知历史"
                         Padding="6,2"

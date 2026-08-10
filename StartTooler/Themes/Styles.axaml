@@ -674,4 +674,20 @@
         <Setter Property="Margin" Value="0"/>
     </Style>
 
+    <!-- 主窗口状态栏：本地媒体占用空间条（细 4px，圆角 2px） -->
+    <Style Selector="ProgressBar.storage-bar">
+        <Setter Property="Background" Value="{DynamicResource Bg.Divider}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Accent.Stellar}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="CornerRadius" Value="2"/>
+    </Style>
+    <Style Selector="ProgressBar.storage-bar /template/ Border#PART_Track">
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="CornerRadius" Value="2"/>
+    </Style>
+    <Style Selector="ProgressBar.storage-bar /template/ Border#PART_Indicator">
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="CornerRadius" Value="2"/>
+    </Style>
+
 </Styles>

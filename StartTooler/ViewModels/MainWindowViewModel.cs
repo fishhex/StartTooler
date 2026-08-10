@@ -83,6 +83,17 @@ public partial class MainWindowViewModel : ObservableObject
     public System.Collections.ObjectModel.ObservableCollection<Services.NotificationItem> NotificationHistory
         => Services.NotificationService.Current.History;
 
+    /// <summary>
+    /// Mock: 状态栏本地媒体资源占用空间（仅用于布局占位，待数据层完整后替换为真实数值）。
+    /// 格式："24.5 GB / 187.2 GB"
+    /// </summary>
+    public string MockStorageText => "24.5 GB / 187.2 GB";
+
+    /// <summary>
+    /// Mock: 进度条比例 0.0-1.0（当前过滤 / 总计）。13% 对应 24.5 / 187.2。
+    /// </summary>
+    public double StorageFraction => 24.5 / 187.2;
+
     public bool IsSettingsActive => CurrentPage == ViewPage.Settings;
 
     public bool IsUploadServerActive => CurrentPage == ViewPage.UploadServer;
