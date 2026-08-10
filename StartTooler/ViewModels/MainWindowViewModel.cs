@@ -84,15 +84,15 @@ public partial class MainWindowViewModel : ObservableObject
         => Services.NotificationService.Current.History;
 
     /// <summary>
-    /// Mock: 状态栏本地媒体资源占用空间（仅用于布局占位，待数据层完整后替换为真实数值）。
-    /// 格式："24.5 GB / 187.2 GB"
+    /// 状态栏本地媒体资源占用空间（仅 Gallery 页显示）。
+    /// 数据源：GalleryViewModel.CurrentFilterSize / TotalLocalSize，格式不重复发明。
     /// </summary>
-    public string MockStorageText => "24.5 GB / 187.2 GB";
+    public string MockStorageText => GalleryViewModel != null
+        ? GalleryViewModel.StatusBarStorageText
+        : "— / —";
 
-    /// <summary>
-    /// Mock: 进度条比例 0.0-1.0（当前过滤 / 总计）。13% 对应 24.5 / 187.2。
-    /// </summary>
-    public double StorageFraction => 24.5 / 187.2;
+    /// <summary>进度条比例 0.0-1.0（当前过滤 / 总计）。由 Gallery 内部计算。</summary>
+    public double StorageFraction => GalleryViewModel?.StorageFraction ?? 0.0;
 
     public bool IsSettingsActive => CurrentPage == ViewPage.Settings;
 
@@ -138,6 +138,18 @@ public partial class MainWindowViewModel : ObservableObject
         // v0.11 spec/07: 引导卡片跳转回调（Onboarding 按钮触发）
         GalleryViewModel.NavigateToSettings = NavigateToSettings;
         GalleryViewModel.NavigateToOssSettings = NavigateToOssSettings;
+
+        // v0.13: 状态栏占用空间转发 —— Gallery 变更后通知 MainWindow 重新读取
+        GalleryViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(GalleryViewModel.CurrentFilterSize)
+                || e.PropertyName == nameof(GalleryViewModel.TotalLocalSize)
+                || e.PropertyName == nameof(GalleryViewModel.StatusBarStorageText))
+            {
+                OnPropertyChanged(nameof(MockStorageText));
+                OnPropertyChanged(nameof(StorageFraction));
+            }
+        };
 
         // v0.11 spec/07: 检查引导状态 + OSS 配置（启动时跑一次）
         _ = GalleryViewModel.CheckOnboardingStatusAsync();

@@ -1838,4 +1838,106 @@ public class MediaRepository : IMediaRepository
         var result = await cmd.ExecuteScalarAsync(ct);
         return result is string s ? s : "";
     }
+
+    // === 状态栏本地占用空间（local_exists=1 + deleted_at IS NULL + 可选媒体类型 + 可选过滤条件） ===
+
+    /// <summary>
+    /// 通用 SUM(file_size) 查询。filter 形参为空时 = 整个项目。
+    /// 媒体类型过滤交给 SQL 直接走（避免分页后丢精度），可选。
+    /// </summary>
+    private static async Task<long> SumLocalSizeAsync(
+        SqliteConnection connection,
+        string normalizedPath,
+        string? extraWhere,  // 例如 "AND shot_at >= @startTime AND shot_at < @endTime"
+        Action<SqliteCommand>? bindParams,  // 给 extraWhere 用的额外参数
+        MediaType? mediaType,
+        CancellationToken ct)
+    {
+        var mediaTypeClause = mediaType.HasValue ? " AND media_type = @mediaType" : "";
+        var sql = $@"
+            SELECT COALESCE(SUM(file_size), 0)
+            FROM media_files
+            WHERE project_path = @projectPath
+              AND local_exists = 1
+              AND deleted_at IS NULL
+              {extraWhere}
+              {mediaTypeClause}";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@projectPath", normalizedPath);
+        bindParams?.Invoke(cmd);
+        if (mediaType.HasValue)
+        {
+            cmd.Parameters.AddWithValue("@mediaType", (int)mediaType.Value);
+        }
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return result is long l ? l : 0L;
+    }
+
+    public async Task<long> GetLocalSizeAsync(string projectPath, MediaType? mediaType = null, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        return await SumLocalSizeAsync(connection, normalizedPath, null, null, mediaType, ct);
+    }
+
+    public async Task<long> GetLocalSizeByDateAsync(string projectPath, DateTime date, MediaType? mediaType = null, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var startOfDay = new DateTime(date.Year, date.Month, date.Day, 0, 0, 0, DateTimeKind.Local);
+        var endOfDay = startOfDay.AddDays(1);
+        var startTs = new DateTimeOffset(startOfDay).ToUnixTimeMilliseconds();
+        var endTs = new DateTimeOffset(endOfDay).ToUnixTimeMilliseconds();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        return await SumLocalSizeAsync(
+            connection, normalizedPath,
+            "AND shot_at >= @startTime AND shot_at < @endTime",
+            cmd =>
+            {
+                cmd.Parameters.AddWithValue("@startTime", startTs);
+                cmd.Parameters.AddWithValue("@endTime", endTs);
+            },
+            mediaType,
+            ct);
+    }
+
+    public async Task<long> GetLocalSizeByTimeRangeAsync(string projectPath, DateTimeOffset startTime, DateTimeOffset endTime, MediaType? mediaType = null, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        var startTs = startTime.ToUnixTimeMilliseconds();
+        var endTs = endTime.ToUnixTimeMilliseconds();
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        return await SumLocalSizeAsync(
+            connection, normalizedPath,
+            "AND shot_at >= @startTime AND shot_at < @endTime",
+            cmd =>
+            {
+                cmd.Parameters.AddWithValue("@startTime", startTs);
+                cmd.Parameters.AddWithValue("@endTime", endTs);
+            },
+            mediaType,
+            ct);
+    }
+
+    public async Task<long> GetLocalSizeByTagAsync(string projectPath, string tag, MediaType? mediaType = null, CancellationToken ct = default)
+    {
+        var normalizedPath = Path.GetFullPath(projectPath).TrimEnd(Path.DirectorySeparatorChar);
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        await LoadTagCacheAsync(connection, normalizedPath, ct);
+
+        var tagId = await GetTagIdAsync(connection, normalizedPath, tag, createIfMissing: false, ct);
+        if (tagId == null) return 0;
+
+        return await SumLocalSizeAsync(
+            connection, normalizedPath,
+            @"AND EXISTS (SELECT 1 FROM json_each(media_files.tags) WHERE json_each.value = @tagId)",
+            cmd => cmd.Parameters.AddWithValue("@tagId", tagId.Value),
+            mediaType,
+            ct);
+    }
 }

@@ -598,6 +598,31 @@ public partial class GalleryViewModel : ObservableObject
     // === v0.11 状态栏字段（spec demand/06 §9） ===
     /// <summary>当前视图的文件数（CurrentMediaFiles.Count）。通知走 OnCurrentMediaFilesChanged → CollectionChanged。</summary>
     public int CurrentFileCount => CurrentMediaFiles.Count;
+
+    // === 状态栏本地媒体占用空间（仅 Gallery 页） ===
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusBarStorageText))]
+    private long _currentFilterSize;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusBarStorageText))]
+    [NotifyPropertyChangedFor(nameof(StorageFraction))]
+    private long _totalLocalSize;
+
+    /// <summary>当前过滤条件 / 全项目比例，0.0-1.0。给进度条绑定用（当前已回归纯文字，留备用）。</summary>
+    public double StorageFraction => TotalLocalSize > 0
+        ? Math.Min(1.0, (double)CurrentFilterSize / TotalLocalSize)
+        : 0.0;
+
+    /// <summary>状态栏文本："24.5 GB / 187.2 GB"。空项目显示 "— / —"。</summary>
+    public string StatusBarStorageText
+    {
+        get
+        {
+            if (TotalLocalSize == 0 && CurrentFilterSize == 0) return "— / —";
+            return $"{FormatSize(CurrentFilterSize)} / {FormatSize(TotalLocalSize)}";
+        }
+    }
     /// <summary>当前视图已上传数（CurrentMediaFiles 中 IsUploaded=true 的）。每次 CurrentMediaFiles 变化重算时通知。</summary>
     public int CurrentUploadedCount => CurrentMediaFiles.Count(f => f.IsUploaded);
     /// <summary>状态栏友好文字："已上传 X / Y"（Y=CurrentFileCount，X=CurrentUploadedCount）。</summary>
@@ -947,6 +972,67 @@ public partial class GalleryViewModel : ObservableObject
             IsLoadingDateGroups = false;
             IsLoadingMedia = false;
         }
+    }
+
+    // === 状态栏占用空间刷新 ===
+
+    /// <summary>当前 MediaTypeFilter 转 MediaType?（All → null）。</summary>
+    private MediaType? CurrentMediaType =>
+        MediaTypeFilter switch
+        {
+            MediaTypeFilter.Image => MediaType.Image,
+            MediaTypeFilter.Video => MediaType.Video,
+            _ => null,
+        };
+
+    /// <summary>
+    /// 状态栏本地占用空间刷新：按当前 GroupMode / SelectedDate / SelectedTag / ActiveQuickFilter / MediaTypeFilter
+    /// 走精确 SUM。SQL 端做过滤，毫秒级。失败时 Trace 记录，不弹 toast（不阻塞主流程）。
+    /// </summary>
+    public async Task RefreshLocalSizeAsync(CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(ProjectPath)) return;
+
+        try
+        {
+            var mediaType = CurrentMediaType;
+            // 总计：始终 = 整个项目（不过滤日期/标签，但 MediaTypeFilter 仍生效）
+            var total = await _mediaRepo.GetLocalSizeAsync(ProjectPath, mediaType, ct);
+            TotalLocalSize = total;
+
+            // 当前过滤条件
+            long current;
+            switch (GroupMode)
+            {
+                case GroupMode.Date when SelectedDate != null:
+                    current = await _mediaRepo.GetLocalSizeByDateAsync(ProjectPath, SelectedDate.Date, mediaType, ct);
+                    break;
+                case GroupMode.Tag when !string.IsNullOrEmpty(SelectedTag):
+                    current = await _mediaRepo.GetLocalSizeByTagAsync(ProjectPath, SelectedTag, mediaType, ct);
+                    break;
+                default:
+                    // QuickFilter 视图 / 全部时间 / Date 视图但未选日期
+                    var (start, end) = GetQuickFilterRange(ActiveQuickFilter);
+                    current = await _mediaRepo.GetLocalSizeByTimeRangeAsync(ProjectPath, start, end, mediaType, ct);
+                    break;
+            }
+
+            CurrentFilterSize = current;
+            Trace.WriteLine($"[Gallery] RefreshLocalSizeAsync: current={current}, total={total}, mediaType={mediaType?.ToString() ?? "All"}");
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[Gallery] RefreshLocalSizeAsync 失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// fire-and-forget 异步刷新（用于文件增删后，避免在路径上 await 阻塞）。
+    /// 失败仅 Trace，不影响主流程。
+    /// </summary>
+    private void ScheduleSizeRefresh()
+    {
+        _ = Task.Run(async () => await RefreshLocalSizeAsync());
     }
 
     // === TimelineNode 树辅助方法（spec/15） ===
@@ -1376,6 +1462,7 @@ public partial class GalleryViewModel : ObservableObject
             await LoadMediaPageAsync(append: false, ct);
 
             IsLoadingMedia = false;
+            await RefreshLocalSizeAsync(ct);
         }
         catch (OperationCanceledException)
         {
@@ -1618,6 +1705,7 @@ public partial class GalleryViewModel : ObservableObject
             await LoadMediaPageAsync(append: false, ct);
 
             IsLoadingMedia = false;
+            await RefreshLocalSizeAsync(ct);
         }
         catch (OperationCanceledException)
         {
@@ -1757,6 +1845,7 @@ public partial class GalleryViewModel : ObservableObject
             await LoadMediaPageAsync(append: false, ct);
 
             IsLoadingMedia = false;
+            await RefreshLocalSizeAsync(ct);
         }
         catch (OperationCanceledException)
         {
@@ -2009,6 +2098,9 @@ public partial class GalleryViewModel : ObservableObject
             RefreshState = Models.RefreshState.Completed;
             ScanStatusMessage = $"扫描完成 · 共 {result.Processed} 个文件，新增 {result.NewFiles}，更新 {result.UpdatedFiles}";
             LastRefreshTime = DateTime.Now;  // v0.11: 状态栏用
+            // 兜底：InitializeAsync 内的 LoadQuickFilterRangeAsync 已带 RefreshLocalSizeAsync，
+            // 这里显式再调一次以应对 canceled/异常路径。
+            await RefreshLocalSizeAsync();
         }
         catch (OperationCanceledException)
         {
@@ -2419,6 +2511,8 @@ public partial class GalleryViewModel : ObservableObject
             CurrentMediaFiles.Remove(file);
         }
 
+        ScheduleSizeRefresh();
+
         var msg = failed == 0
             ? $"已将 {softDeleted} 个文件移入垃圾筒"
             : $"已将 {softDeleted} 个文件移入垃圾筒（{failed} 个失败）";
@@ -2505,6 +2599,7 @@ public partial class GalleryViewModel : ObservableObject
 
             await _mediaRepo.SoftDeleteAsync(file.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             CurrentMediaFiles.Remove(file);
+            ScheduleSizeRefresh();
             ShowToast($"已将 {file.FileName} 移入垃圾筒");
             Trace.WriteLine($"[Gallery] DeleteSingle: 完成 id={file.Id}");
         }
@@ -2581,6 +2676,7 @@ public partial class GalleryViewModel : ObservableObject
             ? $"已释放 {released} 个文件"
             : $"已释放 {released} 个文件（{failed} 个失败）";
         ShowToast(msg);
+        ScheduleSizeRefresh();
         Trace.WriteLine($"[Gallery] BatchFreeUpSpace: 完成 released={released}, failed={failed}");
     }
 
@@ -2611,6 +2707,7 @@ public partial class GalleryViewModel : ObservableObject
             DeleteLocalFile(file);
             file.LocalExists = false;
             await _mediaRepo.UpdateLocalExistsAsync(file.Id, false);
+            ScheduleSizeRefresh();
             ShowToast($"已释放 {file.FileName}");
             Trace.WriteLine($"[Gallery] FreeUpSpace: 完成 id={file.Id}");
         }
@@ -3096,6 +3193,7 @@ public partial class GalleryViewModel : ObservableObject
         // 4. 更新本地状态 + DB
         file.LocalExists = true;
         await _mediaRepo.UpdateLocalExistsAsync(file.Id, true, ct);
+        ScheduleSizeRefresh();
 
         // 5. 重新生成缩略图（修复「路径有效但文件不存在」的死链）
         try
@@ -3251,6 +3349,9 @@ public partial class GalleryViewModel : ObservableObject
         if (bytes < 1024L * 1024 * 1024) return $"{bytes / 1024.0 / 1024.0:F1} MB";
         return $"{bytes / 1024.0 / 1024.0 / 1024.0:F2} GB";
     }
+
+    /// <summary>供 MainWindow 状态栏格式化用：与 GalleryViewModel 内部 FormatSize 保持一致。</summary>
+    public static string FormatSizePublic(long bytes) => FormatSize(bytes);
 
     [RelayCommand]
     private async Task UploadSingle(MediaFile? file)

@@ -155,6 +155,20 @@ public interface IMediaRepository
         string sessionId, int limit = 5, CancellationToken ct = default);
 
     Task<SessionStats> GetSessionStatsAsync(string sessionId, CancellationToken ct = default);
+
+    // === 状态栏本地占用空间（按 local_exists=1 + deleted_at IS NULL 累加 file_size） ===
+
+    /// <summary>项目本地总占用（一切过滤之前）。mediaType 为 null 时不过滤类型。</summary>
+    Task<long> GetLocalSizeAsync(string projectPath, MediaType? mediaType = null, CancellationToken ct = default);
+
+    /// <summary>按日期（指定 day）本地占用。mediaType 为 null 时不过滤类型。</summary>
+    Task<long> GetLocalSizeByDateAsync(string projectPath, DateTime date, MediaType? mediaType = null, CancellationToken ct = default);
+
+    /// <summary>按时间范围（快捷时间）本地占用。mediaType 为 null 时不过滤类型。</summary>
+    Task<long> GetLocalSizeByTimeRangeAsync(string projectPath, DateTimeOffset startTime, DateTimeOffset endTime, MediaType? mediaType = null, CancellationToken ct = default);
+
+    /// <summary>按标签本地占用。mediaType 为 null 时不过滤类型。</summary>
+    Task<long> GetLocalSizeByTagAsync(string projectPath, string tag, MediaType? mediaType = null, CancellationToken ct = default);
 }
 
 public class ScanResult
