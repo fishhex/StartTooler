@@ -147,13 +147,17 @@
                             <ItemsControl ItemsSource="{Binding CloudFiles}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
-                                        <!-- v0.11: 卡片高度 180→120（spec §10.2） -->
-                                        <WrapPanel Orientation="Horizontal" ItemWidth="160" ItemHeight="120"/>
+                                        <!--
+                                          WrapPanel 不设 ItemWidth/ItemHeight（关键）：
+                                          让 Border 自身的 Width="160" Height="120" + Margin="8" 完整生效。
+                                          之前紧贴是因为 ItemWidth=160 把 Margin 吃掉了。
+                                        -->
+                                        <WrapPanel Orientation="Horizontal"/>
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="data:MediaFile">
-                                        <Border Margin="4"
+                                        <Border Margin="8"
                                                 Width="160" Height="120"
                                                 Background="{DynamicResource Bg.SurfaceElevated}"
                                                 CornerRadius="0"
@@ -276,13 +280,12 @@
                             <ItemsControl ItemsSource="{Binding LocalFiles}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
-                                        <!-- v0.11: 卡片高度 180→120（spec §10.2） -->
-                                        <WrapPanel Orientation="Horizontal" ItemWidth="160" ItemHeight="120"/>
+                                        <WrapPanel Orientation="Horizontal"/>
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="data:MediaFile">
-                                        <Border Margin="4"
+                                        <Border Margin="8"
                                                 Width="160" Height="120"
                                                 Background="{DynamicResource Bg.SurfaceElevated}"
                                                 CornerRadius="0"
