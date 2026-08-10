@@ -122,6 +122,33 @@ public class MediaRepository : IMediaRepository
             connection, "media_files", "exposure_time",
             "REAL");
 
+        // === CaptureSequence (.ser) 元数据字段（v0.12+） ===
+        // 仅 media_type=2 (CaptureSequence) 时使用，其他类型全为 NULL。
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "capture_width",
+            "INTEGER");
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "capture_height",
+            "INTEGER");
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "capture_frame_count",
+            "INTEGER");
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "capture_bpp",
+            "INTEGER");
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "capture_color_mode",
+            "TEXT");
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "capture_observer",
+            "TEXT");
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "capture_telescope",
+            "TEXT");
+        SqliteMigrations.AddColumnIfMissing(
+            connection, "media_files", "capture_obs_time",
+            "INTEGER");
+
         // 评分排序的 B-tree 索引。tags 索引对未来 SQLite JSON1 查询有用，
         // 当前 LIKE '%"标签"%' 仍走全表扫（B-tree 不加速前缀模糊）。
         using (var idxCmd = new SqliteCommand(@"
@@ -420,7 +447,9 @@ public class MediaRepository : IMediaRepository
                 quality_tags,
                 focal_length_35mm, iso, exposure_time,
                 deleted_at,
-                session_id, is_diary_featured
+                session_id, is_diary_featured,
+                capture_width, capture_height, capture_frame_count, capture_bpp,
+                capture_color_mode, capture_observer, capture_telescope, capture_obs_time
             FROM media_files
             WHERE project_path = @projectPath
               AND shot_at >= @startTime
@@ -480,7 +509,9 @@ public class MediaRepository : IMediaRepository
                 quality_tags,
                 focal_length_35mm, iso, exposure_time,
                 deleted_at,
-                session_id, is_diary_featured
+                session_id, is_diary_featured,
+                capture_width, capture_height, capture_frame_count, capture_bpp,
+                capture_color_mode, capture_observer, capture_telescope, capture_obs_time
             FROM media_files
             WHERE project_path = @projectPath
               AND shot_at >= @startTime
@@ -517,6 +548,24 @@ public class MediaRepository : IMediaRepository
         ".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".mpg", ".mpeg"
     };
 
+    /// <summary>
+    /// ZWO ASICAP / SharpCap 的私有采集序列格式。体积大、不走 EXIF、不走 ffmpeg。
+    /// 与 Image/Video 解码路径完全独立：扫描时不调 ExifReader、缩略图生成走 SerReader。
+    /// </summary>
+    private static readonly HashSet<string> CaptureSequenceExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".ser"
+    };
+
+    /// <summary>扩展名 → MediaType 三分类。</summary>
+    private static MediaType GetMediaTypeByExtension(string ext) => ext switch
+    {
+        var e when ImageExtensions.Contains(e) => MediaType.Image,
+        var e when VideoExtensions.Contains(e) => MediaType.Video,
+        var e when CaptureSequenceExtensions.Contains(e) => MediaType.CaptureSequence,
+        _ => MediaType.Image, // 兜底，扫描阶段就被 ImageExtensions 过滤过
+    };
+
     public async Task<ScanResult> ScanDirectoryAsync(string projectPath, IProgress<ScanProgress>? progress = null, CancellationToken ct = default)
     {
         var result = new ScanResult { Total = 0, Processed = 0, Failed = 0, NewFiles = 0, UpdatedFiles = 0 };
@@ -529,6 +578,7 @@ public class MediaRepository : IMediaRepository
             {
                 foreach (var ext in ImageExtensions) files.Add(ext);
                 foreach (var ext in VideoExtensions) files.Add(ext);
+                foreach (var ext in CaptureSequenceExtensions) files.Add(ext);
 
                 var allFiles = Directory.EnumerateFiles(projectPath, "*.*", new EnumerationOptions
                 {
@@ -541,7 +591,9 @@ public class MediaRepository : IMediaRepository
                 {
                     if (ct.IsCancellationRequested) break;
                     var ext = Path.GetExtension(file);
-                    if (ImageExtensions.Contains(ext) || VideoExtensions.Contains(ext))
+                    if (ImageExtensions.Contains(ext)
+                        || VideoExtensions.Contains(ext)
+                        || CaptureSequenceExtensions.Contains(ext))
                     {
                         files.Add(file);
                     }
@@ -574,10 +626,14 @@ public class MediaRepository : IMediaRepository
             INSERT INTO media_files (project_path, relative_path, file_name, media_type,
                 file_size, last_modified, shot_at, thumbnail_path, scanned_at,
                 focal_length_35mm, iso, exposure_time,
+                capture_width, capture_height, capture_frame_count, capture_bpp,
+                capture_color_mode, capture_observer, capture_telescope, capture_obs_time,
                 created_at, updated_at)
             VALUES (@projectPath, @relativePath, @fileName, @mediaType,
                 @fileSize, @lastModified, @shotAt, @thumbnailPath, @scannedAt,
                 @focalLength35mm, @iso, @exposureTime,
+                @captureWidth, @captureHeight, @captureFrameCount, @captureBpp,
+                @captureColorMode, @captureObserver, @captureTelescope, @captureObsTime,
                 @createdAt, @updatedAt)
             ON CONFLICT(project_path, relative_path) DO UPDATE SET
                 file_size = @fileSize,
@@ -588,6 +644,14 @@ public class MediaRepository : IMediaRepository
                 focal_length_35mm = COALESCE(@focalLength35mm, focal_length_35mm),
                 iso = COALESCE(@iso, iso),
                 exposure_time = COALESCE(@exposureTime, exposure_time),
+                capture_width = COALESCE(@captureWidth, capture_width),
+                capture_height = COALESCE(@captureHeight, capture_height),
+                capture_frame_count = COALESCE(@captureFrameCount, capture_frame_count),
+                capture_bpp = COALESCE(@captureBpp, capture_bpp),
+                capture_color_mode = COALESCE(@captureColorMode, capture_color_mode),
+                capture_observer = COALESCE(@captureObserver, capture_observer),
+                capture_telescope = COALESCE(@captureTelescope, capture_telescope),
+                capture_obs_time = COALESCE(@captureObsTime, capture_obs_time),
                 created_at = created_at,
                 updated_at = @updatedAt";
 
@@ -603,17 +667,39 @@ public class MediaRepository : IMediaRepository
                 var fileInfo = new FileInfo(filePath);
                 var relativePath = Path.GetRelativePath(projectPath, filePath);
                 var ext = Path.GetExtension(filePath).ToLowerInvariant();
-                var mediaType = ImageExtensions.Contains(ext) ? 0 : 1;
+                // 三分类：Image(0) / Video(1) / CaptureSequence(2)
+                var mediaType = (int)GetMediaTypeByExtension(ext);
                 var fileName = Path.GetFileName(filePath);
                 var fileSize = fileInfo.Length;
                 var lastModified = new DateTimeOffset(fileInfo.LastWriteTimeUtc).ToUnixTimeMilliseconds();
                 var scannedAt = DateTimeOffset.Now.ToUnixTimeMilliseconds();
 
-                // 解析 EXIF（D09 统计仪表盘用）。非图片/无 EXIF → null，列留空。
+                // 解析 EXIF（D09 统计仪表盘用）。仅 Image 才走 ExifReader；
+                // Video 与 CaptureSequence 没有 EXIF，跳过。
                 ExifData? exif = null;
-                if (mediaType == 0) // Image
+                if (mediaType == (int)MediaType.Image)
                 {
                     exif = ExifReader.Read(filePath);
+                }
+
+                // CaptureSequence（.ser）：解析 SER 头部写入 shot_at（用 ObservationTimeUtc）
+                // 与 EXIF 字段都置空。无头部或失败时 shot_at 退化为文件修改时间。
+                long shotAt = lastModified;
+                StartTooler.Services.SerReader.SerHeader? serHeader = null;
+                if (mediaType == (int)MediaType.CaptureSequence)
+                {
+                    try
+                    {
+                        serHeader = StartTooler.Services.SerReader.ReadHeader(filePath);
+                        if (serHeader?.ObservationTimeUtc is DateTime utc)
+                        {
+                            shotAt = new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)).ToUnixTimeMilliseconds();
+                        }
+                    }
+                    catch
+                    {
+                        // 解析失败继续走默认 lastModified
+                    }
                 }
 
                 // created_at/updated_at 都用当前 UTC：新行用 @createdAt 走 INSERT（与 DEFAULT 等价），
@@ -627,12 +713,23 @@ public class MediaRepository : IMediaRepository
                 cmd.Parameters.AddWithValue("@mediaType", mediaType);
                 cmd.Parameters.AddWithValue("@fileSize", fileSize);
                 cmd.Parameters.AddWithValue("@lastModified", lastModified);
-                cmd.Parameters.AddWithValue("@shotAt", lastModified); // 用文件修改时间作为 shot_at
+                cmd.Parameters.AddWithValue("@shotAt", shotAt); // CaptureSequence 用 SER 头部 ObservationTimeUtc，否则用文件修改时间
                 cmd.Parameters.AddWithValue("@thumbnailPath", DBNull.Value); // 缩略图稍后生成
                 cmd.Parameters.AddWithValue("@scannedAt", scannedAt);
                 cmd.Parameters.AddWithValue("@focalLength35mm", (object?)exif?.FocalLength35Mm ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@iso", (object?)exif?.Iso ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@exposureTime", (object?)exif?.ExposureTimeSeconds ?? DBNull.Value);
+                // CaptureSequence 元数据：非 .ser 全部为 DBNull（列允许 NULL）
+                cmd.Parameters.AddWithValue("@captureWidth", (object?)serHeader?.Width ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@captureHeight", (object?)serHeader?.Height ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@captureFrameCount", (object?)serHeader?.FrameCount ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@captureBpp", (object?)serHeader?.BitsPerPixel ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@captureColorMode", (object?)serHeader?.ColorModeText ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@captureObserver", (object?)serHeader?.Observer ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@captureTelescope", (object?)serHeader?.Telescope ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@captureObsTime", serHeader?.ObservationTimeUtc is DateTime utc2
+                    ? new DateTimeOffset(DateTime.SpecifyKind(utc2, DateTimeKind.Utc)).ToUnixTimeMilliseconds()
+                    : DBNull.Value);
                 cmd.Parameters.AddWithValue("@createdAt", nowIso);
                 cmd.Parameters.AddWithValue("@updatedAt", nowIso);
 
@@ -958,7 +1055,9 @@ public class MediaRepository : IMediaRepository
                 quality_tags,
                 focal_length_35mm, iso, exposure_time,
                 deleted_at,
-                session_id, is_diary_featured
+                session_id, is_diary_featured,
+                capture_width, capture_height, capture_frame_count, capture_bpp,
+                capture_color_mode, capture_observer, capture_telescope, capture_obs_time
             FROM media_files
             WHERE project_path = @projectPath
               AND deleted_at IS NULL
@@ -1406,7 +1505,9 @@ public class MediaRepository : IMediaRepository
                 quality_tags,
                 focal_length_35mm, iso, exposure_time,
                 deleted_at,
-                session_id, is_diary_featured
+                session_id, is_diary_featured,
+                capture_width, capture_height, capture_frame_count, capture_bpp,
+                capture_color_mode, capture_observer, capture_telescope, capture_obs_time
             FROM media_files
             WHERE project_path = @projectPath
               AND deleted_at IS NOT NULL
@@ -1488,7 +1589,9 @@ public class MediaRepository : IMediaRepository
                 quality_tags,
                 focal_length_35mm, iso, exposure_time,
                 deleted_at,
-                session_id, is_diary_featured
+                session_id, is_diary_featured,
+                capture_width, capture_height, capture_frame_count, capture_bpp,
+                capture_color_mode, capture_observer, capture_telescope, capture_obs_time
             FROM media_files
             WHERE id = @id
             LIMIT 1";
@@ -1543,15 +1646,26 @@ public class MediaRepository : IMediaRepository
             ExposureTimeSeconds = GetOptionalDouble(reader, "exposure_time"),
             SessionId = reader.IsDBNull(reader.GetOrdinal("session_id")) ? null : reader.GetString(reader.GetOrdinal("session_id")),
             IsDiaryFeatured = reader.GetInt32(reader.GetOrdinal("is_diary_featured")) == 1,
+            // CaptureSequence 元数据（仅 .ser 有值，其他类型全 NULL）
+            CaptureWidth = GetOptionalInt(reader, "capture_width"),
+            CaptureHeight = GetOptionalInt(reader, "capture_height"),
+            CaptureFrameCount = GetOptionalLong(reader, "capture_frame_count"),
+            CaptureBitsPerPixel = GetOptionalInt(reader, "capture_bpp"),
+            CaptureColorMode = GetOptionalString(reader, "capture_color_mode"),
+            CaptureObserver = GetOptionalString(reader, "capture_observer"),
+            CaptureTelescope = GetOptionalString(reader, "capture_telescope"),
+            CaptureObservationTimeUtc = GetOptionalLong(reader, "capture_obs_time") is long ts
+                ? DateTimeOffset.FromUnixTimeMilliseconds(ts).UtcDateTime
+                : null,
         };
     }
 
-    private static double? GetOptionalDouble(SqliteDataReader reader, string name)
+    private static int? GetOptionalInt(SqliteDataReader reader, string name)
     {
         try
         {
             var ordinal = reader.GetOrdinal(name);
-            return reader.IsDBNull(ordinal) ? null : reader.GetDouble(ordinal);
+            return reader.IsDBNull(ordinal) ? null : reader.GetInt32(ordinal);
         }
         catch (IndexOutOfRangeException)
         {
@@ -1559,7 +1673,33 @@ public class MediaRepository : IMediaRepository
         }
     }
 
-    private static int? GetOptionalInt(SqliteDataReader reader, string name)
+    private static long? GetOptionalLong(SqliteDataReader reader, string name)
+    {
+        try
+        {
+            var ordinal = reader.GetOrdinal(name);
+            return reader.IsDBNull(ordinal) ? null : reader.GetInt64(ordinal);
+        }
+        catch (IndexOutOfRangeException)
+        {
+            return null;
+        }
+    }
+
+    private static string? GetOptionalString(SqliteDataReader reader, string name)
+    {
+        try
+        {
+            var ordinal = reader.GetOrdinal(name);
+            return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+        }
+        catch (IndexOutOfRangeException)
+        {
+            return null;
+        }
+    }
+
+    private static double? GetOptionalDouble(SqliteDataReader reader, string name)
     {
         try
         {
@@ -1697,7 +1837,9 @@ public class MediaRepository : IMediaRepository
                 quality_tags,
                 focal_length_35mm, iso, exposure_time,
                 deleted_at,
-                session_id, is_diary_featured
+                session_id, is_diary_featured,
+                capture_width, capture_height, capture_frame_count, capture_bpp,
+                capture_color_mode, capture_observer, capture_telescope, capture_obs_time
             FROM media_files
             WHERE session_id = @sessionId
               AND deleted_at IS NULL
@@ -1750,7 +1892,9 @@ public class MediaRepository : IMediaRepository
                 quality_tags,
                 focal_length_35mm, iso, exposure_time,
                 deleted_at,
-                session_id, is_diary_featured
+                session_id, is_diary_featured,
+                capture_width, capture_height, capture_frame_count, capture_bpp,
+                capture_color_mode, capture_observer, capture_telescope, capture_obs_time
             FROM media_files
             WHERE session_id = @sessionId
               AND is_diary_featured = 1
@@ -1939,5 +2083,63 @@ public class MediaRepository : IMediaRepository
             cmd => cmd.Parameters.AddWithValue("@tagId", tagId.Value),
             mediaType,
             ct);
+    }
+
+    // === v0.12+: 项目目录实际占用（不依赖数据库，走文件系统） ===
+
+    /// <summary>
+    /// 递归遍历项目目录，按扩展名累加可识别媒体文件的 FileInfo.Length。
+    ///
+    /// 与 GetLocalSizeAsync 的区别：
+    ///   - GetLocalSizeAsync：DB SUM(media_files.file_size) WHERE local_exists=1 AND deleted_at IS NULL。
+    ///     仅含已入库 + 未软删 + 实际存在的快照字节。状态栏会显得很小（与 Finder 19 GB vs DB 200 MB 案例）。
+    ///   - 本方法：直接 FileInfo.Length，反映磁盘真实状态。包含 local_exists=0 / 已软删但文件还在的行。
+    ///
+    /// 跳过规则：FileAttributes.Hidden | System（与 ScanDirectoryAsync 一致）。
+    /// 范围：ImageExtensions ∪ VideoExtensions ∪ CaptureSequenceExtensions。
+    /// </summary>
+    public async Task<long> GetProjectActualSizeAsync(string projectPath, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(projectPath) || !Directory.Exists(projectPath)) return 0;
+
+        return await Task.Run(() =>
+        {
+            long total = 0;
+            try
+            {
+                var allFiles = Directory.EnumerateFiles(projectPath, "*.*", new EnumerationOptions
+                {
+                    RecurseSubdirectories = true,
+                    IgnoreInaccessible = true,
+                    AttributesToSkip = FileAttributes.Hidden | FileAttributes.System
+                });
+
+                foreach (var file in allFiles)
+                {
+                    if (ct.IsCancellationRequested) break;
+                    var ext = Path.GetExtension(file);
+                    if (!(ImageExtensions.Contains(ext)
+                          || VideoExtensions.Contains(ext)
+                          || CaptureSequenceExtensions.Contains(ext)))
+                    {
+                        continue;
+                    }
+                    try
+                    {
+                        total += new FileInfo(file).Length;
+                    }
+                    catch (Exception ex)
+                    {
+                        // 单文件失败（被并发删 / 权限不够）跳过，不阻塞整体统计
+                        Trace.WriteLine($"[MediaRepository] GetProjectActualSizeAsync stat failed: {file} ex={ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"[MediaRepository] GetProjectActualSizeAsync FAILED: {ex.Message}");
+            }
+            return total;
+        }, ct);
     }
 }

@@ -169,6 +169,17 @@ public interface IMediaRepository
 
     /// <summary>按标签本地占用。mediaType 为 null 时不过滤类型。</summary>
     Task<long> GetLocalSizeByTagAsync(string projectPath, string tag, MediaType? mediaType = null, CancellationToken ct = default);
+
+    // === v0.12+: 项目目录实际占用（与 Finder / du 一致的口径） ===
+    // 不依赖数据库：递归扫文件系统，按扩展名过滤可识别媒体。
+    // 用于状态栏"项目媒体实际大小"展示，与 SUM(file_size) 不同点：
+    //   1. 包含 local_exists=0 但还在磁盘上的行（被标软删的文件）。
+    //   2. 不包含未识别扩展名（.DS_Store / .txt / .ser 之外的任意非媒体文件）。
+    //   3. 实时反映磁盘状态，不依赖扫描入库的快照。
+    // 性能：20GB 项目递归扫描约 1-3 秒（取决于 IO），UI 在后台异步刷新。
+
+    /// <summary>递归统计项目目录下所有可识别媒体文件（图片 + 视频 + 采集序列）的字节和。</summary>
+    Task<long> GetProjectActualSizeAsync(string projectPath, CancellationToken ct = default);
 }
 
 public class ScanResult

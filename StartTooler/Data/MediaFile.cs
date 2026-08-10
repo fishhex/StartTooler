@@ -7,8 +7,12 @@ namespace StartTooler.Data;
 
 public enum MediaType
 {
+    /// <summary>普通图片（JPG/PNG/RAW/HEIC 等）。</summary>
     Image,
-    Video
+    /// <summary>视频（MP4/MOV/AVI 等）。</summary>
+    Video,
+    /// <summary>采集序列（ZWO ASICAP/SharpCap 的 .ser）。单文件多帧，缩略图取首帧。</summary>
+    CaptureSequence,
 }
 
 /// <summary>
@@ -212,6 +216,32 @@ public partial class MediaFile : ObservableObject
     /// </summary>
     [ObservableProperty]
     private bool _isDiaryFeatured;
+
+    // === v0.12+: CaptureSequence 元数据（仅 .ser 有值） ===
+
+    /// <summary>SER 图像宽度。null = 非 CaptureSequence 或未解析。</summary>
+    public int? CaptureWidth { get; set; }
+
+    /// <summary>SER 图像高度。</summary>
+    public int? CaptureHeight { get; set; }
+
+    /// <summary>SER 帧数。</summary>
+    public long? CaptureFrameCount { get; set; }
+
+    /// <summary>SER 像素深度（8 / 16 / 32）。</summary>
+    public int? CaptureBitsPerPixel { get; set; }
+
+    /// <summary>SER 颜色模式（"Bayer RGGB" / "灰度" / "RGB" 等）。</summary>
+    public string? CaptureColorMode { get; set; }
+
+    /// <summary>SER 观察者信息（来自文件头）。</summary>
+    public string? CaptureObserver { get; set; }
+
+    /// <summary>SER 望远镜信息（来自文件头）。</summary>
+    public string? CaptureTelescope { get; set; }
+
+    /// <summary>SER 观测时间 UTC。null = 文件头无时间或解析失败。</summary>
+    public DateTime? CaptureObservationTimeUtc { get; set; }
 
     /// <summary>
     /// 派生 SyncStatus，给右上角徽章 binding 用。

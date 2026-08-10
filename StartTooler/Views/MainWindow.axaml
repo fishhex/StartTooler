@@ -199,7 +199,7 @@
                           IsVisible="{Binding IsGalleryPage}"
                           ToolTip.Tip="过滤媒体类型"
                           Classes="sort-combo"
-                          Width="100"
+                          Width="130"
                           Margin="0,0,8,0">
                     <ComboBoxItem>
                         <StackPanel Orientation="Horizontal" Spacing="6">
@@ -235,6 +235,23 @@
                                   Stretch="Uniform"
                                   VerticalAlignment="Center"/>
                             <TextBlock Text="视频" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </ComboBoxItem>
+                    <!--
+                      v0.12: 采集序列（.ser）—— ZWO ASICAP / SharpCap 多帧原始数据。
+                      单独可过滤：天文摄影场景下"采集序列"是创作物，跟导出的 JPG/PNG 是并列关系。
+                      Path 用电影/胶片 icon 区分（film strip 简化版：3 横条 + 帧定位孔）。
+                    -->
+                    <ComboBoxItem>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Data="M4 4h16v16H4zM4 8h16M4 14h16M6 2v2M18 2v2M6 20v2M18 20v2M8 4v4M12 4v4M16 4v4M8 14v4M12 14v4M16 14v4"
+                                  Stroke="{DynamicResource Text.Secondary}"
+                                  StrokeThickness="1.2"
+                                  Fill="Transparent"
+                                  Width="14" Height="14"
+                                  Stretch="Uniform"
+                                  VerticalAlignment="Center"/>
+                            <TextBlock Text="采集序列" VerticalAlignment="Center"/>
                         </StackPanel>
                     </ComboBoxItem>
                 </ComboBox>

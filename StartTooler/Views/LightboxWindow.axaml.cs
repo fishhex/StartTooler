@@ -58,8 +58,8 @@ public partial class LightboxWindow : Window
                 e.Handled = true;
                 break;
             case Key.Space:
-                // 视频模式下 Space = 打开外部（用户期望「Space 播放」）；图片模式不响应
-                if (vm.IsVideo)
+                // 视频 / 采集序列 模式下 Space = 打开外部；图片模式不响应
+                if (vm.IsVideo || vm.IsCaptureSequence)
                 {
                     vm.OpenExternallyCommand.Execute(null);
                     e.Handled = true;

@@ -92,13 +92,15 @@ public partial class TimelineNode : ObservableObject
 
 /// <summary>
 /// 媒体类型过滤器（Date/Tag 视图通用）。
-/// All = 全部；Image = 仅图片；Video = 仅视频。
+/// All = 全部；Image = 仅图片；Video = 仅视频；CaptureSequence = 仅 .ser（ZWO ASICAP 采集序列）。
+/// v0.12 加 CaptureSequence，与 Image/Video 平级。
 /// </summary>
 public enum MediaTypeFilter
 {
     All,
     Image,
     Video,
+    CaptureSequence,
 }
 
 /// <summary>

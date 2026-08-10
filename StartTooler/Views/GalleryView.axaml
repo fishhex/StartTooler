@@ -27,6 +27,8 @@
         <converters:FilePathToBitmapConverter x:Key="FilePathToBitmap"/>
         <converters:FilePathToVisibilityConverter x:Key="FilePathToVis"/>
         <converters:MediaTypeToVideoConverter x:Key="MediaTypeToVideo"/>
+        <!-- v0.12: 采集序列（.ser）徽章用 converter -->
+        <converters:MediaTypeToCaptureConverter x:Key="MediaTypeToCapture"/>
         <!-- 通用：选中态视觉（标签列表 spec §15.4） -->
         <converters:BoolToAccentOrSecondaryConverter x:Key="BoolToAccentOrSecondary"/>
         <converters:BoolToFontWeightConverter x:Key="BoolToFontWeight"/>
@@ -393,6 +395,30 @@
                                                                   VerticalAlignment="Center"
                                                                   IsVisible="{Binding ThumbnailPath, Converter={StaticResource FilePathToVis}, ConverterParameter=Invert}"/>
 
+                                                            <!--
+                                                              v0.12: 采集序列（.ser）专用占位 —— 相机图标 + "SER" 文字标识。
+                                                              当缩略图路径为空（ThumbnailService 现在对 .ser 直接返回 null）时显示。
+                                                              与上方通用占位星座图标互斥：.ser 显示相机图标，其他无缩略图显示星座图标。
+                                                            -->
+                                                            <StackPanel HorizontalAlignment="Center"
+                                                                        VerticalAlignment="Center"
+                                                                        Spacing="4"
+                                                                        IsVisible="{Binding MediaType, Converter={StaticResource MediaTypeToCapture}}">
+                                                                <Path Data="{DynamicResource Icon.Photo}"
+                                                                      Stretch="Uniform"
+                                                                      Width="48" Height="48"
+                                                                      Stroke="{DynamicResource State.Info}"
+                                                                      StrokeThickness="1.5"
+                                                                      Fill="Transparent"
+                                                                      HorizontalAlignment="Center"/>
+                                                                <TextBlock Text="SER"
+                                                                           FontSize="10"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="{DynamicResource State.Info}"
+                                                                           Opacity="0.7"
+                                                                           HorizontalAlignment="Center"/>
+                                                            </StackPanel>
+
                                                             <!-- 视频徽章 (左上角) -->
                                                             <Border Classes="badge-icon"
                                                                     IsVisible="{Binding MediaType, Converter={StaticResource MediaTypeToVideo}}"
@@ -403,6 +429,24 @@
                                                                       Stretch="Uniform"
                                                                       Width="12" Height="12"
                                                                       Fill="{DynamicResource State.Warning}"
+                                                                      HorizontalAlignment="Center"
+                                                                      VerticalAlignment="Center"/>
+                                                            </Border>
+
+                                                            <!--
+                                                              v0.12: 采集序列徽章（.ser）。与视频徽章互斥：MediaType=CaptureSequence 时显示。
+                                                              Path 用 Photo icon 区分，与视频的 Play icon 视觉区分。
+                                                            -->
+                                                            <Border Classes="badge-icon"
+                                                                    IsVisible="{Binding MediaType, Converter={StaticResource MediaTypeToCapture}}"
+                                                                    HorizontalAlignment="Left"
+                                                                    VerticalAlignment="Top"
+                                                                    Margin="6,10,10,6"
+                                                                    ToolTip.Tip="ZWO ASICAP 采集序列（.ser 多帧原始数据）">
+                                                                <Path Data="{DynamicResource Icon.Photo}"
+                                                                      Stretch="Uniform"
+                                                                      Width="12" Height="12"
+                                                                      Fill="{DynamicResource State.Info}"
                                                                       HorizontalAlignment="Center"
                                                                       VerticalAlignment="Center"/>
                                                             </Border>

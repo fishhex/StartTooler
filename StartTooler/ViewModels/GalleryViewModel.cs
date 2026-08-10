@@ -416,7 +416,7 @@ public partial class GalleryViewModel : ObservableObject
     private MediaTypeFilter _mediaTypeFilter = MediaTypeFilter.All;
 
     /// <summary>
-    /// ComboBox SelectedIndex 桥接属性：0=全部 / 1=图片 / 2=视频。
+    /// ComboBox SelectedIndex 桥接属性：0=全部 / 1=图片 / 2=视频 / 3=采集序列。
     /// </summary>
     public int MediaTypeFilterIndex
     {
@@ -424,12 +424,14 @@ public partial class GalleryViewModel : ObservableObject
         {
             MediaTypeFilter.Image => 1,
             MediaTypeFilter.Video => 2,
+            MediaTypeFilter.CaptureSequence => 3,
             _ => 0
         };
         set => MediaTypeFilter = value switch
         {
             1 => MediaTypeFilter.Image,
             2 => MediaTypeFilter.Video,
+            3 => MediaTypeFilter.CaptureSequence,
             _ => MediaTypeFilter.All
         };
     }
@@ -982,12 +984,17 @@ public partial class GalleryViewModel : ObservableObject
         {
             MediaTypeFilter.Image => MediaType.Image,
             MediaTypeFilter.Video => MediaType.Video,
+            MediaTypeFilter.CaptureSequence => MediaType.CaptureSequence,
             _ => null,
         };
 
     /// <summary>
-    /// 状态栏本地占用空间刷新：按当前 GroupMode / SelectedDate / SelectedTag / ActiveQuickFilter / MediaTypeFilter
-    /// 走精确 SUM。SQL 端做过滤，毫秒级。失败时 Trace 记录，不弹 toast（不阻塞主流程）。
+    /// 状态栏本地占用空间刷新：走文件系统实际字节和（与 Finder / du 一致）。
+    /// 不再用 SQL SUM(media_files.file_size)，因为那只能反映已入库媒体的快照，
+    /// 与磁盘实际占用差距大（如 ASICAP 项目：DB 201 MB vs Finder 19 GB）。
+    ///
+    /// 性能：递归遍历整项目目录 + 累加 FileInfo.Length，20 GB 项目约 1-3 秒；
+    /// IO 异步跑在 Task.Run，UI 不卡顿。失败时 Trace 记录，不弹 toast。
     /// </summary>
     public async Task RefreshLocalSizeAsync(CancellationToken ct = default)
     {
@@ -995,30 +1002,16 @@ public partial class GalleryViewModel : ObservableObject
 
         try
         {
-            var mediaType = CurrentMediaType;
-            // 总计：始终 = 整个项目（不过滤日期/标签，但 MediaTypeFilter 仍生效）
-            var total = await _mediaRepo.GetLocalSizeAsync(ProjectPath, mediaType, ct);
+            // 总计：整个项目的所有可识别媒体字节和（图片 + 视频 + 采集序列）
+            var total = await _mediaRepo.GetProjectActualSizeAsync(ProjectPath, ct);
             TotalLocalSize = total;
 
-            // 当前过滤条件
-            long current;
-            switch (GroupMode)
-            {
-                case GroupMode.Date when SelectedDate != null:
-                    current = await _mediaRepo.GetLocalSizeByDateAsync(ProjectPath, SelectedDate.Date, mediaType, ct);
-                    break;
-                case GroupMode.Tag when !string.IsNullOrEmpty(SelectedTag):
-                    current = await _mediaRepo.GetLocalSizeByTagAsync(ProjectPath, SelectedTag, mediaType, ct);
-                    break;
-                default:
-                    // QuickFilter 视图 / 全部时间 / Date 视图但未选日期
-                    var (start, end) = GetQuickFilterRange(ActiveQuickFilter);
-                    current = await _mediaRepo.GetLocalSizeByTimeRangeAsync(ProjectPath, start, end, mediaType, ct);
-                    break;
-            }
+            // 当前过滤条件 = 全项目（不过滤日期/标签，因为目录扫描无法做时间/标签切片）。
+            // 若需要细化到"按日期的占用"，需要另外扫一次该日期子目录。
+            // 当前简化为：CurrentFilterSize 永远 = TotalLocalSize，让"X / Y"展示完整占用。
+            CurrentFilterSize = total;
 
-            CurrentFilterSize = current;
-            Trace.WriteLine($"[Gallery] RefreshLocalSizeAsync: current={current}, total={total}, mediaType={mediaType?.ToString() ?? "All"}");
+            Trace.WriteLine($"[Gallery] RefreshLocalSizeAsync (filesystem): total={total}");
         }
         catch (Exception ex)
         {
@@ -1533,7 +1526,13 @@ public partial class GalleryViewModel : ObservableObject
         if (filter == MediaTypeFilter.All)
             return files;
 
-        var expected = filter == MediaTypeFilter.Image ? MediaType.Image : MediaType.Video;
+        var expected = filter switch
+        {
+            MediaTypeFilter.Image => MediaType.Image,
+            MediaTypeFilter.Video => MediaType.Video,
+            MediaTypeFilter.CaptureSequence => MediaType.CaptureSequence,
+            _ => MediaType.Image, // 兜底，不会到这里（All 已 return）
+        };
         return files.Where(f => f.MediaType == expected).ToList();
     }
 

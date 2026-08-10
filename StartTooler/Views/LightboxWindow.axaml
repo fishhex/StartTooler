@@ -106,6 +106,67 @@
                     </Border>
                 </Panel>
 
+                <!--
+                  v0.12: 采集序列模式（.ser）—— 缩略图（首帧）+ 元数据 overlay + 点击外部打开
+                  SER 文件动辄几 GB 几十 MB / 几十万帧，无法在 lightbox 里直接播放。
+                  用户应回到 ASICAP / SharpCap 查看完整序列。Lightbox 只展示：首帧缩略图 + 关键元数据。
+                -->
+                <Panel IsVisible="{Binding IsCaptureSequence}">
+                    <Image Source="{Binding CurrentFile.ThumbnailPath, Converter={x:Static conv:LightboxConverters.FilePathToBitmap}}"
+                           Stretch="Uniform"
+                           MinWidth="400" MinHeight="300"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+
+                    <Border HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Background="{DynamicResource Overlay.Dark}"
+                            CornerRadius="12"
+                            Padding="32"
+                            Cursor="Hand"
+                            Tapped="OnVideoPlayTapped"
+                            MaxWidth="560">
+                        <StackPanel Spacing="12" HorizontalAlignment="Center">
+                            <PathIcon Data="{StaticResource Icon.Photo}"
+                                      Width="48" Height="48"
+                                      Foreground="{DynamicResource Card.FooterText}"
+                                      HorizontalAlignment="Center" />
+                            <TextBlock Text="ZWO ASICAP 采集序列"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Card.FooterText}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="{Binding CaptureFrameCountText}"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Card.FooterText}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="{Binding CaptureResolutionText}"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Card.FooterText}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="{Binding CaptureBppText}"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Card.FooterText}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="{Binding CaptureColorModeText}"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Card.FooterText}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="{Binding CaptureTotalBytesText}"
+                                       FontSize="11"
+                                       Opacity="0.7"
+                                       Foreground="{DynamicResource Card.FooterText}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="点击在外部应用中打开完整序列"
+                                       FontSize="11"
+                                       Opacity="0.7"
+                                       Foreground="{DynamicResource Card.FooterText}"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Border>
+                </Panel>
+
                 <!-- 上一张 / 下一张 浮动按钮（透明叠加，左侧 64px / 右侧 64px 区域可点） -->
                 <Button HorizontalAlignment="Left"
                         VerticalAlignment="Stretch"
@@ -219,6 +280,58 @@
                         <StackPanel Spacing="4" IsVisible="{Binding IsVideo}">
                             <TextBlock Text="类型" Classes="InfoLabel" />
                             <TextBlock Text="视频"
+                                       Classes="InfoValue" />
+                        </StackPanel>
+
+                        <!-- 采集序列模式（.ser）：元数据信息块 -->
+                        <StackPanel Spacing="4" IsVisible="{Binding IsCaptureSequence}">
+                            <TextBlock Text="类型" Classes="InfoLabel" />
+                            <TextBlock Text="采集序列（ZWO ASICAP）"
+                                       Classes="InfoValue" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4" IsVisible="{Binding IsCaptureSequence}">
+                            <TextBlock Text="分辨率" Classes="InfoLabel" />
+                            <TextBlock Text="{Binding CaptureResolutionText}"
+                                       Classes="InfoValue" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4" IsVisible="{Binding IsCaptureSequence}">
+                            <TextBlock Text="帧数" Classes="InfoLabel" />
+                            <TextBlock Text="{Binding CaptureFrameCountText}"
+                                       Classes="InfoValue" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4" IsVisible="{Binding IsCaptureSequence}">
+                            <TextBlock Text="像素深度 / 色彩" Classes="InfoLabel" />
+                            <TextBlock Classes="InfoValue">
+                                <Run Text="{Binding CaptureBppText, Mode=OneWay}" />
+                                <Run Text=" · " />
+                                <Run Text="{Binding CaptureColorModeText, Mode=OneWay}" />
+                            </TextBlock>
+                        </StackPanel>
+
+                        <StackPanel Spacing="4" IsVisible="{Binding IsCaptureSequence}">
+                            <TextBlock Text="预估总数据量" Classes="InfoLabel" />
+                            <TextBlock Text="{Binding CaptureTotalBytesText}"
+                                       Classes="InfoValue" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4" IsVisible="{Binding IsCaptureSequence}">
+                            <TextBlock Text="观测时间" Classes="InfoLabel" />
+                            <TextBlock Text="{Binding CaptureObservationTimeText}"
+                                       Classes="InfoValue" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4" IsVisible="{Binding IsCaptureSequence}">
+                            <TextBlock Text="观察者" Classes="InfoLabel" />
+                            <TextBlock Text="{Binding CaptureObserverText}"
+                                       Classes="InfoValue" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4" IsVisible="{Binding IsCaptureSequence}">
+                            <TextBlock Text="望远镜" Classes="InfoLabel" />
+                            <TextBlock Text="{Binding CaptureTelescopeText}"
                                        Classes="InfoValue" />
                         </StackPanel>
 

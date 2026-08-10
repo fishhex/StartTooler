@@ -73,6 +73,63 @@ namespace StartTooler.ViewModels;
         /// </summary>
         public bool IsImage => CurrentFile?.MediaType == MediaType.Image;
         public bool IsVideo => CurrentFile?.MediaType == MediaType.Video;
+        /// <summary>采集序列（.ser）。打开时显示元数据面板，不展示原图。</summary>
+        public bool IsCaptureSequence => CurrentFile?.MediaType == MediaType.CaptureSequence;
+
+        // === CaptureSequence 元数据派生属性（XAML 友好） ===
+
+        /// <summary>"1920 × 1080" / "未解析"。</summary>
+        public string CaptureResolutionText =>
+            CurrentFile?.CaptureWidth is int w && CurrentFile?.CaptureHeight is int h
+                ? $"{w} × {h}"
+                : "—";
+
+        /// <summary>"12345 帧"。</summary>
+        public string CaptureFrameCountText =>
+            CurrentFile?.CaptureFrameCount is long n ? $"{n:N0} 帧" : "—";
+
+        /// <summary>"16-bit" / "8-bit" / "—"。</summary>
+        public string CaptureBppText =>
+            CurrentFile?.CaptureBitsPerPixel is int b ? $"{b}-bit" : "—";
+
+        /// <summary>"Bayer RGGB" / "灰度" / "—"（来自 SerHeader.ColorModeText）。</summary>
+        public string CaptureColorModeText => CurrentFile?.CaptureColorMode ?? "—";
+
+        /// <summary>"2026-06-27 14:25:00 UTC" / "—"。</summary>
+        public string CaptureObservationTimeText =>
+            CurrentFile?.CaptureObservationTimeUtc is DateTime t
+                ? t.ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
+                : "—";
+
+        /// <summary>"张三" / ""（空时显示 "未填写"）。</summary>
+        public string CaptureObserverText =>
+            string.IsNullOrWhiteSpace(CurrentFile?.CaptureObserver) ? "未填写" : CurrentFile!.CaptureObserver!;
+
+        /// <summary>"Newton 200/1000" / "未填写"。</summary>
+        public string CaptureTelescopeText =>
+            string.IsNullOrWhiteSpace(CurrentFile?.CaptureTelescope) ? "未填写" : CurrentFile!.CaptureTelescope!;
+
+        /// <summary>"12345 帧 × 1920 × 1080 × 16-bit ≈ 41.6 GB"。</summary>
+        public string CaptureTotalBytesText
+        {
+            get
+            {
+                if (CurrentFile is not { } f) return "—";
+                if (f.CaptureFrameCount is not long n || f.CaptureWidth is not int w || f.CaptureHeight is not int h || f.CaptureBitsPerPixel is not int bpp)
+                    return "—";
+                var bytes = n * (long)w * h * (bpp / 8);
+                return $"{n:N0} 帧 × {w} × {h} × {bpp}-bit ≈ {FormatSize(bytes)}";
+            }
+        }
+
+        private static string FormatSize(long bytes)
+        {
+            if (bytes < 1024) return $"{bytes} B";
+            if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+            if (bytes < 1024L * 1024 * 1024) return $"{bytes / 1024.0 / 1024.0:F1} MB";
+            if (bytes < 1024L * 1024 * 1024 * 1024) return $"{bytes / 1024.0 / 1024.0 / 1024.0:F2} GB";
+            return $"{bytes / 1024.0 / 1024.0 / 1024.0 / 1024.0:F2} TB";
+        }
 
         /// <summary>
         /// 是否有多张可翻（用于 GoNext / GoPrev 的 CanExecute）。
@@ -277,6 +334,7 @@ namespace StartTooler.ViewModels;
         OnPropertyChanged(nameof(CurrentFile));
         OnPropertyChanged(nameof(IsImage));
         OnPropertyChanged(nameof(IsVideo));
+        OnPropertyChanged(nameof(IsCaptureSequence));
         OnPropertyChanged(nameof(CanGoNext));
         OnPropertyChanged(nameof(CanGoPrev));
         OnPropertyChanged(nameof(Title));
