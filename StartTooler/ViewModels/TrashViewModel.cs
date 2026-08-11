@@ -731,6 +731,12 @@ public partial class TrashViewModel : ObservableObject
             return;
         }
 
+        // 必须在 ExitMultiSelect/ClearSelection 之前快照 id，
+        // 否则 ClearSelection 会把 IsSelected 置 false 并清空 SelectedCloudIds/SelectedLocalIds，
+        // 后续循环就不会执行任何删除操作（导致 bug：批量清理后文件依然存在）。
+        var cloudIds = SelectedCloudIds.ToList();
+        var localIds = SelectedLocalIds.ToList();
+
         ExitMultiSelect();
         IsCleaning = true;
 
@@ -741,7 +747,7 @@ public partial class TrashViewModel : ObservableObject
             int restored = 0;
 
             // 1) 云端删除（如果选了）
-            if (deleteFromCloud && cloudCount > 0)
+            if (deleteFromCloud && cloudIds.Count > 0)
             {
                 var storage = _ossFactory.TryCreate();
                 if (storage == null)
@@ -753,7 +759,7 @@ public partial class TrashViewModel : ObservableObject
                 else
                 {
                     var ossCfg = await _configService.GetAsync<OssConfig>(ConfigKeys.Oss) ?? new OssConfig();
-                    foreach (var id in SelectedCloudIds)
+                    foreach (var id in cloudIds)
                     {
                         var file = CloudFiles.FirstOrDefault(f => f.Id == id);
                         if (file == null) continue;
@@ -772,7 +778,7 @@ public partial class TrashViewModel : ObservableObject
             }
 
             // 2) 处理 CloudFiles 中被选中的
-            foreach (var id in SelectedCloudIds)
+            foreach (var id in cloudIds)
             {
                 var file = CloudFiles.FirstOrDefault(f => f.Id == id);
                 if (file == null) continue;
@@ -807,7 +813,7 @@ public partial class TrashViewModel : ObservableObject
             }
 
             // 3) 处理 LocalFiles 中被选中的
-            foreach (var id in SelectedLocalIds)
+            foreach (var id in localIds)
             {
                 var file = LocalFiles.FirstOrDefault(f => f.Id == id);
                 if (file == null) continue;
