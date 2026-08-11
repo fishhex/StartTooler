@@ -22,6 +22,7 @@ public enum ViewPage
     UploadServer,
     Trash,  // v0.8: 垃圾筒（spec doc/14-delete-and-trash.md §9.1）
     Diary,  // v0.12: 拍摄日记
+    Advanced, // 高级（含上传任务管理等子 Tab）
 }
 
 public partial class MainWindowViewModel : ObservableObject
@@ -38,6 +39,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private UploadServerViewModel uploadServerViewModel;
     [ObservableProperty] private TrashViewModel trashViewModel;  // v0.8
     [ObservableProperty] private DiaryViewModel diaryViewModel;  // v0.12
+    [ObservableProperty] private AdvancedViewModel advancedViewModel; // 高级
     [ObservableProperty] private object currentView;
     [ObservableProperty] private bool isSettingsPage;
     [ObservableProperty] private ViewPage currentPage = ViewPage.Gallery;
@@ -59,6 +61,7 @@ public partial class MainWindowViewModel : ObservableObject
                 ViewPage.UploadServer => "上传服务",
                 ViewPage.Trash => "垃圾筒",
                 ViewPage.Diary => "日记",
+                ViewPage.Advanced => "高级",
                 _ => string.Empty,
             };
             return string.IsNullOrEmpty(pageName) ? "星助" : $"星助 — {pageName}";
@@ -75,6 +78,7 @@ public partial class MainWindowViewModel : ObservableObject
     public string NavTrashTooltip => OperatingSystem.IsMacOS() ? "垃圾筒 (⌘3)" : "垃圾筒 (Ctrl+3)";
     public string NavSettingsTooltip => OperatingSystem.IsMacOS() ? "设置 (⌘4)" : "设置 (Ctrl+4)";
     public string NavDiaryTooltip => OperatingSystem.IsMacOS() ? "日记 (⌘5)" : "日记 (Ctrl+5)";
+    public string NavAdvancedTooltip => OperatingSystem.IsMacOS() ? "高级 (⌘6)" : "高级 (Ctrl+6)";
 
     /// <summary>
     /// v0.11: 通知历史（spec §14）—— 状态栏铃铛 Flyout 绑定这个集合。
@@ -101,6 +105,7 @@ public partial class MainWindowViewModel : ObservableObject
     public bool IsTrashActive => CurrentPage == ViewPage.Trash;  // v0.8
 
     public bool IsDiaryActive => CurrentPage == ViewPage.Diary;  // v0.12
+    public bool IsAdvancedActive => CurrentPage == ViewPage.Advanced;
 
     public bool IsGalleryPage => CurrentPage == ViewPage.Gallery;
 
@@ -185,6 +190,9 @@ public partial class MainWindowViewModel : ObservableObject
             var window = new LightboxWindow { DataContext = lightboxVm };
             window.Show();
         };
+
+        // 高级（含上传任务管理）
+        AdvancedViewModel = new AdvancedViewModel(_uploadJobRepo, GalleryViewModel);
 
         // v0.12: 扫描完成后触发会话聚类
         GalleryViewModel.ScanCompleted = () =>
@@ -447,6 +455,20 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// 跳转到高级页（含上传任务管理子 Tab）。
+    /// </summary>
+    [RelayCommand]
+    private async Task NavigateToAdvanced()
+    {
+        CurrentPage = ViewPage.Advanced;
+        CurrentView = AdvancedViewModel;
+        if (AdvancedViewModel != null)
+        {
+            await AdvancedViewModel.RefreshAsync();
+        }
+    }
+
     [RelayCommand]
     private async Task Refresh()
     {
@@ -522,6 +544,7 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsUploadServerActive));
         OnPropertyChanged(nameof(IsTrashActive));
         OnPropertyChanged(nameof(IsDiaryActive));
+        OnPropertyChanged(nameof(IsAdvancedActive));
         OnPropertyChanged(nameof(WindowTitle));  // v0.11: 标题随 CurrentPage 变化
     }
 }

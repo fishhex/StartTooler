@@ -1,0 +1,133 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:StartTooler.ViewModels"
+             xmlns:data="using:StartTooler.Data"
+             x:Class="StartTooler.Views.AdvancedView"
+             x:DataType="vm:AdvancedViewModel">
+
+    <Grid RowDefinitions="Auto,Auto,*">
+        <!-- 子 Tab 栏 -->
+        <Border Grid.Row="0" Background="{DynamicResource Bg.Outer}" Height="44">
+            <TabControl SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}"
+                        Classes="settings-tabs">
+                <TabItem Header="上传任务管理" />
+            </TabControl>
+        </Border>
+
+        <!-- 底部分隔线 -->
+        <Border Grid.Row="1" Height="1" Background="{DynamicResource Bg.Divider}"/>
+
+        <!-- 上传任务管理内容 -->
+        <Border Grid.Row="2" Background="{DynamicResource Bg.Surface}">
+            <StackPanel IsVisible="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:AdvancedTab.UploadTasks}}"
+                        Spacing="16"
+                        Margin="40,24">
+
+                <!-- 头部：图标 + 标题 + 操作按钮 -->
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <Border Width="32" Height="32"
+                                CornerRadius="{DynamicResource Radius.Medium}"
+                                Background="{DynamicResource Bg.SurfaceElevated}">
+                            <PathIcon Data="{DynamicResource Icon.Upload}"
+                                      Width="16" Height="16"
+                                      Foreground="{DynamicResource Accent.Stellar}"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="上传任务管理"
+                                       FontSize="16" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text.Primary}"/>
+                            <TextBlock Text="断网或退出后未完成的上传任务，可在此手动恢复或清理"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Text.Secondary}"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button Classes="secondary-button"
+                                Content="刷新"
+                                Command="{Binding RefreshCommand}"
+                                IsEnabled="{Binding !IsLoading}"/>
+                        <Button Classes="primary"
+                                Content="全部恢复"
+                                Command="{Binding ResumeAllCommand}"
+                                IsEnabled="{Binding HasUploadJobs}"/>
+                        <Button Classes="danger-button"
+                                Content="清空全部"
+                                Command="{Binding ClearAllCommand}"
+                                IsEnabled="{Binding HasUploadJobs}"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- 空状态 -->
+                <Border IsVisible="{Binding !HasUploadJobs}"
+                        Background="{DynamicResource Bg.SurfaceElevated}"
+                        CornerRadius="{DynamicResource Radius.Medium}"
+                        Padding="40,32">
+                    <StackPanel HorizontalAlignment="Center" Spacing="8">
+                        <TextBlock Text="当前项目没有未完成的上传任务"
+                                   FontSize="14"
+                                   Foreground="{DynamicResource Text.Secondary}"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="如之前的上传因断网或退出中断，重启时会自动弹出恢复提示"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text.Tertiary}"
+                                   HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- 任务列表（卡片式，每条一行） -->
+                <ItemsControl ItemsSource="{Binding UploadJobs}"
+                              IsVisible="{Binding HasUploadJobs}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="data:UploadJob">
+                            <Border Background="{DynamicResource Bg.SurfaceElevated}"
+                                    CornerRadius="{DynamicResource Radius.Medium}"
+                                    Padding="16,12"
+                                    Margin="0,4">
+                                <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto">
+                                    <TextBlock Grid.Column="0" Grid.Row="0"
+                                               Text="{Binding RelativePath}"
+                                               FontSize="13"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text.Primary}"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxWidth="500"
+                                               HorizontalAlignment="Left"/>
+                                    <TextBlock Grid.Column="0" Grid.Row="1"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Text.Tertiary}"
+                                               Margin="0,2,0,0"
+                                               HorizontalAlignment="Left">
+                                        <Run Text="文件大小: "/>
+                                        <Run Text="{Binding FileSize, Mode=OneWay}"/>
+                                        <Run Text="  ·  分片大小: "/>
+                                        <Run Text="{Binding PartSize, Mode=OneWay}"/>
+                                        <Run Text="  ·  已传分片: "/>
+                                        <Run Text="{Binding PartsUploaded.Count, Mode=OneWay}"/>
+                                        <Run Text="  ·  更新于 "/>
+                                        <Run Text="{Binding UpdatedAt, StringFormat={}{0:yyyy-MM-dd HH:mm:ss}, Mode=OneWay}"/>
+                                    </TextBlock>
+
+                                    <Button Grid.Column="1" Grid.RowSpan="2"
+                                            Classes="secondary-button"
+                                            Content="恢复"
+                                            Command="{Binding $parent[ItemsControl].((vm:AdvancedViewModel)DataContext).ResumeCommand}"
+                                            CommandParameter="{Binding}"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,8,0"/>
+                                    <Button Grid.Column="2" Grid.RowSpan="2"
+                                            Classes="danger-button"
+                                            Content="删除"
+                                            Command="{Binding $parent[ItemsControl].((vm:AdvancedViewModel)DataContext).DeleteJobCommand}"
+                                            CommandParameter="{Binding}"
+                                            VerticalAlignment="Center"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>
