@@ -96,36 +96,31 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="models:TimelineNode">
                                 <Button Classes="timeline-node"
+                                        Classes.selected="{Binding IsSelected}"
                                         HorizontalAlignment="Stretch"
                                         HorizontalContentAlignment="Stretch"
                                         Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).NodeClickCommand}"
                                         CommandParameter="{Binding}">
                                     <Grid Margin="{Binding Level, Converter={StaticResource LevelToMarginConverter}}"
-                                          ColumnDefinitions="Auto,*,Auto">
-                                        <!-- 列 0 (Auto)：折叠箭头 + 圆点，按声明顺序自然左右排列 -->
-                                        <TextBlock Grid.Column="0"
-                                                   Classes="timeline-caret"
-                                                   Text="{Binding IsExpanded, Converter={StaticResource BoolToCaretConverter}}"
-                                                   IsVisible="{Binding Kind, Converter={StaticResource KindToNotDayConverter}}"
-                                                   FontSize="11"
-                                                   VerticalAlignment="Center"
-                                                   Width="14"/>
-                                        <Ellipse Grid.Column="0"
-                                                 Width="{Binding Kind, Converter={StaticResource KindToDotSizeConverter}}"
-                                                 Height="{Binding Kind, Converter={StaticResource KindToDotSizeConverter}}"
-                                                 Margin="0,0,8,0"
-                                                 VerticalAlignment="Center"
-                                                 Fill="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
-                                        <!-- 列 1 (*)：选中态柔底 + 日期文字（弹性，超长截断） -->
-                                        <Grid Grid.Column="1" ColumnDefinitions="*">
-                                            <Border CornerRadius="6"
-                                                    Background="{DynamicResource Bg.HoverSubtle}"
-                                                    BorderBrush="{DynamicResource Border.Subtle}"
-                                                    BorderThickness="1"
-                                                    IsVisible="{Binding IsSelected}"
-                                                    IsHitTestVisible="False"
-                                                    HorizontalAlignment="Stretch"/>
-                                            <TextBlock Text="{Binding Label}"
+                                          ColumnDefinitions="*,Auto">
+                                        <!-- 方案 B：选中态底色由 Button.timeline-node:selected 伪类承载，背景与 hover 同色；柔底 Border 已移除 -->
+                                        <!-- 列 0 (*)：折叠箭头 + 圆点 + 日期文字 横向排布 -->
+                                        <Grid Grid.Column="0" ColumnDefinitions="Auto,Auto,*">
+                                            <TextBlock Grid.Column="0"
+                                                       Classes="timeline-caret"
+                                                       Text="{Binding IsExpanded, Converter={StaticResource BoolToCaretConverter}}"
+                                                       IsVisible="{Binding Kind, Converter={StaticResource KindToNotDayConverter}}"
+                                                       FontSize="11"
+                                                       VerticalAlignment="Center"
+                                                       Width="14"/>
+                                            <Ellipse Grid.Column="1"
+                                                     Width="{Binding Kind, Converter={StaticResource KindToDotSizeConverter}}"
+                                                     Height="{Binding Kind, Converter={StaticResource KindToDotSizeConverter}}"
+                                                     Margin="0,0,8,0"
+                                                     VerticalAlignment="Center"
+                                                     Fill="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
+                                            <TextBlock Grid.Column="2"
+                                                       Text="{Binding Label}"
                                                        HorizontalAlignment="Left"
                                                        Margin="10,0,8,0"
                                                        FontSize="{Binding Kind, Converter={StaticResource KindToFontSizeConverter}}"
@@ -134,8 +129,8 @@
                                                        VerticalAlignment="Center"
                                                        TextTrimming="CharacterEllipsis"/>
                                         </Grid>
-                                        <!-- 列 2 (Auto)：count-pill 固定贴右，与父容器右边界对齐 -->
-                                        <Border Grid.Column="2"
+                                        <!-- 列 1 (Auto)：count-pill 固定贴右，与父容器右边界对齐 -->
+                                        <Border Grid.Column="1"
                                                 Classes="count-pill"
                                                 Margin="0,0,10,0"
                                                 MinWidth="56"
@@ -156,7 +151,7 @@
 
                 <!-- 标签列表（GroupMode=Tag 时显示） -->
                 <ScrollViewer IsVisible="{Binding IsTagGroupMode}">
-                    <ItemsControl ItemsSource="{Binding TagGroups}" Margin="16,0,16,24">
+                    <ItemsControl ItemsSource="{Binding TagGroups}" Margin="8,4,8,24">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Spacing="0"/>
@@ -165,20 +160,13 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="models:TagGroupItem">
                                 <Button Classes="tag-node"
+                                        Classes.selected="{Binding IsSelected}"
                                         Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).SelectTagCommand}"
                                         CommandParameter="{Binding}"
                                         PointerPressed="TagNode_PointerPressed">
-                                    <!-- 选中态：整行柔底面板 (置于下层)；徽章不再单独反白。 -->
+                                    <!-- 方案 B：选中态底色由 Button.tag-node:selected 伪类承载，背景与 hover 同色；柔底 Border 已移除 -->
                                     <Grid ColumnDefinitions="*,Auto">
-                                        <!-- 选中态底色面板：覆盖整行，柔蓝灰 + 圆角 + 细描边 -->
-                                        <Border Grid.ColumnSpan="2"
-                                                CornerRadius="6"
-                                                Background="{DynamicResource Bg.HoverSubtle}"
-                                                BorderBrush="{DynamicResource Border.Subtle}"
-                                                BorderThickness="1"
-                                                IsVisible="{Binding IsSelected}"
-                                                IsHitTestVisible="False"/>
-                                        <!-- v0.11: 选中态文字加粗，颜色保持次级灰 (设计稿 §整行柔底而非变色) -->
+                                        <!-- v0.11: 选中态文字加粗，文字用主文字色 Text.Primary（与时间列表一致；选中态由整行柔底承载） -->
                                         <TextBlock Grid.Column="0"
                                                    Text="{Binding Tag, Converter={StaticResource EmptyTagToUntitled}}"
                                                    HorizontalAlignment="Left"

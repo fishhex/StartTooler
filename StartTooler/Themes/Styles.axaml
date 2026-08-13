@@ -67,6 +67,14 @@
     <Style Selector="Button.timeline-node:pointerover">
         <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
     </Style>
+    <!-- 方案 B：选中态与 hover 共用同一种底色（Bg.HoverSubtle）。
+         :selected:pointerover 显式锁定同色，避免 hover 时背景闪烁。 -->
+    <Style Selector="Button.timeline-node:selected">
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
+    </Style>
+    <Style Selector="Button.timeline-node:selected:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
+    </Style>
     <!-- 选中态用 Accent.Stellar 当左侧 2px 强调条（spec §3.4）。Element 摆不到 Button 模板外，
          通过 Background tint + 圆角体现；强调条由 Border.BorderThickness/Brush 局部表现。 -->
     <Style Selector="Border.timeline-selected-bar">
