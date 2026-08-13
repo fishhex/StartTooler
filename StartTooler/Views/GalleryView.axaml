@@ -101,8 +101,8 @@
                                         Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).NodeClickCommand}"
                                         CommandParameter="{Binding}">
                                     <Grid Margin="{Binding Level, Converter={StaticResource LevelToMarginConverter}}"
-                                          ColumnDefinitions="Auto,*">
-                                        <!-- 折叠箭头（Year/Month 用，Day 隐藏） -->
+                                          ColumnDefinitions="Auto,*,Auto">
+                                        <!-- 列 0 (Auto)：折叠箭头 + 圆点，按声明顺序自然左右排列 -->
                                         <TextBlock Grid.Column="0"
                                                    Classes="timeline-caret"
                                                    Text="{Binding IsExpanded, Converter={StaticResource BoolToCaretConverter}}"
@@ -110,39 +110,43 @@
                                                    FontSize="11"
                                                    VerticalAlignment="Center"
                                                    Width="14"/>
-                                        <!-- 圆点 -->
                                         <Ellipse Grid.Column="0"
                                                  Width="{Binding Kind, Converter={StaticResource KindToDotSizeConverter}}"
                                                  Height="{Binding Kind, Converter={StaticResource KindToDotSizeConverter}}"
                                                  Margin="0,0,8,0"
                                                  VerticalAlignment="Center"
                                                  Fill="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
-                                        <!-- 文字 + 数量（P0 修重叠 + P1 徽章 MinWidth）。
-                                             内层 Grid 列序改为 *,Auto：日期文字占弹性列，
-                                             TextTrimming + 右间距避免与徽章重叠；徽章贴右且 MinWidth 统一宽度。 -->
-                                        <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
-                                            <TextBlock Grid.Column="0"
-                                                       Text="{Binding Label}"
+                                        <!-- 列 1 (*)：选中态柔底 + 日期文字（弹性，超长截断） -->
+                                        <Grid Grid.Column="1" ColumnDefinitions="*">
+                                            <Border CornerRadius="6"
+                                                    Background="{DynamicResource Bg.HoverSubtle}"
+                                                    BorderBrush="{DynamicResource Border.Subtle}"
+                                                    BorderThickness="1"
+                                                    IsVisible="{Binding IsSelected}"
+                                                    IsHitTestVisible="False"
+                                                    HorizontalAlignment="Stretch"/>
+                                            <TextBlock Text="{Binding Label}"
                                                        HorizontalAlignment="Left"
-                                                       Margin="0,0,8,0"
+                                                       Margin="10,0,8,0"
                                                        FontSize="{Binding Kind, Converter={StaticResource KindToFontSizeConverter}}"
                                                        FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
-                                                       Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"
+                                                       Foreground="{DynamicResource Text.Primary}"
                                                        VerticalAlignment="Center"
                                                        TextTrimming="CharacterEllipsis"/>
-                                            <Border Grid.Column="1"
-                                                    Classes="count-pill"
-                                                    Classes.selected="{Binding IsSelected}"
-                                                    MinWidth="56"
-                                                    HorizontalAlignment="Right"
-                                                    VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding Count, StringFormat='{}{0} 张'}"
-                                                           HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center"
-                                                           FontSize="12"
-                                                           Foreground="{Binding IsSelected, Converter={StaticResource BoolToInverseConverter}}"/>
-                                            </Border>
                                         </Grid>
+                                        <!-- 列 2 (Auto)：count-pill 固定贴右，与父容器右边界对齐 -->
+                                        <Border Grid.Column="2"
+                                                Classes="count-pill"
+                                                Margin="0,0,10,0"
+                                                MinWidth="56"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Count, StringFormat='{}{0} 张'}"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource Text.Secondary}"/>
+                                        </Border>
                                     </Grid>
                                 </Button>
                             </DataTemplate>
@@ -164,21 +168,29 @@
                                         Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).SelectTagCommand}"
                                         CommandParameter="{Binding}"
                                         PointerPressed="TagNode_PointerPressed">
-                                    <!-- P1: 标签列表徽章也用 *,Auto + MinWidth，与时间轴一致。 -->
+                                    <!-- 选中态：整行柔底面板 (置于下层)；徽章不再单独反白。 -->
                                     <Grid ColumnDefinitions="*,Auto">
-                                        <!-- v0.11: 选中态文字变色 / 加粗（spec §15.4） -->
+                                        <!-- 选中态底色面板：覆盖整行，柔蓝灰 + 圆角 + 细描边 -->
+                                        <Border Grid.ColumnSpan="2"
+                                                CornerRadius="6"
+                                                Background="{DynamicResource Bg.HoverSubtle}"
+                                                BorderBrush="{DynamicResource Border.Subtle}"
+                                                BorderThickness="1"
+                                                IsVisible="{Binding IsSelected}"
+                                                IsHitTestVisible="False"/>
+                                        <!-- v0.11: 选中态文字加粗，颜色保持次级灰 (设计稿 §整行柔底而非变色) -->
                                         <TextBlock Grid.Column="0"
                                                    Text="{Binding Tag, Converter={StaticResource EmptyTagToUntitled}}"
                                                    HorizontalAlignment="Left"
-                                                   Margin="0,0,8,0"
+                                                   Margin="10,0,8,0"
                                                    VerticalAlignment="Center"
                                                    FontSize="13"
                                                    FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
-                                                   Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"
+                                                   Foreground="{DynamicResource Text.Primary}"
                                                    TextTrimming="CharacterEllipsis"/>
                                         <Border Grid.Column="1"
                                                 Classes="count-pill"
-                                                Classes.selected="{Binding IsSelected}"
+                                                Margin="0,0,10,0"
                                                 MinWidth="56"
                                                 HorizontalAlignment="Right"
                                                 VerticalAlignment="Center">
@@ -186,7 +198,7 @@
                                                        HorizontalAlignment="Center"
                                                        VerticalAlignment="Center"
                                                        FontSize="12"
-                                                       Foreground="{Binding IsSelected, Converter={StaticResource BoolToInverseConverter}}"/>
+                                                       Foreground="{DynamicResource Text.Secondary}"/>
                                         </Border>
                                     </Grid>
                                 </Button>

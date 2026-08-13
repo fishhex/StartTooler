@@ -126,14 +126,12 @@
         <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
 
-    <!-- v0.11 spec/15 §2.3：年份/月份/日计数胶囊（选中 = 反白） -->
+    <!-- v0.11 spec/15 §2.3：年份/月份/日计数胶囊。选中态由所在行整行柔底承载，
+         徽章本身保持普通底（与设计稿一致：不单独反白、不变红）。 -->
     <Style Selector="Border.count-pill">
         <Setter Property="Background" Value="{DynamicResource Bg.SurfaceElevated}"/>
         <Setter Property="CornerRadius" Value="{DynamicResource Radius.Pill}"/>
         <Setter Property="Padding" Value="6,2"/>
-    </Style>
-    <Style Selector="Border.count-pill.selected">
-        <Setter Property="Background" Value="{DynamicResource Timeline.Selected}"/>
     </Style>
 
     <!-- ============================================================

@@ -68,17 +68,17 @@ public class BoolToAccentOrDividerConverter : BoolToAccentOrSecondaryConverter
 }
 
 /// <summary>
-/// 选中时反色：用于 count pill 内的数字（spec §2.2 「2026 年 92」胶囊在选中时反白）。
-/// 选中 = Text.Inverse；未选中 = Text.Secondary。
+/// 历史语义：选中时反色（用于 count pill 内的数字）。
+/// 0.11 设计稿调整后选中态由整行柔底 + 文字加粗承载，徽章内的数字不再需要反色，
+/// 为避免误导，统一退回 Text.Secondary。保留类以兼容旧 XAML 引用。
 /// </summary>
 public class BoolToInverseConverter : IValueConverter
 {
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        var selected = value is bool b && b;
         return TimelineThemeLookup.Brush(
-            selected ? "Text.Inverse" : "Text.Secondary",
-            new SolidColorBrush(selected ? Color.Parse("#0A0E1A") : Color.Parse("#8892B0")));
+            "Text.Secondary",
+            new SolidColorBrush(Color.Parse("#8892B0")));
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
