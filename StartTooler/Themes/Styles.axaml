@@ -68,11 +68,19 @@
         <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
     </Style>
     <!-- 方案 B：选中态与 hover 共用同一种底色（Bg.HoverSubtle）。
-         :selected:pointerover 显式锁定同色，避免 hover 时背景闪烁。 -->
+         :selected / :selected:pointerover / :selected:pressed 全部锁定同色，
+         避免点击瞬间背景被 Button 默认 :pressed 模板覆盖而闪烁丢失。 -->
     <Style Selector="Button.timeline-node:selected">
         <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
     </Style>
     <Style Selector="Button.timeline-node:selected:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
+    </Style>
+    <Style Selector="Button.timeline-node:selected:pressed">
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
+    </Style>
+    <!-- 未选中时按下态也要保留 hover 观感，避免点击时背景短暂变透明 -->
+    <Style Selector="Button.timeline-node:pressed">
         <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
     </Style>
     <!-- 选中态用 Accent.Stellar 当左侧 2px 强调条（spec §3.4）。Element 摆不到 Button 模板外，
@@ -237,6 +245,20 @@
         <Setter Property="Padding" Value="0"/>
     </Style>
     <Style Selector="Button.tag-node:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
+    </Style>
+    <!-- 方案 B：tag-node 选中态与 hover 同底色，:selected / :selected:pointerover / :selected:pressed / :pressed
+         全部锁定同色，避免点击瞬间背景被 Button 默认 :pressed 模板覆盖而闪烁丢失。 -->
+    <Style Selector="Button.tag-node:selected">
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
+    </Style>
+    <Style Selector="Button.tag-node:selected:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
+    </Style>
+    <Style Selector="Button.tag-node:selected:pressed">
+        <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
+    </Style>
+    <Style Selector="Button.tag-node:pressed">
         <Setter Property="Background" Value="{DynamicResource Bg.HoverSubtle}"/>
     </Style>
 

@@ -102,10 +102,15 @@
                                         Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).NodeClickCommand}"
                                         CommandParameter="{Binding}">
                                     <Grid Margin="{Binding Level, Converter={StaticResource LevelToMarginConverter}}"
-                                          ColumnDefinitions="*,Auto">
-                                        <!-- 方案 B：选中态底色由 Button.timeline-node:selected 伪类承载，背景与 hover 同色；柔底 Border 已移除 -->
-                                        <!-- 列 0 (*)：折叠箭头 + 圆点 + 日期文字 横向排布 -->
-                                        <Grid Grid.Column="0" ColumnDefinitions="Auto,Auto,*">
+                                          ColumnDefinitions="Auto,*,Auto">
+                                        <!-- 方案 B 增强：左侧 3px 主题色强调条（仅选中时显示），快速识别当前行 -->
+                                        <Border Grid.Column="0"
+                                                Classes="timeline-selected-bar"
+                                                IsVisible="{Binding IsSelected}"
+                                                Margin="0,2,6,2"
+                                                VerticalAlignment="Stretch"/>
+                                        <!-- 列 1 (*)：折叠箭头 + 圆点 + 日期文字 横向排布 -->
+                                        <Grid Grid.Column="1" ColumnDefinitions="Auto,Auto,*">
                                             <TextBlock Grid.Column="0"
                                                        Classes="timeline-caret"
                                                        Text="{Binding IsExpanded, Converter={StaticResource BoolToCaretConverter}}"
@@ -122,15 +127,15 @@
                                             <TextBlock Grid.Column="2"
                                                        Text="{Binding Label}"
                                                        HorizontalAlignment="Left"
-                                                       Margin="10,0,8,0"
+                                                       Margin="4,0,8,0"
                                                        FontSize="{Binding Kind, Converter={StaticResource KindToFontSizeConverter}}"
                                                        FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
                                                        Foreground="{DynamicResource Text.Primary}"
                                                        VerticalAlignment="Center"
                                                        TextTrimming="CharacterEllipsis"/>
                                         </Grid>
-                                        <!-- 列 1 (Auto)：count-pill 固定贴右，与父容器右边界对齐 -->
-                                        <Border Grid.Column="1"
+                                        <!-- 列 2 (Auto)：count-pill 固定贴右，与父容器右边界对齐 -->
+                                        <Border Grid.Column="2"
                                                 Classes="count-pill"
                                                 Margin="0,0,10,0"
                                                 MinWidth="56"
@@ -165,18 +170,24 @@
                                         CommandParameter="{Binding}"
                                         PointerPressed="TagNode_PointerPressed">
                                     <!-- 方案 B：选中态底色由 Button.tag-node:selected 伪类承载，背景与 hover 同色；柔底 Border 已移除 -->
-                                    <Grid ColumnDefinitions="*,Auto">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <!-- 方案 B 增强：左侧 3px 主题色强调条（仅选中时显示），与时间列表统一 -->
+                                        <Border Grid.Column="0"
+                                                Classes="timeline-selected-bar"
+                                                IsVisible="{Binding IsSelected}"
+                                                Margin="0,2,6,2"
+                                                VerticalAlignment="Stretch"/>
                                         <!-- v0.11: 选中态文字加粗，文字用主文字色 Text.Primary（与时间列表一致；选中态由整行柔底承载） -->
-                                        <TextBlock Grid.Column="0"
+                                        <TextBlock Grid.Column="1"
                                                    Text="{Binding Tag, Converter={StaticResource EmptyTagToUntitled}}"
                                                    HorizontalAlignment="Left"
-                                                   Margin="10,0,8,0"
+                                                   Margin="4,0,8,0"
                                                    VerticalAlignment="Center"
                                                    FontSize="13"
                                                    FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
                                                    Foreground="{DynamicResource Text.Primary}"
                                                    TextTrimming="CharacterEllipsis"/>
-                                        <Border Grid.Column="1"
+                                        <Border Grid.Column="2"
                                                 Classes="count-pill"
                                                 Margin="0,0,10,0"
                                                 MinWidth="56"
