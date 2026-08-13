@@ -167,7 +167,7 @@
                                     CornerRadius="12"
                                     Padding="8,4">
                                 <StackPanel Orientation="Horizontal" Spacing="4">
-                                    <Path Data="{DynamicResource Icon.CloudSun}" Width="14" Height="14"
+                                    <Path Data="{DynamicResource Icon.Weather.PartlyCloudy}" Width="14" Height="14"
                                           Fill="{DynamicResource Text.Secondary}" Stretch="Uniform"/>
                                     <TextBlock Text="添加天气"
                                                FontSize="12"
