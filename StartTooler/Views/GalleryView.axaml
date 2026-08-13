@@ -117,13 +117,14 @@
                                                  Margin="0,0,8,0"
                                                  VerticalAlignment="Center"
                                                  Fill="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
-                                        <!-- 文字 + 数量，布局与标签列表一致。
-                                             label 在 Auto 列占自然宽度（紧凑），count 在 * 列内右对齐贴边。
-                                             中间剩余空间作为留白，与标签列表的 plain Grid 视觉效果一致，且无重叠风险。 -->
-                                        <Grid Grid.Column="1" ColumnDefinitions="Auto,*">
+                                        <!-- 文字 + 数量（P0 修重叠 + P1 徽章 MinWidth）。
+                                             内层 Grid 列序改为 *,Auto：日期文字占弹性列，
+                                             TextTrimming + 右间距避免与徽章重叠；徽章贴右且 MinWidth 统一宽度。 -->
+                                        <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
                                             <TextBlock Grid.Column="0"
                                                        Text="{Binding Label}"
                                                        HorizontalAlignment="Left"
+                                                       Margin="0,0,8,0"
                                                        FontSize="{Binding Kind, Converter={StaticResource KindToFontSizeConverter}}"
                                                        FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
                                                        Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"
@@ -132,6 +133,7 @@
                                             <Border Grid.Column="1"
                                                     Classes="count-pill"
                                                     Classes.selected="{Binding IsSelected}"
+                                                    MinWidth="56"
                                                     HorizontalAlignment="Right"
                                                     VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding Count, StringFormat='{}{0} 张'}"
@@ -162,16 +164,22 @@
                                         Command="{Binding $parent[UserControl].((vm:GalleryViewModel)DataContext).SelectTagCommand}"
                                         CommandParameter="{Binding}"
                                         PointerPressed="TagNode_PointerPressed">
-                                    <Grid>
+                                    <!-- P1: 标签列表徽章也用 *,Auto + MinWidth，与时间轴一致。 -->
+                                    <Grid ColumnDefinitions="*,Auto">
                                         <!-- v0.11: 选中态文字变色 / 加粗（spec §15.4） -->
-                                        <TextBlock Text="{Binding Tag, Converter={StaticResource EmptyTagToUntitled}}"
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Tag, Converter={StaticResource EmptyTagToUntitled}}"
                                                    HorizontalAlignment="Left"
+                                                   Margin="0,0,8,0"
                                                    VerticalAlignment="Center"
                                                    FontSize="13"
                                                    FontWeight="{Binding IsSelected, Converter={StaticResource BoolToFontWeight}}"
-                                                   Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
-                                        <Border Classes="count-pill"
+                                                   Foreground="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <Border Grid.Column="1"
+                                                Classes="count-pill"
                                                 Classes.selected="{Binding IsSelected}"
+                                                MinWidth="56"
                                                 HorizontalAlignment="Right"
                                                 VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Count, StringFormat='{}{0} 张'}"
