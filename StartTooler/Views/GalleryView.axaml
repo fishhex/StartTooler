@@ -109,8 +109,8 @@
                                                 IsVisible="{Binding IsSelected}"
                                                 Margin="0,2,6,2"
                                                 VerticalAlignment="Stretch"/>
-                                        <!-- 列 1 (*)：折叠箭头 + 圆点 + 日期文字 横向排布 -->
-                                        <Grid Grid.Column="1" ColumnDefinitions="Auto,Auto,*">
+                                        <!-- 列 1 (*)：折叠箭头 + 日期文字 横向排布（圆点已移除） -->
+                                        <Grid Grid.Column="1" ColumnDefinitions="Auto,*">
                                             <TextBlock Grid.Column="0"
                                                        Classes="timeline-caret"
                                                        Text="{Binding IsExpanded, Converter={StaticResource BoolToCaretConverter}}"
@@ -118,13 +118,7 @@
                                                        FontSize="11"
                                                        VerticalAlignment="Center"
                                                        Width="14"/>
-                                            <Ellipse Grid.Column="1"
-                                                     Width="{Binding Kind, Converter={StaticResource KindToDotSizeConverter}}"
-                                                     Height="{Binding Kind, Converter={StaticResource KindToDotSizeConverter}}"
-                                                     Margin="0,0,8,0"
-                                                     VerticalAlignment="Center"
-                                                     Fill="{Binding IsSelected, Converter={StaticResource BoolToAccentOrSecondary}}"/>
-                                            <TextBlock Grid.Column="2"
+                                            <TextBlock Grid.Column="1"
                                                        Text="{Binding Label}"
                                                        HorizontalAlignment="Left"
                                                        Margin="4,0,8,0"
