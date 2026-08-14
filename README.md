@@ -409,6 +409,17 @@ Views (AXAML) ── x:Bind ──► ViewModels (CommunityToolkit.Mvvm)
 
 ---
 
+## 业务知识库
+
+想了解星助的**业务对象、用户场景、设计取舍**（与技术规范互补），请参阅 [`doc/knowledge-base/`](doc/knowledge-base)：
+
+- [产品定位与全景](doc/knowledge-base/00-product-overview.md)
+- [业务对象字典](doc/knowledge-base/01-objects.md)
+- [用户场景脚本](doc/knowledge-base/02-scenarios.md)
+- [半成品与设计取舍](doc/knowledge-base/03-half-built.md)
+
+---
+
 ## 开发文档
 
 详细的工程规范请参阅 [`doc/`](doc/) 目录。推荐阅读顺序：

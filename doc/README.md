@@ -56,3 +56,18 @@
 1. 改代码必须同步改对应 spec 文件，写一句「为什么」比写做法重要。
 2. `10-trap-book.md` 是「为什么不要这样写」的集合——踩过的坑立刻沉淀，避免重蹈。
 3. 旧 `draft/star-helper-spec*.md` 是 UI 视觉迭代历史，**保留**作为决策档案，新规范不重复其内容。
+
+---
+
+## 业务知识库（互补）
+
+上面是技术规范目录。**业务视角**请参阅 [`knowledge-base/`](knowledge-base)：
+
+| 想了解 | 读这篇 |
+|---|---|
+| 产品定位 / 用户是谁 / 六个页面在做什么 | [`00-product-overview.md`](knowledge-base/00-product-overview.md) |
+| 业务对象字典（媒体、标签、会话、评分、OSS、AI 等） | [`01-objects.md`](knowledge-base/01-objects.md) |
+| 一个完整用户场景怎么跑 | [`02-scenarios.md`](knowledge-base/02-scenarios.md) |
+| 哪些是半成品 / 为什么没做完 | [`03-half-built.md`](knowledge-base/03-half-built.md) |
+
+业务知识库基于当前代码事实（不依赖 `doc/0.10/`、`doc/0.11/`、`doc/0.12/` 三个已沉淀但不再实现的需求档案）。
