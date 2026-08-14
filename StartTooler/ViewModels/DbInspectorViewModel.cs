@@ -233,6 +233,16 @@ public partial class DbInspectorViewModel : ObservableObject
 
         var pkValue = row[pk.Name];
 
+        // 主键理论上不可能 NULL（DB 设计上 PK NOT NULL），这里兜个底
+        if (pkValue == null || pkValue == DBNull.Value)
+        {
+            NotificationService.Current.Show(
+                "PK 为空",
+                $"主键列「{pk.Name}」的值为 NULL，无法定位行。请用 SQL 控制台手动 DELETE。",
+                NotificationType.Warning);
+            return;
+        }
+
         var window = DialogHelper.GetMainWindow();
         if (window == null) return;
 
