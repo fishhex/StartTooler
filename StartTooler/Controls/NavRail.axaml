@@ -12,7 +12,7 @@
       v0.11: 4 个导航按钮加 PathIcon（spec §3.1），高度 48 → 56 容纳图标+文字
       按钮 Foreground 自动驱动 PathIcon.Foreground（PathIcon 用 Fill="{TemplateBinding Foreground}" 风格跟随）
     -->
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto">
         <!-- 媒体按钮 (C15 NavItem) -->
         <Button Grid.Row="0"
                 x:Name="MediaButton"
@@ -108,8 +108,14 @@
             </Panel>
         </Button>
 
+        <!-- v0.12: 主区（媒体/上传/日记/垃圾筒）与工具区（高级/设置）之间的横向分割线 -->
+        <Border Grid.Row="4"
+                Height="1"
+                Margin="12,8"
+                Background="{DynamicResource Bg.Divider}"/>
+
         <!-- 高级按钮（含上传任务管理） -->
-        <Button Grid.Row="4"
+        <Button Grid.Row="6"
                 x:Name="AdvancedButton"
                 Height="56"
                 Classes="nav-item"
@@ -128,7 +134,7 @@
         </Button>
 
         <!-- 设置按钮 (C15 NavItem) -->
-        <Button Grid.Row="5"
+        <Button Grid.Row="7"
                 x:Name="SettingsButton"
                 Height="56"
                 Classes="nav-item"
