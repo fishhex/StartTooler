@@ -62,6 +62,8 @@
         <PackageReference Include="Avalonia.Desktop" Version="11.3.13" />
         <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.13" />
         <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.13" />
+        <!-- 高级页数据库浏览器：DataGrid 控件（独立包，不随默认 Avalonia.Controls 提供） -->
+        <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.13" />
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
         <PackageReference Include="Avalonia.Diagnostics" Version="11.3.13">
             <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>

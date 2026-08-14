@@ -1,0 +1,256 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:StartTooler.ViewModels"
+             xmlns:services="using:StartTooler.Services"
+             x:Class="StartTooler.Views.DatabaseInspectorView"
+             x:DataType="vm:DbInspectorViewModel">
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- 顶栏：数据库 / 表选择 + 列摘要 + 状态 -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource Bg.Outer}"
+                Padding="16,12"
+                BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource Bg.Divider}">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="数据库"
+                           FontSize="12"
+                           Foreground="{DynamicResource Text.Secondary}"
+                           VerticalAlignment="Center"
+                           Margin="0,0,8,0"/>
+                <ComboBox Grid.Column="1"
+                          ItemsSource="{Binding Databases}"
+                          SelectedItem="{Binding SelectedDatabase, Mode=TwoWay}"
+                          MinWidth="220"
+                          VerticalAlignment="Center"
+                          Margin="0,0,16,0">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="services:DatabaseInfo">
+                            <TextBlock Text="{Binding DisplayName}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <TextBlock Grid.Column="2"
+                           Text="表"
+                           FontSize="12"
+                           Foreground="{DynamicResource Text.Secondary}"
+                           VerticalAlignment="Center"
+                           Margin="0,0,8,0"/>
+                <ComboBox Grid.Column="3"
+                          ItemsSource="{Binding Tables}"
+                          SelectedItem="{Binding SelectedTable, Mode=TwoWay}"
+                          MinWidth="180"
+                          PlaceholderText="选择表…"
+                          VerticalAlignment="Center"
+                          Margin="0,0,16,0">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="services:TableInfo">
+                            <TextBlock Text="{Binding Name}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <Button Grid.Column="4"
+                        Classes="secondary-button"
+                        Content="刷新表"
+                        Command="{Binding LoadTablesCommand}"
+                        Margin="0,0,16,0"/>
+
+                <TextBlock Grid.Column="6"
+                           Text="{Binding StatusText}"
+                           FontSize="11"
+                           Foreground="{DynamicResource Text.Tertiary}"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Right"/>
+            </Grid>
+        </Border>
+
+        <!-- 主区域：左侧过滤 + SQL 控制台，右侧数据表 -->
+        <Grid Grid.Row="1" ColumnDefinitions="340,*">
+
+            <!-- 左侧 -->
+            <Border Grid.Column="0"
+                    Background="{DynamicResource Bg.Outer}"
+                    BorderThickness="0,0,1,0"
+                    BorderBrush="{DynamicResource Bg.Divider}"
+                    Padding="12">
+                <ScrollViewer>
+                    <StackPanel Spacing="0">
+                        <TextBlock Text="过滤条件 (WHERE)"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}"
+                                   Margin="0,0,0,6"/>
+                        <TextBox Text="{Binding WhereClause, Mode=TwoWay}"
+                                 Watermark="如: project_path = '/Users/...' AND deleted_at IS NULL"
+                                 FontFamily="Consolas,Menlo,monospace"
+                                 FontSize="11"
+                                 Height="60"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"/>
+                        <Button Classes="secondary-button"
+                                Content="应用过滤"
+                                Command="{Binding LoadRowsCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                Margin="0,6,0,12"/>
+
+                        <TextBlock Text="排序 (ORDER BY)"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}"
+                                   Margin="0,0,0,6"/>
+                        <TextBox Text="{Binding OrderByClause, Mode=TwoWay}"
+                                 Watermark="如: id DESC"
+                                 FontFamily="Consolas,Menlo,monospace"
+                                 FontSize="11"/>
+                        <Button Classes="secondary-button"
+                                Content="应用排序"
+                                Command="{Binding LoadRowsCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                Margin="0,6,0,12"/>
+
+                        <TextBlock Text="分页大小"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}"
+                                   Margin="0,0,0,6"/>
+                        <ComboBox SelectedItem="{Binding PageSize, Mode=TwoWay}"
+                                  HorizontalAlignment="Stretch">
+                            <x:Int32>50</x:Int32>
+                            <x:Int32>100</x:Int32>
+                            <x:Int32>200</x:Int32>
+                            <x:Int32>500</x:Int32>
+                            <x:Int32>1000</x:Int32>
+                        </ComboBox>
+
+                        <TextBlock Text="SQL 控制台（自由执行）"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text.Primary}"
+                                   Margin="0,18,0,6"/>
+                        <TextBlock Text="SELECT / PRAGMA 直接显示；DML/DDL 会要求二次确认"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource Text.Tertiary}"
+                                   Margin="0,0,0,6"
+                                   TextWrapping="Wrap"/>
+                        <TextBox Text="{Binding SqlInput, Mode=TwoWay}"
+                                 FontFamily="Consolas,Menlo,monospace"
+                                 FontSize="11"
+                                 Height="160"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+                            <Button Classes="secondary-button"
+                                    Content="插入模板"
+                                    Command="{Binding InsertSelectTemplateCommand}"/>
+                            <Button Classes="primary-button"
+                                    Content="执行 SQL"
+                                    Command="{Binding ExecuteSqlCommand}"
+                                    HorizontalAlignment="Right"/>
+                        </StackPanel>
+
+                        <Border Margin="0,16,0,0"
+                                Padding="10"
+                                Background="{DynamicResource Bg.SurfaceElevated}"
+                                CornerRadius="{DynamicResource Radius.Medium}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="提示"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Accent.Stellar}"/>
+                                <TextBlock TextWrapping="Wrap"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource Text.Secondary}"
+                                           Text="• 双击行复制内容（待实现）"/>
+                                <TextBlock TextWrapping="Wrap"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource Text.Secondary}"
+                                           Text="• 修改表结构前请备份 config.db / media.db"/>
+                                <TextBlock TextWrapping="Wrap"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource Text.Secondary}"
+                                           Text="• 业务层 (Repository) 不会感知直接修改，建议刷新相关页"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- 右侧：数据表 + 翻页 -->
+            <Grid Grid.Column="1" RowDefinitions="*,Auto">
+
+                <!-- DataGrid 列由 code-behind 按 SQL 返回的列名动态生成（DbInspectorView.axaml.cs 的 RebuildColumns） -->
+                <DataGrid Grid.Row="0"
+                          Name="RowsGrid"
+                          ItemsSource="{Binding Rows}"
+                          IsReadOnly="True"
+                          CanUserResizeColumns="True"
+                          CanUserSortColumns="False"
+                          GridLinesVisibility="Horizontal"
+                          HeadersVisibility="Column"
+                          AutoGenerateColumns="False"
+                          FontFamily="Consolas,Menlo,monospace"
+                          FontSize="11"
+                          Margin="0"/>
+
+                <!-- 翻页栏 -->
+                <Border Grid.Row="1"
+                        Background="{DynamicResource Bg.Outer}"
+                        Padding="12,8"
+                        BorderThickness="0,1,0,0"
+                        BorderBrush="{DynamicResource Bg.Divider}">
+                    <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding StatusText}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text.Tertiary}"
+                                   VerticalAlignment="Center"
+                                   HorizontalAlignment="Left"/>
+                        <Button Grid.Column="1"
+                                Classes="secondary-button"
+                                Content="上一页"
+                                Command="{Binding PrevPageCommand}"
+                                IsEnabled="{Binding CanGoPrev}"
+                                Padding="10,4"/>
+                        <TextBlock Grid.Column="2"
+                                   Margin="12,0"
+                                   VerticalAlignment="Center"
+                                   HorizontalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text.Secondary}">
+                            <Run Text="第 "/>
+                            <Run Text="{Binding PageIndex, Mode=OneWay}"/>
+                            <Run Text=" 页"/>
+                        </TextBlock>
+                        <Button Grid.Column="3"
+                                Classes="secondary-button"
+                                Content="下一页"
+                                Command="{Binding NextPageCommand}"
+                                IsEnabled="{Binding CanGoNext}"
+                                Padding="10,4"
+                                Margin="0,0,8,0"/>
+                        <TextBlock Grid.Column="4"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,12,0"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text.Tertiary}">
+                            <Run Text="每页 "/>
+                            <Run Text="{Binding PageSize, Mode=OneWay}"/>
+                            <Run Text=" 条"/>
+                        </TextBlock>
+                        <Button Grid.Column="5"
+                                Classes="primary-button"
+                                Content="刷新数据"
+                                Command="{Binding LoadRowsCommand}"
+                                Padding="10,4"/>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

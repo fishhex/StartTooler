@@ -13,17 +13,21 @@ using StartTooler.Services;
 namespace StartTooler.ViewModels;
 
 /// <summary>
-/// 高级页子 Tab。当前只实现「上传任务管理」，后续可扩展。
+/// 高级页子 Tab。
+///   - UploadTasks: 续传任务（业务封装，谨慎删除）
+///   - DatabaseInspector: 通用 SQL 工具（高级用户视角，DB Browser 风格）
 /// </summary>
 public enum AdvancedTab
 {
     UploadTasks,
+    DatabaseInspector,
 }
 
 public partial class AdvancedViewModel : ObservableObject
 {
     private readonly UploadJobRepository _uploadJobRepo;
     private readonly GalleryViewModel _gallery;
+    private readonly DbInspectorService _dbInspector;
 
     [ObservableProperty] private AdvancedTab selectedTab = AdvancedTab.UploadTasks;
 
@@ -34,13 +38,16 @@ public partial class AdvancedViewModel : ObservableObject
         set
         {
             if (value < 0) value = 0;
-            if (value > (int)AdvancedTab.UploadTasks) value = 0;
+            if (value > (int)AdvancedTab.DatabaseInspector) value = 0;
             SelectedTab = (AdvancedTab)value;
         }
     }
 
     /// <summary>当前项目的所有未完成上传任务。点击「刷新」或初始化时重载。</summary>
     public ObservableCollection<UploadJob> UploadJobs { get; } = new();
+
+    /// <summary>数据库浏览器（高级页 Tab「数据库」）。构造时立即初始化。</summary>
+    public DbInspectorViewModel DbInspector { get; }
 
     /// <summary>任务为空时显示提示区块。</summary>
     public bool HasUploadJobs => UploadJobs.Count > 0;
@@ -51,10 +58,12 @@ public partial class AdvancedViewModel : ObservableObject
 
     [ObservableProperty] private bool _isLoading;
 
-    public AdvancedViewModel(UploadJobRepository uploadJobRepo, GalleryViewModel gallery)
+    public AdvancedViewModel(UploadJobRepository uploadJobRepo, GalleryViewModel gallery, DbInspectorService dbInspector)
     {
         _uploadJobRepo = uploadJobRepo;
         _gallery = gallery;
+        _dbInspector = dbInspector;
+        DbInspector = new DbInspectorViewModel(dbInspector);
         UploadJobs.CollectionChanged += (_, _) =>
         {
             UploadJobCount = UploadJobs.Count;

@@ -2,6 +2,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:StartTooler.ViewModels"
              xmlns:data="using:StartTooler.Data"
+             xmlns:services="using:StartTooler.Services"
+             xmlns:views="using:StartTooler.Views"
              x:Class="StartTooler.Views.AdvancedView"
              x:DataType="vm:AdvancedViewModel">
 
@@ -11,14 +13,17 @@
             <TabControl SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}"
                         Classes="settings-tabs">
                 <TabItem Header="上传任务管理" />
+                <TabItem Header="数据库" />
             </TabControl>
         </Border>
 
         <!-- 底部分隔线 -->
         <Border Grid.Row="1" Height="1" Background="{DynamicResource Bg.Divider}"/>
 
-        <!-- 上传任务管理内容 -->
-        <Border Grid.Row="2" Background="{DynamicResource Bg.Surface}">
+        <!-- 内容区 -->
+        <Panel Grid.Row="2" Background="{DynamicResource Bg.Surface}">
+
+            <!-- 上传任务管理 Tab -->
             <StackPanel IsVisible="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:AdvancedTab.UploadTasks}}"
                         Spacing="16"
                         Margin="40,24">
@@ -48,7 +53,7 @@
                                 Content="刷新"
                                 Command="{Binding RefreshCommand}"
                                 IsEnabled="{Binding !IsLoading}"/>
-                        <Button Classes="primary"
+                        <Button Classes="primary-button"
                                 Content="全部恢复"
                                 Command="{Binding ResumeAllCommand}"
                                 IsEnabled="{Binding HasUploadJobs}"/>
@@ -128,6 +133,10 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </StackPanel>
-        </Border>
+
+            <!-- 数据库浏览器 Tab（独立 DataContext） -->
+            <ContentControl IsVisible="{Binding SelectedTab, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:AdvancedTab.DatabaseInspector}}"
+                            Content="{Binding DbInspector}"/>
+        </Panel>
     </Grid>
 </UserControl>

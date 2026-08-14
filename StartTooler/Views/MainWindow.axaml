@@ -405,6 +405,10 @@
                 <DataTemplate DataType="{x:Type vm:AdvancedViewModel}">
                     <views:AdvancedView DataContext="{Binding}"/>
                 </DataTemplate>
+                <!-- 高级子页：数据库浏览器（由 AdvancedView 的 ContentControl 渲染） -->
+                <DataTemplate DataType="{x:Type vm:DbInspectorViewModel}">
+                    <views:DatabaseInspectorView/>
+                </DataTemplate>
             </ContentControl.DataTemplates>
         </ContentControl>
 

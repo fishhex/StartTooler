@@ -191,8 +191,9 @@ public partial class MainWindowViewModel : ObservableObject
             window.Show();
         };
 
-        // 高级（含上传任务管理）
-        AdvancedViewModel = new AdvancedViewModel(_uploadJobRepo, GalleryViewModel);
+        // 高级（含上传任务管理 + 数据库浏览器）
+        // DbInspectorService 是单例（无状态，每个方法自管连接），所有 Tab 共享。
+        AdvancedViewModel = new AdvancedViewModel(_uploadJobRepo, GalleryViewModel, new DbInspectorService());
 
         // v0.12: 扫描完成后触发会话聚类
         GalleryViewModel.ScanCompleted = () =>
