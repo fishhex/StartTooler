@@ -3,27 +3,55 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using StartTooler.Data;
 
 namespace StartTooler.Services;
 
 /// <summary>
-/// 内置 HTTP 上传服务，用 HttpListener 接收局域网文件上传。
-/// 上传路径：$CurrentDirectory/YYYY-MM-DD/原始文件名
+/// v0.12: 局域网 HTTP 上传服务。在 v0.10 基础上扩展：
+///   - 路由：保留 /upload (H5)；新增 /api/v1/health、/api/v1/projects、/api/v1/projects/{name}/upload
+///   - 鉴权：6 位数字 token（启动生成 + 手动重置），受保护端点必须带 ?token= 或 X-Token header
+///   - UDP 广播：每 2s 广播 JSON 到 255.255.255.255:9876，供 App 端发现
+///   - 索引：落盘后异步触发 ScanDirectoryAsync 写入 media_files
 /// </summary>
 public class UploadServerService : IDisposable
 {
     private HttpListener? _listener;
     private CancellationTokenSource? _cts;
-    private readonly string _currentDirectory;
     private Task? _listenTask;
+
+    // v0.12: 注入依赖（替代 v0.10 构造时绑定的 _currentDirectory）
+    private readonly IConfigService _configService;
+    private readonly IMediaRepository _mediaRepository;
+    private readonly string _legacyDefaultDirectory;  // H5 /upload 用，保持 v0.10 行为
+
+    // v0.12: Token
+    private string _currentToken = GenerateToken();
+    public string CurrentToken => _currentToken;
+    public event Action<string>? OnTokenChanged;
+
+    // v0.12: UDP 广播
+    private UdpClient? _udpClient;
+    private CancellationTokenSource? _udpCts;
+    private Task? _udpTask;
+    private const int UdpBroadcastPort = 9876;
+    private const int UdpBroadcastIntervalMs = 2000;
 
     // 允许上传的文件扩展名
     private static readonly string[] AllowedExtensions =
     {
         ".jpg", ".jpeg", ".png", ".raw", ".avi", ".mp4", ".mov", ".mkv", ".webm", ".m4v", ".mpg", ".mpeg"
+    };
+
+    // v0.12: JSON 序列化选项（统一用 camelCase）
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
     public int Port { get; private set; }
@@ -32,9 +60,15 @@ public class UploadServerService : IDisposable
     public event Action<string>? OnUploadSuccess;
     public event Action<string>? OnUploadError;
 
-    public UploadServerService(string currentDirectory)
+    public UploadServerService(
+        IConfigService configService,
+        IMediaRepository mediaRepository,
+        string legacyDefaultDirectory = "")
     {
-        _currentDirectory = currentDirectory;
+        _configService = configService;
+        _mediaRepository = mediaRepository;
+        _legacyDefaultDirectory = legacyDefaultDirectory;
+        _currentToken = GenerateToken();
     }
 
     public async Task StartAsync(int port, CancellationToken ct = default)
@@ -59,6 +93,13 @@ public class UploadServerService : IDisposable
 
         Debug.WriteLine($"[UploadServer] Started on port {port}");
         _listenTask = ListenAsync(_cts.Token);
+
+        // v0.12: 启动 UDP 广播
+        _udpTask = StartUdpBroadcastAsync(_cts.Token);
+
+        // v0.12: 通知 VM 刷新 Token 显示
+        OnTokenChanged?.Invoke(_currentToken);
+
         await Task.CompletedTask;
     }
 
@@ -104,7 +145,44 @@ public class UploadServerService : IDisposable
             }
         }
 
+        // v0.12: 关闭 UDP 广播
+        try
+        {
+            _udpCts?.Cancel();
+        }
+        catch (ObjectDisposedException) { }
+        try
+        {
+            _udpClient?.Close();
+        }
+        catch (ObjectDisposedException) { }
+        _udpClient = null;
+        _udpCts = null;
+
         Debug.WriteLine("[UploadServer] Stopped");
+    }
+
+    // v0.12: 重置 Token（UI "重置" 按钮调用）
+    public void RegenerateToken()
+    {
+        _currentToken = GenerateToken();
+        OnTokenChanged?.Invoke(_currentToken);
+        Debug.WriteLine($"[UploadServer] Token regenerated: {_currentToken}");
+    }
+
+    private static string GenerateToken()
+    {
+        return Random.Shared.Next(0, 1_000_000).ToString("D6");
+    }
+
+    private bool ValidateToken(HttpListenerRequest request)
+    {
+        // 优先 query 参数 ?token=
+        var token = request.QueryString["token"];
+        // 备选 header X-Token
+        if (string.IsNullOrEmpty(token))
+            token = request.Headers["X-Token"];
+        return !string.IsNullOrEmpty(token) && token == _currentToken;
     }
 
     private async Task ListenAsync(CancellationToken ct)
@@ -139,27 +217,94 @@ public class UploadServerService : IDisposable
     {
         var request = context.Request;
         var response = context.Response;
+        var path = request.Url?.AbsolutePath ?? "";
+        var method = request.HttpMethod;
 
-        // GET /upload 返回 HTML 上传页面（局域网扫码 / 公网复用同一模板）
-        if (request.HttpMethod == "GET" &&
-            request.Url?.AbsolutePath.Equals("/upload", StringComparison.OrdinalIgnoreCase) == true)
+        try
         {
-            await ServeUploadPageAsync(response);
-            return;
-        }
+            // ===== 1. 无鉴权端点 =====
+            if (method == "GET" && string.Equals(path, "/upload", StringComparison.OrdinalIgnoreCase))
+            {
+                await ServeUploadPageAsync(response);
+                return;
+            }
 
-        // 只接受 POST /upload
-        if (request.HttpMethod != "POST" || !request.Url?.AbsolutePath.Equals("/upload", StringComparison.OrdinalIgnoreCase) == true)
+            if (method == "GET" && string.Equals(path, "/api/v1/health", StringComparison.OrdinalIgnoreCase))
+            {
+                var currentProject = await GetCurrentProjectNameAsync();
+                await WriteJsonAsync(response, 200, new HealthResponse
+                {
+                    Ok = true,
+                    Service = "starttooler",
+                    Version = "0.12",
+                    Name = Environment.MachineName,
+                    Port = Port,
+                    Token = _currentToken,
+                    CurrentProject = currentProject ?? "",
+                });
+                return;
+            }
+
+            // ===== 2. 鉴权 =====
+            if (!ValidateToken(request))
+            {
+                await WriteJsonAsync(response, 401, new ErrorResponse { Error = "invalid token" });
+                return;
+            }
+
+            // ===== 3. 受保护端点 =====
+            if (method == "GET" && string.Equals(path, "/api/v1/projects", StringComparison.OrdinalIgnoreCase))
+            {
+                await HandleListProjectsAsync(response);
+                return;
+            }
+
+            if (method == "POST" && path.StartsWith("/api/v1/projects/", StringComparison.OrdinalIgnoreCase)
+                && path.EndsWith("/upload", StringComparison.OrdinalIgnoreCase))
+            {
+                var projectName = ExtractProjectName(path);
+                if (string.IsNullOrEmpty(projectName))
+                {
+                    await WriteJsonAsync(response, 404, new ErrorResponse { Error = "invalid project name" });
+                    return;
+                }
+                await HandleUploadToProjectAsync(projectName, request, response);
+                return;
+            }
+
+            // ===== 4. 兜底：H5 /upload POST（沿用 v0.10 行为）=====
+            if (method == "POST" && string.Equals(path, "/upload", StringComparison.OrdinalIgnoreCase))
+            {
+                await HandleLegacyUploadAsync(request, response);
+                return;
+            }
+
+            // ===== 5. 未匹配 =====
+            await WriteJsonAsync(response, 404, new ErrorResponse { Error = "not found" });
+        }
+        catch (Exception ex)
         {
-            response.StatusCode = 404;
-            response.Close();
-            return;
+            Debug.WriteLine($"[UploadServer] Handle error: {ex}");
+            try
+            {
+                await WriteJsonAsync(response, 500, new ErrorResponse { Error = ex.Message });
+            }
+            catch
+            {
+                // response 可能已关闭，忽略
+            }
         }
+    }
 
-        // 检查 Content-Type
+    // ========================================================================
+    // H5 /upload 旧行为（保留 v0.10 逻辑）
+    // ========================================================================
+
+    private async Task HandleLegacyUploadAsync(HttpListenerRequest request, HttpListenerResponse response)
+    {
         if (!request.ContentType?.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase) == true)
         {
-            await WriteResponseAsync(response, 400, "{\"error\":\"Invalid content type. Use multipart/form-data.\"}");
+            await WriteJsonAsync(response, 400, new ErrorResponse { Error = "Invalid content type. Use multipart/form-data." });
             return;
         }
 
@@ -168,7 +313,7 @@ public class UploadServerService : IDisposable
             var files = ParseMultipartFiles(request);
             if (files.Count == 0)
             {
-                await WriteResponseAsync(response, 400, "{\"error\":\"No files uploaded.\"}");
+                await WriteJsonAsync(response, 400, new ErrorResponse { Error = "No files uploaded." });
                 return;
             }
 
@@ -182,9 +327,8 @@ public class UploadServerService : IDisposable
                     continue;
                 }
 
-                // 按日期归档
                 var today = DateTime.Now.ToString("yyyy-MM-dd");
-                var dateDir = Path.Combine(_currentDirectory, today);
+                var dateDir = Path.Combine(_legacyDefaultDirectory, today);
                 Directory.CreateDirectory(dateDir);
 
                 var destPath = GetUniqueFileName(Path.Combine(dateDir, file.FileName));
@@ -196,16 +340,17 @@ public class UploadServerService : IDisposable
 
                 successCount++;
                 OnUploadSuccess?.Invoke(destPath);
-                Debug.WriteLine($"[UploadServer] Uploaded: {destPath} ({new FileInfo(destPath).Length} bytes)");
+                Debug.WriteLine($"[UploadServer] H5 Uploaded: {destPath} ({new FileInfo(destPath).Length} bytes)");
             }
 
-            await WriteResponseAsync(response, 200, $"{{\"success\":true,\"count\":{successCount}}}");
+            // v0.12: 与旧行为一致 —— 成功时只用 success + count，失败累加到 OnUploadError
+            await WriteJsonAsync(response, 200, new { success = true, count = successCount });
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[UploadServer] Upload error: {ex}");
+            Debug.WriteLine($"[UploadServer] H5 Upload error: {ex}");
             OnUploadError?.Invoke(ex.Message);
-            await WriteResponseAsync(response, 500, $"{{\"error\":\"{EscapeJson(ex.Message)}\"}}");
+            await WriteJsonAsync(response, 500, new ErrorResponse { Error = ex.Message });
         }
     }
 
@@ -223,13 +368,11 @@ public class UploadServerService : IDisposable
             if (File.Exists(templatePath))
             {
                 html = await File.ReadAllTextAsync(templatePath);
-                // 注入运行时上下文：局域网扫码场景填完整 URL，方便 fetch 直接用
                 var baseUrl = $"http://{GetLocalIp()}:{Port}";
                 html = html.Replace("{{STARTOOLER_BASE}}", baseUrl);
             }
             else
             {
-                // 模板缺失的 fallback（不应该发生 —— csproj 已配 CopyToOutputDirectory）
                 Debug.WriteLine($"[UploadServer] Template not found: {templatePath}");
                 html =
                     "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Upload</title></head>" +
@@ -261,19 +404,280 @@ public class UploadServerService : IDisposable
         }
     }
 
-    private static async Task WriteResponseAsync(HttpListenerResponse response, int statusCode, string body)
+    // ========================================================================
+    // /api/v1/* 新端点
+    // ========================================================================
+
+    private async Task HandleListProjectsAsync(HttpListenerResponse response)
     {
-        response.StatusCode = statusCode;
-        response.ContentType = "application/json";
-        var buffer = Encoding.UTF8.GetBytes(body);
-        await response.OutputStream.WriteAsync(buffer);
+        var projectCfg = await _configService.GetAsync<ProjectConfig>(ConfigKeys.Project);
+        var items = new List<ProjectListItem>();
+
+        if (projectCfg != null)
+        {
+            var currentDir = projectCfg.CurrentDirectory ?? "";
+
+            foreach (var path in projectCfg.RecentDirectories)
+            {
+                if (string.IsNullOrWhiteSpace(path)) continue;
+                if (!Directory.Exists(path)) continue;  // 失效目录过滤
+
+                long fileCount = 0;
+                long sizeBytes = 0;
+                try
+                {
+                    fileCount = await _mediaRepository.CountByProjectAsync(path);
+                    sizeBytes = await _mediaRepository.GetLocalSizeAsync(path, null);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[UploadServer] stats fail for {path}: {ex.Message}");
+                }
+
+                items.Add(new ProjectListItem
+                {
+                    Name = Path.GetFileName(path.TrimEnd('/', '\\')),
+                    Path = path,
+                    ProjectName = projectCfg.ProjectName,
+                    FileCount = fileCount,
+                    SizeMb = sizeBytes / 1024 / 1024,
+                    IsCurrent = string.Equals(path, currentDir, StringComparison.Ordinal),
+                });
+            }
+        }
+
+        await WriteJsonAsync(response, 200, new ProjectListResponse { Items = items });
+    }
+
+    private async Task HandleUploadToProjectAsync(
+        string projectName, HttpListenerRequest request, HttpListenerResponse response)
+    {
+        var projectPath = await ResolveProjectPathAsync(projectName);
+        if (projectPath == null)
+        {
+            await WriteJsonAsync(response, 404, new ErrorResponse { Error = $"project '{projectName}' not found" });
+            return;
+        }
+
+        if (!request.ContentType?.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            await WriteJsonAsync(response, 400, new ErrorResponse { Error = "Invalid content type. Use multipart/form-data." });
+            return;
+        }
+
+        List<ParsedFile> files;
+        try
+        {
+            files = await Task.Run(() => ParseMultipartFiles(request));
+        }
+        catch (Exception ex)
+        {
+            await WriteJsonAsync(response, 400, new ErrorResponse { Error = $"multipart parse failed: {ex.Message}" });
+            return;
+        }
+
+        if (files.Count == 0)
+        {
+            await WriteJsonAsync(response, 400, new ErrorResponse { Error = "No files uploaded." });
+            return;
+        }
+
+        var saved = new List<UploadFileItem>();
+        var failed = new List<UploadFileItem>();
+
+        foreach (var file in files)
+        {
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (Array.IndexOf(AllowedExtensions, ext) < 0)
+            {
+                OnUploadError?.Invoke($"Unsupported file type: {ext}");
+                failed.Add(new UploadFileItem { Name = file.FileName, Reason = $"unsupported extension {ext}" });
+                continue;
+            }
+
+            // 单文件大小限制（500MB）
+            long sizeHint = 0;
+            try { sizeHint = file.Data.Length; } catch { /* stream 不一定支持 Length */ }
+            if (sizeHint > 500L * 1024 * 1024)
+            {
+                failed.Add(new UploadFileItem { Name = file.FileName, Reason = "exceeds 500MB limit" });
+                continue;
+            }
+
+            try
+            {
+                var today = DateTime.Now.ToString("yyyy-MM-dd");
+                var dateDir = Path.Combine(projectPath, today);
+                Directory.CreateDirectory(dateDir);
+                var destPath = GetUniqueFileName(Path.Combine(dateDir, file.FileName));
+
+                await using (var output = File.Create(destPath))
+                {
+                    await file.Data.CopyToAsync(output);
+                }
+
+                saved.Add(new UploadFileItem { Name = Path.GetFileName(destPath), Path = destPath });
+                OnUploadSuccess?.Invoke(destPath);
+                Debug.WriteLine($"[UploadServer] Uploaded: {destPath} ({new FileInfo(destPath).Length} bytes)");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[UploadServer] save failed for {file.FileName}: {ex.Message}");
+                failed.Add(new UploadFileItem { Name = file.FileName, Reason = ex.Message });
+            }
+        }
+
+        // v0.12: 异步触发扫描（不阻塞响应）
+        if (saved.Count > 0)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _mediaRepository.ScanDirectoryAsync(projectPath, progress: null, CancellationToken.None);
+                    Debug.WriteLine($"[UploadServer] Scan after upload done: {projectPath}");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[UploadServer] Scan after upload failed: {ex.Message}");
+                }
+            });
+        }
+
+        await WriteJsonAsync(response, 200, new UploadResponse
+        {
+            Success = true,
+            Count = saved.Count,
+            Files = saved,
+            Failed = failed,
+        });
+    }
+
+    private async Task<string?> ResolveProjectPathAsync(string name)
+    {
+        var projectCfg = await _configService.GetAsync<ProjectConfig>(ConfigKeys.Project);
+        if (projectCfg == null) return null;
+
+        foreach (var path in projectCfg.RecentDirectories)
+        {
+            if (string.IsNullOrWhiteSpace(path)) continue;
+            var basename = Path.GetFileName(path.TrimEnd('/', '\\'));
+            if (string.Equals(name, basename, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(name, path, StringComparison.OrdinalIgnoreCase))
+            {
+                return Directory.Exists(path) ? path : null;
+            }
+        }
+        return null;
+    }
+
+    private async Task<string?> GetCurrentProjectNameAsync()
+    {
+        try
+        {
+            var cfg = await _configService.GetAsync<ProjectConfig>(ConfigKeys.Project);
+            if (cfg == null || string.IsNullOrEmpty(cfg.CurrentDirectory)) return null;
+            return Path.GetFileName(cfg.CurrentDirectory.TrimEnd('/', '\\'));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ExtractProjectName(string path)
+    {
+        // /api/v1/projects/{name}/upload → {name}
+        const string prefix = "/api/v1/projects/";
+        const string suffix = "/upload";
+        if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+            !path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            return null;
+        var name = path.Substring(prefix.Length, path.Length - prefix.Length - suffix.Length);
+        return string.IsNullOrEmpty(name) ? null : name;
+    }
+
+    // ========================================================================
+    // UDP 广播（v0.12 新增）
+    // ========================================================================
+
+    private async Task StartUdpBroadcastAsync(CancellationToken ct)
+    {
+        _udpCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var localCt = _udpCts.Token;
+
+        try
+        {
+            _udpClient = new UdpClient();
+            _udpClient.EnableBroadcast = true;
+
+            var endpoint = new IPEndPoint(IPAddress.Broadcast, UdpBroadcastPort);
+
+            while (!localCt.IsCancellationRequested)
+            {
+                var currentProject = await GetCurrentProjectNameAsync();
+                var payload = new UdpBroadcastPayload
+                {
+                    Service = "starttooler",
+                    Version = "0.12",
+                    Name = Environment.MachineName,
+                    Port = Port,
+                    Token = _currentToken,
+                    CurrentProject = currentProject ?? "",
+                };
+                var bytes = JsonSerializer.SerializeToUtf8Bytes(payload, JsonOpts);
+
+                try
+                {
+                    await _udpClient.SendAsync(bytes, endpoint);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[UploadServer] UDP send failed: {ex.Message}");
+                }
+
+                try
+                {
+                    await Task.Delay(UdpBroadcastIntervalMs, localCt);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 正常停止
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[UploadServer] UDP broadcast error: {ex.Message}");
+        }
+        finally
+        {
+            try { _udpClient?.Close(); } catch { /* ignore */ }
+            _udpClient = null;
+        }
+    }
+
+    // ========================================================================
+    // JSON 响应（v0.12 统一）
+    // ========================================================================
+
+    private static async Task WriteJsonAsync<T>(HttpListenerResponse response, int status, T payload)
+    {
+        response.StatusCode = status;
+        response.ContentType = "application/json; charset=utf-8";
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(payload, JsonOpts);
+        response.ContentLength64 = bytes.Length;
+        await response.OutputStream.WriteAsync(bytes);
         response.Close();
     }
 
-    private static string EscapeJson(string s)
-    {
-        return s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
-    }
+    // ========================================================================
+    // 复用的工具（multipart 解析、重命名、IP 获取）
+    // ========================================================================
 
     /// <summary>
     /// 解析 multipart/form-data 请求，提取所有文件。
@@ -293,51 +697,8 @@ public class UploadServerService : IDisposable
         bodyStream.CopyTo(ms);
         var body = ms.ToArray();
 
-        // 按 boundary 分割 parts
-        var parts = Encoding.UTF8.GetString(body).Split(new[] { boundary }, StringSplitOptions.None);
-
-        foreach (var part in parts)
-        {
-            if (string.IsNullOrWhiteSpace(part) || part.StartsWith("--"))
-                continue;
-
-            // 每个 part 包含 header + blank line + data
-            var idx = part.IndexOf("\r\n\r\n");
-            if (idx < 0) continue;
-
-            var headers = part.Substring(0, idx);
-            var dataStr = part.Substring(idx + 4);
-
-            // 去掉末尾的 \r\n
-            if (dataStr.EndsWith("\r\n"))
-                dataStr = dataStr.Substring(0, dataStr.Length - 2);
-
-            // 解析 Content-Disposition
-            var nameMatch = System.Text.RegularExpressions.Regex.Match(headers, @"name=""([^""]+)""");
-            var fileNameMatch = System.Text.RegularExpressions.Regex.Match(headers, @"filename=""([^""]+)""");
-
-            if (!fileNameMatch.Success)
-                continue; // 非文件字段跳过
-
-            var fieldName = nameMatch.Success ? nameMatch.Groups[1].Value : "";
-            var fileName = fileNameMatch.Groups[1].Value;
-
-            if (string.IsNullOrEmpty(fileName))
-                continue;
-
-            // 文件名含路径时取最后部分
-            fileName = Path.GetFileName(fileName);
-
-            // 把 dataStr (字符串) 转回字节（假设 UTF-8，实际文件内容可能乱码但 dataStr 只是边界分割用）
-            // 注意：multipart 里的二进制文件不能简单地用 UTF-8 解码，这里需要用原始字节位置
-            // 重新按字节位置找
-            var partStart = Encoding.UTF8.GetString(body).IndexOf(boundary + "\r\n");
-            // 更准确的方式：用字节范围
-            files.Clear(); // 重新解析，用字节偏移
-            return ParseMultipartFilesByBytes(body, boundary);
-        }
-
-        return files;
+        // 走字节级解析（v0.10 已固化的实现，避免早期字符串切分的乱码问题）
+        return ParseMultipartFilesByBytes(body, boundary);
     }
 
     private static List<ParsedFile> ParseMultipartFilesByBytes(byte[] body, string boundary)
@@ -371,10 +732,8 @@ public class UploadServerService : IDisposable
             var fileName = Path.GetFileName(fileNameMatch.Groups[1].Value);
             if (string.IsNullOrEmpty(fileName)) { pos = nextIdx; continue; }
 
-            // 二进制数据在 partData 里 headerEnd + 4 之后
             var dataStart = Encoding.UTF8.GetByteCount(partStr.Substring(0, headerEnd + 4));
             var dataLen = partData.Length - dataStart;
-            // 去掉末尾的 \r\n
             if (dataLen > 2) dataLen -= 2;
 
             var data = new byte[dataLen];
@@ -446,6 +805,7 @@ public class UploadServerService : IDisposable
     {
         Stop();
         _cts?.Dispose();
+        _udpCts?.Dispose();
     }
 
     private sealed class ParsedFile
@@ -459,4 +819,64 @@ public class UploadServerService : IDisposable
             Data = data;
         }
     }
+}
+
+// =====================================================================
+// JSON DTO（v0.12 新增）
+// =====================================================================
+
+public sealed class HealthResponse
+{
+    public bool Ok { get; init; }
+    public string Service { get; init; } = "starttooler";
+    public string Version { get; init; } = "0.12";
+    public string Name { get; init; } = "";
+    public int Port { get; init; }
+    public string Token { get; init; } = "";
+    public string CurrentProject { get; init; } = "";
+}
+
+public sealed class ErrorResponse
+{
+    public string Error { get; init; } = "";
+}
+
+public sealed class ProjectListResponse
+{
+    public List<ProjectListItem> Items { get; init; } = new();
+}
+
+public sealed class ProjectListItem
+{
+    public string Name { get; init; } = "";
+    public string Path { get; init; } = "";
+    public string? ProjectName { get; init; }
+    public long FileCount { get; init; }
+    public long SizeMb { get; init; }
+    public bool IsCurrent { get; init; }
+}
+
+public sealed class UploadResponse
+{
+    public bool Success { get; init; }
+    public int Count { get; init; }
+    public List<UploadFileItem> Files { get; init; } = new();
+    public List<UploadFileItem> Failed { get; init; } = new();
+}
+
+public sealed class UploadFileItem
+{
+    public string Name { get; init; } = "";
+    public string Path { get; init; } = "";
+    public string Reason { get; init; } = "";
+}
+
+public sealed class UdpBroadcastPayload
+{
+    public string Service { get; init; } = "starttooler";
+    public string Version { get; init; } = "0.12";
+    public string Name { get; init; } = "";
+    public int Port { get; init; }
+    public string Token { get; init; } = "";
+    public string CurrentProject { get; init; } = "";
 }
