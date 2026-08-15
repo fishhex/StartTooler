@@ -2,6 +2,61 @@
 
 > 关联文档：`02-data-layer.md`（数据层）、`04-oss-upload.md`（OSS 上传）、`06-settings.md`（设置）
 
+## 7. 与后续需求的关系
+
+### 7.1 与 D04 — 移动端 LAN 同步（局域网原生 App）的关系
+
+> 详见 `doc/0.12/demand/04-mobile-lan-sync.md`
+
+D02（OSS 云端同步）和 D04（LAN 同步原生 App）是**互补、非互斥**两条链路：
+
+| 维度 | D02（OSS） | D04（LAN 原生 App） |
+|---|---|---|
+| 网络 | 广域网 | 局域网（同 WiFi） |
+| 触发场景 | 跨设备初始化 / 异地同步 | 现场拍摄后即时传输 |
+| 移动端 | 暂未参与（主要是 PC↔OSS） | iOS / Android 原生 App |
+| 传输速度 | 受限于上行带宽 | 局域网 Gbps 级别 |
+| 中转 | 阿里云 OSS | PC 端直接接收 |
+| 依赖 | OSS 凭据 + PathPrefix | UploadServerService（v0.10 已实现） |
+
+**两者形成完整链路**：
+
+```
+拍摄现场（手机）                        家中（PC）
+       │                                  │
+       │ ② 同一 WiFi 推送到 PC（D04）     │
+       │ ──────────────────────────────→ │
+       │                                  │ ③ 入库 media_files
+       │                                  │ ④ AI 打标
+       │                                  │ ⑤ 自动上传到 OSS
+       │                                  │
+       │   出差（另一台设备）                │
+       │                                  │
+       │ ⑥ 新设备："从云端恢复"（D02）     │
+       │    Pull ← OSS                     │
+       ▼                                  ▼
+```
+
+### 7.2 数据模型复用
+
+D02 引入的 `ProjectName` 字段在 D04 中**直接复用**：
+
+- App 端上传时，携带 `project_name`（即 D02 中的 `ProjectName`）
+- PC 端收到文件后写入 `media_files.project_name`（沿用 D02 字段）
+- 后续 D02 的"从云端恢复"能识别这些由 D04 推上来的记录
+
+### 7.3 `project_name` 与"项目列表"的区分
+
+D02 文档中"项目"指 `ProjectName`（跨设备唯一标识，一个目录对应一个 ProjectName）。
+
+D04 文档中"项目"指 `RecentDirectories` 中的一行（一个本地目录）。
+
+两者**1:N 关系预警**：理论上同一 ProjectName 可以对应多个本地目录（同一项目在不同设备上的副本）。
+
+冲突场景暂不处理：
+- D02 文档"需求 3.1"提到不做全局唯一校验
+- D04 文档 App 端在切换项目时，按 `RecentDirectories` 列表而非 `ProjectName` 列表展示
+
 ---
 
 ## 0. 元信息
