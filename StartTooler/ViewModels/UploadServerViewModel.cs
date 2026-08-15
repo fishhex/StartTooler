@@ -14,6 +14,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QRCoder;
+using StartTooler.Data;
 using StartTooler.Services;
 
 namespace StartTooler.ViewModels;
@@ -37,6 +38,10 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _cts;
     private string? _lastProjectPath;  // 监听项目目录变化，自动停服
 
+    // v0.12: 注入依赖（UploadServerService 需要读 ProjectConfig + 触发 ScanDirectoryAsync）
+    private readonly IConfigService _configService;
+    private readonly IMediaRepository _mediaRepository;
+
     [ObservableProperty] private int _port = 8765;
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartServerCommand))]
@@ -51,6 +56,11 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string? _statusMessage;
     [ObservableProperty] private string? _errorMessage;
     [ObservableProperty] private string? _recentUploadMessage;
+
+    // v0.12: 当前 Token（6 位数字），UI 显示 + 拼到 QR URL
+    [ObservableProperty] private string _currentToken = "";
+    // v0.12: Token 变化时刷新 QR 码
+    partial void OnCurrentTokenChanged(string value) => RefreshQrForCurrentAddress();
 
     /// <summary>当前 QR/URL 是否指向公网地址（公网 relay 在跑）。</summary>
     [ObservableProperty] private bool _isPublicMode;
@@ -82,10 +92,16 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     public bool CanStart => !IsRunning;
     public bool CanStop => IsRunning;
 
-    public UploadServerViewModel(GalleryViewModel gallery, PublicRelayViewModel publicRelayViewModel)
+    public UploadServerViewModel(
+        GalleryViewModel gallery,
+        PublicRelayViewModel publicRelayViewModel,
+        IConfigService configService,
+        IMediaRepository mediaRepository)
     {
         _gallery = gallery;
         PublicRelayViewModel = publicRelayViewModel;
+        _configService = configService;
+        _mediaRepository = mediaRepository;
         // 订阅公网代理状态/URL 变化，让二维码跟着切换
         publicRelayViewModel.PropertyChanged += OnPublicRelayPropertyChanged;
         // 监听项目目录变化：切项目时停服（路径已变，上传的文件会落错位置）
@@ -144,7 +160,16 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
 
         try
         {
-            _server = new UploadServerService(_gallery.ProjectPath ?? "");
+            _server = new UploadServerService(
+                _configService,
+                _mediaRepository,
+                _gallery.ProjectPath ?? "");
+
+            // v0.12: 订阅 Token 变化（OnTokenChanged 在 StartAsync 启动时同步触发，UI 立刻拿到 token）
+            _server.OnTokenChanged += token => Dispatcher.UIThread.Post(() => {
+                CurrentToken = token;
+                StatusMessage = $"Token 已刷新：{token}";
+            });
             _cts = new CancellationTokenSource();
             _lastProjectPath = _gallery.ProjectPath;
 
@@ -300,6 +325,12 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         }
     }
 
+    [RelayCommand]
+    private void RegenerateToken()
+    {
+        _server?.RegenerateToken();
+    }
+
     [RelayCommand(CanExecute = nameof(CanStop))]
     private void StopServer()
     {
@@ -318,6 +349,7 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         IsPortConflict = false;
         SuggestedPorts = new List<int>();
         LocalAddresses.Clear();
+        CurrentToken = "";  // v0.12: 清空 Token 显示
         StatusMessage = "服务已停止";
         ErrorMessage = null;
     }
@@ -340,6 +372,7 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     /// <summary>
     /// 根据 AddressIndex 重新构造显示 URL，便于在多网卡 IP 间切换。
     /// 公网模式下直接返回 UploadUrl，不做 host 替换。
+    /// v0.12: LAN 模式下追加 ?t=token，扫码后 App 端可解析；公网模式不含 token（设计合理）。
     /// </summary>
     private string BuildDisplayUrl()
     {
@@ -351,7 +384,13 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         {
             var baseUri = new Uri(UploadUrl);
             var builder = new UriBuilder(baseUri) { Host = LocalAddresses[idx] };
-            return builder.Uri.ToString().TrimEnd('/');
+            var url = builder.Uri.ToString().TrimEnd('/');
+            // v0.12: 拼 token（LAN 模式）
+            if (!string.IsNullOrEmpty(CurrentToken))
+            {
+                url += $"?t={Uri.EscapeDataString(CurrentToken)}";
+            }
+            return url;
         }
         catch
         {
@@ -427,9 +466,12 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         Trace.WriteLine($"[UploadServerVM] UpdateQrForMode: IsPublicRelayRunning={PublicRelayViewModel.IsPublicRelayRunning}, publicUrl={publicUrl ?? "<null>"}, isPublic={isPublic}");
 
         IsPublicMode = isPublic;
-        var url = isPublic ? publicUrl! : _server.UploadUrl;
-        UploadUrl = url;
-        GenerateQrCode(url);
+        UploadUrl = isPublic ? publicUrl! : _server.UploadUrl;
+
+        // v0.12: 改用 DisplayUploadUrl（已包含 ?t=token + 当前 AddressIndex 选中的 IP）
+        //  - LAN 模式：自动拼 ?t={token}
+        //  - 公网模式：直接返回 UploadUrl（不含 token，设计合理）
+        GenerateQrCode(DisplayUploadUrl);
     }
 
     private void GenerateQrCode(string url)

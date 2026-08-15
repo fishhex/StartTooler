@@ -192,6 +192,33 @@
                                        IsVisible="{Binding ShowSuccessStatus}"/>
                         </StackPanel>
 
+                        <!-- v0.12: Token 区块（spec §4.6）—— App 端连接凭据 -->
+                        <StackPanel Spacing="6" IsVisible="{Binding IsRunning}">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <TextBlock Grid.Column="0"
+                                           Text="Token: "
+                                           FontSize="12"
+                                           Foreground="{DynamicResource Text.Secondary}"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding CurrentToken}"
+                                           FontFamily="Consolas, Menlo, monospace"
+                                           FontSize="14"
+                                           FontWeight="Bold"
+                                           Foreground="{DynamicResource Accent.Stellar}"
+                                           VerticalAlignment="Center"/>
+                                <Button Grid.Column="2"
+                                        Content="重置"
+                                        Command="{Binding RegenerateTokenCommand}"
+                                        Classes="toolbar-button"
+                                        FontSize="11"/>
+                            </Grid>
+                            <TextBlock Text="App 端扫码后输入此 token；点&lt;重置&gt;立即生效。"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Text.Secondary}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+
                         <!-- 上传历史（spec §3.1：最多 50 条 ScrollViewer 滚动；空时不显示） -->
                         <StackPanel Spacing="6"
                                     IsVisible="{Binding HasUploadHistory}">

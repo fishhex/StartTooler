@@ -161,7 +161,9 @@ public partial class MainWindowViewModel : ObservableObject
         _ = GalleryViewModel.RefreshOssConfigAsync();
         UploadServerViewModel = new UploadServerViewModel(
             GalleryViewModel,
-            new PublicRelayViewModel(_configService, new PublicRelayService(), new FilePickerService(), GalleryViewModel));
+            new PublicRelayViewModel(_configService, new PublicRelayService(), new FilePickerService(), GalleryViewModel),
+            _configService,
+            _mediaRepository);
 
         // v0.8: 垃圾筒 VM（spec doc/14-delete-and-trash.md §7.1）
         // 复用 mediaRepo / uploadJobRepo / ossFactory / configService；onOssNotConfigured 复用 MainWindow 的弹窗。
@@ -339,7 +341,9 @@ public partial class MainWindowViewModel : ObservableObject
         {
             UploadServerViewModel = new UploadServerViewModel(
                 GalleryViewModel,
-                new PublicRelayViewModel(_configService, new PublicRelayService(), new FilePickerService(), GalleryViewModel));
+                new PublicRelayViewModel(_configService, new PublicRelayService(), new FilePickerService(), GalleryViewModel),
+                _configService,
+                _mediaRepository);
         }
         CurrentView = UploadServerViewModel;
         IsSettingsPage = false;
