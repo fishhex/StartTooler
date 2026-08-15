@@ -2142,4 +2142,28 @@ public class MediaRepository : IMediaRepository
             return total;
         }, ct);
     }
+
+    /// <summary>
+    /// v0.12: 统计某项目路径下的 media_files 行数（不区分 deleted_at）。
+    /// 用于 LAN 上传 server 的 /api/v1/projects 列表展示。
+    /// 失败返回 0（让 HTTP 响应仍能返回）。
+    /// </summary>
+    public async Task<long> CountByProjectAsync(string projectPath, CancellationToken ct = default)
+    {
+        try
+        {
+            await using var conn = new SqliteConnection(_connectionString);
+            await conn.OpenAsync(ct);
+            await using var cmd = new SqliteCommand(
+                "SELECT COUNT(*) FROM media_files WHERE project_path = @p", conn);
+            cmd.Parameters.AddWithValue("@p", projectPath);
+            var result = await cmd.ExecuteScalarAsync(ct);
+            return Convert.ToInt64(result ?? 0L);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[MediaRepository] CountByProjectAsync failed: {ex.Message}");
+            return 0L;
+        }
+    }
 }

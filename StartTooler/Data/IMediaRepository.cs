@@ -180,6 +180,13 @@ public interface IMediaRepository
 
     /// <summary>递归统计项目目录下所有可识别媒体文件（图片 + 视频 + 采集序列）的字节和。</summary>
     Task<long> GetProjectActualSizeAsync(string projectPath, CancellationToken ct = default);
+
+    /// <summary>
+    /// v0.12: 统计某项目路径下的 media_files 行数（不区分 deleted_at），
+    /// 用于 LAN 上传 server 的 /api/v1/projects 列表展示。
+    /// 失败不抛异常，返回 0（让 HTTP 响应仍能返回）。
+    /// </summary>
+    Task<long> CountByProjectAsync(string projectPath, CancellationToken ct = default);
 }
 
 public class ScanResult
