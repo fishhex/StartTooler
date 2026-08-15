@@ -625,6 +625,42 @@ private string BuildDisplayUrl() {
 
 > H5 上传页 JS 看不到 `?t=`（GET /upload 只返回 HTML），但 App 端 UDP 拿到 token 后用 GET /api/v1/health 替换。
 
+### 4.5.1 修复 `UpdateQrForMode` 不走 `BuildDisplayUrl` 的不一致
+
+**问题**：现状 `UpdateQrForMode`（line 430）直接调 `GenerateQrCode(url)`，url 来自 `_server.UploadUrl`（不含 `?t=token`）。结果：
+
+| 触发 | 走哪条 QR 路径 | URL 是否含 `?t=token` |
+|---|---|---|
+| `RefreshQrForCurrentAddress`（via `BuildDisplayUrl`） | LAN 模式 | ✅ 含 |
+| `UpdateQrForMode`（启动 / 公网 relay 切换） | LAN + 公网 | ❌ 不含 |
+
+—— LAN 模式下两种路径行为不一致。公网模式刻意不含 token（设计合理），但 LAN 模式下两条路径本应一致。
+
+**修复**：`UpdateQrForMode` 改为调 `GenerateQrCode(DisplayUploadUrl)`，与 `RefreshQrForCurrentAddress` 对齐：
+
+```csharp
+private void UpdateQrForMode() {
+    if (_server == null) return;
+
+    var publicUrl = PublicRelayViewModel.BuildPublicUploadUrl();
+    var isPublic = PublicRelayViewModel.IsPublicRelayRunning && !string.IsNullOrEmpty(publicUrl);
+
+    IsPublicMode = isPublic;
+    UploadUrl = isPublic ? publicUrl! : _server.UploadUrl;
+
+    // v0.12: 改用 DisplayUploadUrl（已包含 ?t=token + 当前 AddressIndex 选中的 IP）
+    //  - LAN 模式：自动拼 ?t={token}
+    //  - 公网模式：直接返回 UploadUrl（不含 token，设计合理）
+    GenerateQrCode(DisplayUploadUrl);
+}
+```
+
+**自验证**：
+1. 启动服务 → QR 内容 = `http://192.168.1.10:8765/upload?t=123456`
+2. 启动公网 relay → 切换 QR → QR 内容 = `http://<pub-host>:8765/upload`（无 token）
+3. 关闭公网 relay → 切回 LAN QR → URL 恢复 `?t=token`
+4. 重置 token → URL `?t=` 段刷新为新 token
+
 ### 4.6 XAML 改动
 
 `UploadServerView.axaml` 新增：
@@ -782,6 +818,7 @@ while True:
 - [ ] UDP 广播每 2s 发一次
 - [ ] 关掉服务 → UDP 停止
 - [ ] H5 `/upload` GET/POST 仍正常工作（回归）
+- [ ] **QR 修复（spec §4.5.1）**：启动服务后 QR URL 含 `?t=token`；启动公网 relay 后 QR 切换且不含 token；关闭公网 relay 后 QR 恢复 `?t=token`
 
 ---
 
