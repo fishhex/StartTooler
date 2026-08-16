@@ -279,7 +279,16 @@ public class UploadServerService : IDisposable
                 return;
             }
 
-            // ===== 5. 未匹配 =====
+            // ===== 5. 路径存在但方法不匹配 → 405 =====
+            // 路径匹配哪个路由模板但 method 不在白名单时返回 405，
+            // 路径完全不匹配才返回 404。
+            if (IsKnownPath(path))
+            {
+                await WriteJsonAsync(response, 405, new ErrorResponse { Error = "method not allowed" });
+                return;
+            }
+
+            // ===== 6. 完全未匹配 =====
             await WriteJsonAsync(response, 404, new ErrorResponse { Error = "not found" });
         }
         catch (Exception ex)
@@ -595,6 +604,20 @@ public class UploadServerService : IDisposable
             return null;
         var name = path.Substring(prefix.Length, path.Length - prefix.Length - suffix.Length);
         return string.IsNullOrEmpty(name) ? null : name;
+    }
+
+    /// <summary>
+    /// v0.12: 路径是否匹配任一已注册路由模板（不要求 method 匹配）。
+    /// 用于 405 vs 404 区分：路径匹配但方法不匹配 → 405，路径完全不匹配 → 404。
+    /// </summary>
+    private static bool IsKnownPath(string path)
+    {
+        if (string.Equals(path, "/upload", StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.Equals(path, "/api/v1/health", StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.Equals(path, "/api/v1/projects", StringComparison.OrdinalIgnoreCase)) return true;
+        if (path.StartsWith("/api/v1/projects/", StringComparison.OrdinalIgnoreCase)
+            && path.EndsWith("/upload", StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
     }
 
     // ========================================================================
