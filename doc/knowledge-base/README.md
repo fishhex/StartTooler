@@ -11,6 +11,7 @@
 | 一个完整用户场景怎么跑 | [02-scenarios.md](02-scenarios.md) |
 | 哪些是半成品 / 为什么没做完 | [03-half-built.md](03-half-built.md) |
 | 媒体库的字段、状态、生命周期 | [04-media-library.md](04-media-library.md) |
+| 移动端 App 业务全景 | [05-mobile-app.md](05-mobile-app.md) |
 | 跨设备同步三种通道（OSS / LAN / 公网 relay） | [06-cross-device-sync.md](06-cross-device-sync.md) |
 
 ## API 文档
@@ -20,6 +21,8 @@
 | 写客户端 / 对接 HTTP 服务 / curl 调通 | [API-01-http-routes.md](API-01-http-routes.md) |
 | 写 PC 发现 / 局域网 / 移动端发现 PC | [API-03-udp-broadcast.md](API-03-udp-broadcast.md) |
 | 备份 / 迁移 / 调试图床 / 解析 user config | [API-04-config-schema.md](API-04-config-schema.md) |
+| 移动端持久化（iOS Keychain / Android EncryptedSP） | [API-05-app-persistence.md](API-05-app-persistence.md) |
+| 错误码国际化（HTTP / 业务 / 网络） | [API-06-error-i18n.md](API-06-error-i18n.md) |
 
 ## 边界声明
 
