@@ -59,6 +59,16 @@
 
 ---
 
+## 未发布预研条目
+
+登记未来版本的预研笔记——不构成正式 spec，只供规划参考。
+
+| 话题 | 出处 | 状态 | 简述 |
+|---|---|---|---|
+| Token 同源事实 + App 端权威约定（移动端 LAN 同步） | [`0.12/spec/04-mobile-lan-sync.md` §12](0.12/spec/04-mobile-lan-sync.md) | **v0.12 不实施 / v0.13 候选** | 记录 PC 端 `_currentToken` 单一字段被 UDP 广播与 `/api/v1/health` 响应同时读取的事实，并列出 v0.13 升级候选方向（多源收敛 / 长期鉴权 / 加密传输 / 防重放 / 多端并用 / 不可信 LAN 防护）。App 端对外协议已落在 [`app/02-pc-udp-protocol.md` §2.3](app/02-pc-udp-protocol.md#L54-L71)、实现要求在 [`app/03-mobile-checklist.md` §2.3](app/03-mobile-checklist.md#L30-L46)。|
+
+---
+
 ## 业务知识库（互补）
 
 上面是技术规范目录。**业务视角**请参阅 [`knowledge-base/`](knowledge-base)：

@@ -895,3 +895,68 @@ while True:
 | App 端 UDP 抓不到 | 已在需求文档"边界情况"列入，App 端兜底"手动输入 IP" |
 | Token 重置期间 App 端请求 | 短瞬时 401，App 端清理持久化 token 后重新输入 |
 | 主项目变更时 UDP 广播出的 currentProject 没变 | 启动时读一次；不订阅 ProjectPath 变更（权衡：复杂度不值得） |
+
+---
+
+## 12. v0.13 预研条目：Token 同源事实与 App 端权威约定
+
+> **状态**：预研条目，**v0.12 不实施**。本节专门记录 PC 端实现中存在但 v0.12 spec 上文未明确的现象，作为 v0.13 升级时的依据。
+>
+> 上文 §3.5 描述 Token 是 PC 端 "一个实例字段"（`_currentToken`）。App 端在对接过程中发现该字段同时被两个对外通道读取——这一点在 v0.12 spec 文档中未显式记录，导致 App 端协议对接初期把广播 token 与 `/api/v1/health` 响应 token 当作"两个值"处理。
+>
+> 关联文档（已在 v0.12 PC 端对接过程中同步更新）：
+> - [doc/app/02-pc-udp-protocol.md §2.3](../../app/02-pc-udp-protocol.md#L54-L71)（协议层权威性约束）
+> - [doc/app/03-mobile-checklist.md §2.3](../../app/03-mobile-checklist.md#L30-L46)（App 端状态机实现要求）
+
+### 12.1 上游事实（已在 v0.12 PC 实现中存在）
+
+PC 端 `UploadServerService.cs`：
+
+- **唯一 token 实例字段**：`_currentToken`
+- UDP 广播 payload（`UdpBroadcastPayload.Token`）：每个广播周期从 `_currentToken` 序列化
+- HTTP `/api/v1/health` 响应（`HealthResponse.Token`）：构造响应时从 `_currentToken` 赋值
+- HTTP 受保护端点 `ValidateToken(req)`：与 `_currentToken` 严格相等判断
+- Token 变更时机：
+  1. 构造函数调用 `GenerateToken()` 一次
+  2. `StartAsync()` 中触发 `OnTokenChanged`（但 `_currentToken` 值不变，仅通知 UI）
+  3. UI "重置"按钮调用 `RegenerateToken()` → 重新 `GenerateToken()` + `OnTokenChanged`
+  4. 进程退出 → `_currentToken` 内存值丢失；下次启动重新生成
+
+**结论**：广播 token 与 health 响应 token **100% 同源**（同一字段、同时刻读、原子赋值）。`/api/v1/health` 无需鉴权就能取到当前 token 是因为实现上不带鉴权，但**它包含的 token 与广播 token 一致**。
+
+### 12.2 v0.12 落地的协议事实（PC 端维护方需知会 App 端）
+
+| 事实 | 影响 |
+|---|---|
+| 广播 token 与 health token 同源（同一字段读出） | App 端不应把两个值当独立来源处理 |
+| Token 变更最迟 2 s 内反映到下一次广播（每个广播周期重读 `_currentToken`） | App 端不需要主动轮询 / 重试加速缓存同步 |
+| Token 无加密 | LAN 嗅探可见，不防中间人；不防广播伪造（明文广播可被同 LAN 客户端重放）|
+| `/api/v1/health` 响应明文回带 token | 不仅广播可见，HTTP 嗅探同样可见（KB `API-03 §八` 已记录） |
+| Token 变更后旧 token 立刻失效（`ValidateToken` 严格相等）| 重置期间 App 端命中受保护端点必 401，需走"等广播 → 用新 token → 重试一次"路径 |
+| 进程崩溃 / 重启 → 新 token 重新生成 | App 端持久化 token 在重启后必失效，需按"试探 health → 等广播"路径重新获取 |
+
+### 12.3 v0.13 升级时应下决定的协议事实（不改实现，仅固化文档）
+
+`doc/02-pc-udp-protocol.md` 与 `doc/03-mobile-checklist.md` 已在 v0.12 文档集中补完 App 端的权威约定；PC 端 v0.13 升级（如有）需同步**固化**下面两条到 PC 端代码层契约（或 KB）：
+
+1. **`_currentToken` 是单一权威实例**——任何对外通道（mDNS、SSR 回包、HTTP 校验头）都从同一字段读出，禁止在 PC 端产生"多个 token"。
+2. **变更反映时限 ≤ 2 s**——下一周期广播必须使用最新 `_currentToken`。`UdpBroadcastIntervalMs` 改动时同步在 KB `API-03` 写明。
+
+### 12.4 v0.13 候选升级路径（仅记录，不在 v0.12 范围）
+
+> 以下条目**均不在 v0.12 工作范围**，仅作 v0.13 起步参考；任何 v0.13 启动时应单独走需求 / spec 流程。
+
+| 升级方向 | 现状 | v0.13 可选做法 |
+|---|---|---|
+| 多 token 来源收敛 | 广播 + health | 移除 `HealthResponse.Token` 回带，让广播承载唯一权威（App 仍可走 health 探活，但不应再用它当 token 来源）|
+| App 端长期鉴权 | 6 位数字 + 每次启动轮换 | 上线 32 字节随机 token + PC 首启生成持久化 + App 端持久化（Keychain / EncryptedSharedPreferences）|
+| Token 加密传输 | 明文 | 上线 PC 公钥 + App 端 ECDH：广播 token 用 PC 公钥加密，App 用本地私钥解密 |
+| 防重放 | 无 | 加 nonce + 时间戳窗口（±60s）|
+| 多端并用 | 仅单一广播 / 单一 PC | 加 `deviceId`（App 端设备 UUID），PC 端为每台 App 独立颁发 token |
+| 不可信 LAN 防护 | 明文广播 | 广播内字段整体 AEAD 加密（PC 端公私钥对）|
+
+### 12.5 与现有文档的关系
+
+- 本节补充 spec 中**遗漏的实现事实**，**不修改** v0.12 spec 的设计与代码契约。
+- 对移动端 App 对接而言，**`doc/app/02-pc-udp-protocol.md` §2.3 与 `doc/app/03-mobile-checklist.md` §2.3 即是本节事实的对外公开版本**——App 端对接不需要回看 0.12 spec。
+- v0.13 真要启动升级时，先把本节的"候选路径"细化进 `doc/0.13/spec/*.md`，再走通常的 demand / spec 流程。
