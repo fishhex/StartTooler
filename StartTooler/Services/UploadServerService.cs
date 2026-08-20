@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -41,6 +43,12 @@ public class UploadServerService : IDisposable
     private Task? _udpTask;
     private const int UdpBroadcastPort = 9876;
     private const int UdpBroadcastIntervalMs = 2000;
+
+    // 修复 v0.12.2：最近活跃客户端 IP 缓存（30s TTL）。
+    // HTTP 请求处理入口写入；UDP 广播循环读取，作为 unicast 兜底，
+    // 绕过企业路由器拦截 255.255.255.255 / 子网定向广播。
+    private static readonly ConcurrentDictionary<string, DateTime> s_recentClients = new();
+    private static readonly TimeSpan s_clientTtl = TimeSpan.FromSeconds(30);
 
     // 允许上传的文件扩展名
     private static readonly string[] AllowedExtensions =
@@ -219,6 +227,11 @@ public class UploadServerService : IDisposable
         var response = context.Response;
         var path = request.Url?.AbsolutePath ?? "";
         var method = request.HttpMethod;
+
+        // 修复 v0.12.2：记录客户端 IP，供 UDP 广播 unicast 兜底。
+        // 任何 HTTP 请求（health / projects / upload）都触发，手机首次
+        // 手动输入 IP + Port + Token 联调一次后，PC 即可 unicast 到手机。
+        RecordClientIp(request.RemoteEndPoint?.Address);
 
         try
         {
@@ -634,7 +647,9 @@ public class UploadServerService : IDisposable
             _udpClient = new UdpClient();
             _udpClient.EnableBroadcast = true;
 
-            var endpoint = new IPEndPoint(IPAddress.Broadcast, UdpBroadcastPort);
+            // 修复 v0.12：枚举所有活跃 IPv4 网卡的子网定向广播地址 + 255.255.255.255
+            // 单用 255.255.255.255 会被部分路由器/手机的 directed broadcast filter 丢弃
+            var endpoints = GetBroadcastEndpoints(UdpBroadcastPort);
 
             while (!localCt.IsCancellationRequested)
             {
@@ -652,11 +667,34 @@ public class UploadServerService : IDisposable
 
                 try
                 {
-                    await _udpClient.SendAsync(bytes, endpoint);
+                    foreach (var endpoint in endpoints)
+                    {
+                        await _udpClient.SendAsync(bytes, endpoint);
+                    }
+
+                    // 修复 v0.12.2：追加 unicast 到最近 30s 活跃的客户端。
+                    // 解决企业 / 校园路由器拦截 directed broadcast 的最后一公里问题。
+                    PruneExpiredClients();
+                    foreach (var clientIp in s_recentClients.Keys)
+                    {
+                        if (IPAddress.TryParse(clientIp, out var ip))
+                        {
+                            try
+                            {
+                                await _udpClient.SendAsync(bytes, new IPEndPoint(ip, UdpBroadcastPort));
+                            }
+                            catch (Exception ex)
+                            {
+                                Trace.WriteLine($"[UploadServer] UDP unicast to {clientIp} failed: {ex.Message}");
+                            }
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[UploadServer] UDP send failed: {ex.Message}");
+                    // 修复 v0.12：用 Trace 让异常写入 starttooler-debug.log，
+                    // Debug.WriteLine 在 WinExe 下不进文件，排查不到。
+                    Trace.WriteLine($"[UploadServer] UDP send failed: {ex.Message}");
                 }
 
                 try
@@ -675,7 +713,7 @@ public class UploadServerService : IDisposable
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[UploadServer] UDP broadcast error: {ex.Message}");
+            Trace.WriteLine($"[UploadServer] UDP broadcast error: {ex.Message}");
         }
         finally
         {
@@ -805,22 +843,124 @@ public class UploadServerService : IDisposable
 
     private static string GetLocalIp()
     {
+        var ips = GetLocalIpv4Addresses();
+        return ips.Count > 0 ? ips[0] : "127.0.0.1";
+    }
+
+    /// <summary>
+    /// 修复 v0.12：枚举所有活跃 IPv4 网卡的地址（包含 loopback 便于本地调试）。
+    /// 排序规则：127.0.0.1 排最后，私有网段（10/8、172.16/12、192.168/16）优先，
+    /// 其他公网/虚拟网卡次之。保证 VM 拿到的第一个 IP 是最像局域网的。
+    /// </summary>
+    public static List<string> GetLocalIpv4Addresses()
+    {
+        var list = new List<string>();
         try
         {
-            var host = System.Net.Dns.GetHostEntry(System.Net.Dns.GetHostName());
-            foreach (var ip in host.AddressList)
+            foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
             {
-                if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
-                    !ip.Equals(System.Net.IPAddress.Loopback))
+                if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+
+                foreach (var ua in ni.GetIPProperties().UnicastAddresses)
                 {
-                    return ip.ToString();
+                    if (ua.Address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
+                    var s = ua.Address.ToString();
+                    if (string.IsNullOrEmpty(s)) continue;
+                    if (!list.Contains(s)) list.Add(s);
                 }
             }
-            return "127.0.0.1";
         }
-        catch
+        catch (Exception ex)
         {
-            return "127.0.0.1";
+            Debug.WriteLine($"[UploadServer] GetLocalIpv4Addresses failed: {ex.Message}");
+        }
+
+        // 排序：私有 LAN 网段最前、127.0.0.1 最后、公网/虚拟次之
+        return list
+            .OrderBy(s => s == "127.0.0.1" ? 2 : (IsPrivateLan(s) ? 0 : 1))
+            .ToList();
+    }
+
+    private static bool IsPrivateLan(string ip)
+    {
+        if (System.Net.IPAddress.TryParse(ip, out var addr))
+        {
+            var b = addr.GetAddressBytes();
+            if (b[0] == 10) return true;
+            if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return true;
+            if (b[0] == 192 && b[1] == 168) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 修复 v0.12：枚举所有活跃 IPv4 网卡，返回每个子网的定向广播地址，
+    /// 加上 255.255.255.255 兜底。每个端点都发一次，最大化发现成功率。
+    /// </summary>
+    private static List<IPEndPoint> GetBroadcastEndpoints(int port)
+    {
+        var endpoints = new List<IPEndPoint>();
+        try
+        {
+            foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+                if (ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback) continue;
+
+                var props = ni.GetIPProperties();
+                foreach (var ua in props.UnicastAddresses)
+                {
+                    if (ua.Address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
+                    if (ua.IPv4Mask == null) continue;
+
+                    var addr = ua.Address.GetAddressBytes();
+                    var mask = ua.IPv4Mask.GetAddressBytes();
+                    var bcast = new byte[4];
+                    for (int i = 0; i < 4; i++) bcast[i] = (byte)(addr[i] | ~mask[i]);
+
+                    endpoints.Add(new IPEndPoint(new IPAddress(bcast), port));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[UploadServer] GetBroadcastEndpoints failed: {ex.Message}");
+        }
+
+        // 兜底：受限广播
+        endpoints.Add(new IPEndPoint(IPAddress.Broadcast, port));
+        return endpoints;
+    }
+
+    /// <summary>
+    /// 修复 v0.12.2：记录最近活跃客户端 IP。
+    /// 跳过回环 / IPv6 / 链路本地 (169.254.x.x) / 组播 (224+) 段。
+    /// </summary>
+    private static void RecordClientIp(IPAddress? ip)
+    {
+        if (ip == null) return;
+        if (IPAddress.IsLoopback(ip)) return;
+        if (ip.AddressFamily != AddressFamily.InterNetwork) return;
+
+        var b = ip.GetAddressBytes();
+        if (b[0] == 169 && b[1] == 254) return;  // 链路本地
+        if (b[0] >= 224) return;                  // 组播 / 保留
+
+        s_recentClients[ip.ToString()] = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// 修复 v0.12.2：清理超过 30 秒未活动的客户端 IP。
+    /// </summary>
+    private static void PruneExpiredClients()
+    {
+        var now = DateTime.UtcNow;
+        foreach (var kv in s_recentClients)
+        {
+            if (now - kv.Value > s_clientTtl)
+            {
+                s_recentClients.TryRemove(kv.Key, out _);
+            }
         }
     }
 

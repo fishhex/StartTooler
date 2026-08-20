@@ -80,7 +80,7 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isPortConflict;
     [ObservableProperty] private List<int> _suggestedPorts = new();
 
-    // v0.11 多 IP 列表（StartServer 成功后从 Dns 拿，运行时可复制）
+    // v0.11 多 IP 列表（StartServer 成功后从 UploadServerService.GetLocalIpv4Addresses 拿，运行时可复制）
     [ObservableProperty] private ObservableCollection<string> _localAddresses = new();
     /// <summary>多 IP 列表非空时显示区块（至少有一个 IPv4 才显示）。</summary>
     public bool HasLocalAddresses => LocalAddresses.Count > 0;
@@ -216,13 +216,9 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
             StatusMessage = "服务已启动";
 
             // 拉取所有本机 IPv4（多网卡 / VPN / 虚拟机都可能给多个 IP；loopback 也包含便于本地调试）
-            // 127.0.0.1 排到最后，优先展示局域网 IP 给扫码用户
-            var addrs = Dns.GetHostEntry(Dns.GetHostName())
-                .AddressList
-                .Where(ip => ip.AddressFamily == AddressFamily.InterNetwork)
-                .Select(ip => ip.ToString())
-                .OrderBy(ip => ip == "127.0.0.1" ? 1 : 0)
-                .ToList();
+            // 修复 v0.12：统一走 UploadServerService.GetLocalIpv4Addresses()，与 UDP 广播端一致，
+            // 排序：私有 LAN 网段最前、127.0.0.1 最后、公网/虚拟次之。
+            var addrs = UploadServerService.GetLocalIpv4Addresses();
             LocalAddresses.Clear();
             foreach (var a in addrs) LocalAddresses.Add(a);
             Trace.WriteLine($"[UploadServerVM] LocalAddresses: {string.Join(",", LocalAddresses)}");
