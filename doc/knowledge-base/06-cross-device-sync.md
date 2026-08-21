@@ -94,9 +94,9 @@ PC 端：
 
 ### 关键限制
 
-- **必须同 WiFi**（QR 锁定 IP，不跨路由器）
+- 必须同 WiFi（QR 锁定 IP，不跨路由器）
 - 必须 PC 端开着服务
-- 单次会话需 32 字符 hex secret（PC 端每次启动重生成）
+- 需 32 字符 hex secret（**v0.14**：PC 端持久化到 `config.db.upload_secret`，重启复用；仅「重置密钥」才变化）
 - QR 含 `?k=` secret；公网 relay QR 不含 → 扫码视为"二维码无效"
 
 代码：[UploadServerService](../../StartTooler/Services/UploadServerService.cs)（[API-01-http-routes.md](API-01-http-routes.md)）。
@@ -280,3 +280,4 @@ LAN 通道（0 成本 + 极速）从来不是第三方网盘能比的。
 | 日期 | 版本 | 内容 |
 |---|---|---|
 | 2026-08-21 | v0.13 | 改写：LAN 通道移除 UDP；改为 QR + 32 字符 hex secret |
+| 2026-08-21 | v0.14 | PC 端 secret 默认持久化；LAN 通道「扫码一次终身免扫」（仅「重置密钥」失效） |

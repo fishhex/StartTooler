@@ -1,8 +1,8 @@
-# API-01 · HTTP 路由
+# API-01 · HTTP 路由（v0.14）
 
 PC 端启了一个 HTTP 服务（[UploadServerService](../../StartTooler/Services/UploadServerService.cs)），对第三方客户端（H5 浏览器、手机 App、curl）暴露一套 API。App 端通过扫 PC 端 QR 解出 `{ip, port, secret}` 后用本协议做业务对接。
 
-> 协议版本：**v0.13**（移除 v0.12 的 UDP 广播 + 6 位数字 Token；改为 32 字符 hex secret）
+> 协议版本：**v0.14**（v0.13 起移除 v0.12 的 UDP 广播 + 6 位数字 Token；v0.14 起 PC 端 secret 默认持久化到 `config.db.upload_secret`）
 
 ## 一、协议基本信息
 
@@ -213,10 +213,10 @@ H5 端点（1、2）保留 v0.10 行为，新客户端应使用 API 端点（3�
 | 项 | 值 |
 |---|---|
 | 长度 | 16 字节 = 32 字符 hex |
-| 生成 | 启动时 `RandomNumberGenerator.Fill(16)` |
+| 生成 | 首次启动 `RandomNumberGenerator.Fill(16)` |
 | 范围 | `0-9a-f` |
-| 持久化 | **不持久化**（每次启动重生成） |
-| 重置 | UI 点"重置密钥"按钮立即重生成 |
+| 持久化（**v0.14**） | **默认持久化到 `config.db.upload_secret`**；启动时复用 |
+| 重置 | UI 点"重置密钥"按钮立即重生成 + 写回 `config.db` |
 
 ### 5.2 Secret 传递方式
 
@@ -234,14 +234,14 @@ X-Key: 7f3a9b2c8e1d4f6a...
 
 ### 5.3 Secret 重置
 
-PC 端 UI 点"重置密钥"按钮 → 新 secret 立即生效。**所有已有 App 端连接立刻 401** → App 端必须引导用户重新扫码。
+PC 端 UI 点"重置密钥"按钮 → 新 secret 立即生效（同时写回 `config.db.upload_secret`）。**所有已有 App 端连接立刻 401** → App 端必须引导用户重新扫码。
 
 ### 5.4 安全边界
 
 - 单 PC 范围（局域网 + 公网 relay 模式下不在同一网段）
 - 不防 LAN 嗅探（同路由器下的客户端可看到明文）
 - 防重放：仅防 LAN 内的合法用户**重置后**复用 secret
-- PC 端重启即失效（不持久化）
+- **v0.14**：PC 端重启 secret 不再失效（持久化复用）；唯一主动失效途径是「重置密钥」
 
 ## 六、文件落盘规则
 
@@ -329,7 +329,7 @@ API 端点（`/api/v1/*`）与 H5 端点**共用底层文件落盘**，但**Secr
 
 | 客户端现象 | 原因 | 修法 |
 |---|---|---|
-| 401 invalid secret | Secret 错 / Secret 重置 / PC 重启 | 删除工作空间，重新扫 PC 端 QR |
+| 401 invalid secret（**v0.14**） | Secret 错 / Secret 重置（PC 重启不再触发） | 引导重新扫 PC 端 QR |
 | 400 No files uploaded | multipart 格式错 | 检查 `Content-Type: multipart/form-data; boundary=...` |
 | 404 project not found | 项目名错 / 项目被删 | 重新 `GET /api/v1/projects` 拿列表 |
 | 200 但 `files` 空 / `failed` 有项 | 扩展名不支持 / 太大 | 改文件类型或压缩 |

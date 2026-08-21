@@ -1,7 +1,9 @@
-# API-04 · QR 协议
+# API-04 · QR 协议（v0.14）
 
 PC 端 QR 内容规范与 App 端扫码解析规则。**v0.13 起，QR 是 PC ↔ App 唯一发现入口**。
 
+> **v0.14 变更**：PC 端 secret 默认持久化到 `config.db.upload_secret`；扫码一次后 PC 重启 App 端无需再扫（详见 §五）。
+>
 > 配套：[05-mobile-app.md](05-mobile-app.md) §四「扫码建连」/ [API-01-http-routes.md](API-01-http-routes.md) §五「Secret 鉴权」
 
 ## 一、QR 内容
@@ -57,10 +59,10 @@ App 端扫码视为"二维码无效"，需在同 LAN 扫码。
 
 | 触发 | 说明 |
 |---|---|
-| HTTP 服务启动 | 立即生成 secret + QR |
-| IP 切换（多 IP UI） | QR host 字段刷新 |
-| 重置密钥 | 立即重生成 secret + QR |
-| 端口变化 | 启动后立即生成 |
+| HTTP 服务启动（**v0.14**） | 若 `config.db.upload_secret` 存在 → 复用；否则 → 生成 + 写入 |
+| IP 切换（多 IP UI） | QR host 字段刷新（secret 不变） |
+| 重置密钥 | 立即重生成 secret + 写回 `config.db.upload_secret` + QR 刷新 |
+| 端口变化 | 启动后立即生成（复用 secret） |
 
 ### 2.2 核心代码位置
 
@@ -182,10 +184,10 @@ fun parseQr(url: Uri): Space? {
 | 项 | 值 |
 |---|---|
 | 长度 | 16 字节 = 32 字符 hex |
-| 生成 | 启动时 `RandomNumberGenerator.Fill(16)` |
+| 生成 | 首次启动 `RandomNumberGenerator.Fill(16)` |
 | 范围 | `0-9a-f` |
-| 持久化 | **不持久化** |
-| 重置 | UI 点"重置密钥"立即重生成 |
+| 持久化（**v0.14**） | **默认持久化到 `config.db.upload_secret`** |
+| 重置 | UI 点"重置密钥"立即重生成 + 写回 `config.db` |
 
 ### 5.2 校验
 
@@ -196,13 +198,14 @@ fun parseQr(url: Uri): Space? {
 | 字符集 | `^[a-f0-9]{32}$` |
 | 错误码 | 401 `{ "error": "invalid secret" }` |
 
-### 5.3 唯一权威源
+### 5.3 权威源（v0.14 更新）
 
-> **secret 的唯一权威源是 QR 内容**。
+> **secret 的权威源是 PC 端 `config.db.upload_secret`**。
 >
 > - App 端**不**从 health 响应里取 secret（仅作回包校验）
-> - PC 端**不**持久化 secret（每次启动重生成）
-> - 启动重生成 / 用户重置 → 旧 secret 立即 401 → App 端必须重新扫码
+> - PC 端**持久化** secret（v0.14 起）
+> - 启动时复用持久化值；用户点「重置密钥」才变化
+> - 重置后 → 旧 secret 立即 401 → App 端必须重新扫码
 
 ---
 
@@ -238,15 +241,15 @@ PC 端渲染：[QRCoder](https://github.com/codebude/QRCoder) 或系统内置组
 | 同 `name` 不同 `ip` | 视为同一 PC，覆盖 IP |
 | 不同 `name` | 新增空间 |
 
-### 7.3 失效 QR
+### 7.3 失效 QR（v0.14 更新）
 
 | 原因 | 反应 |
 |---|---|
-| PC 端重启 | secret 已变，扫码后 health 200 但 secret 不匹配 → 401 |
-| PC 端重置密钥 | 同上 |
+| PC 端重启 | **v0.14**：secret 复用，App 旧 secret 仍然有效 → 无需重扫 |
+| PC 端重置密钥 | secret 已变，扫码后 health 200 但 secret 不匹配 → 401 |
 | PC 端换 IP | 扫码后 health 失败 → 提示"连不上 PC" |
 
-> App 端应**始终**重新扫码（不缓存 QR 内容）。
+> v0.14 起，App 端只在「重置密钥」后必须重新扫码；常规重启无需重扫。
 
 ### 7.4 公网 relay QR
 
@@ -260,7 +263,7 @@ PC 端渲染：[QRCoder](https://github.com/codebude/QRCoder) 或系统内置组
 
 | 风险 | 缓解 |
 |---|---|
-| QR 截图泄漏 secret | 32 字符 hex；PC 重启失效；用户可重置 |
+| QR 截图泄漏 secret（**v0.14**） | 32 字符 hex；**仅用户主动「重置密钥」才失效**；泄露窗口拉长到「用户感知到」为止 |
 | 摄像头拍屏 QR | 短暂可见窗口 |
 | LAN 嗅探 | HTTP 明文（家庭 LAN 风险可控） |
 | 客户端伪造 QR | health 验证（service/version/name） |
@@ -278,3 +281,4 @@ PC 端渲染：[QRCoder](https://github.com/codebude/QRCoder) 或系统内置组
 | 日期 | 版本 | 内容 |
 |---|---|---|
 | 2026-08-21 | v0.13 | 新增文档；定义 QR 唯一发现 + 32 字符 secret 协议 |
+| 2026-08-21 | v0.14 | PC 端 secret 默认持久化到 `config.db.upload_secret`；启动复用；用户「重置密钥」为唯一主动失效途径 |

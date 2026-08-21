@@ -1,7 +1,9 @@
-# API-05 · App 端持久化（v0.13）
+# API-05 · App 端持久化（v0.14）
 
 App 端持久化 = 工作空间（多 PC）存储。本文档定义 iOS / Android / macOS 客户端存储结构、加密策略。**清理仅用户主动**（App 端不自动清理）。
 
+> **v0.14 变更**：PC 端 secret 默认持久化，App 端 secret 失效 → 401 几乎不触发；只在用户主动「重置密钥」时才需重新扫码。
+>
 > 配套：[05-mobile-app.md](05-mobile-app.md) §三「工作空间模型」
 
 ## 一、存储内容
@@ -185,11 +187,12 @@ let query: [String: Any] = [
 | 扫码解析通过 + 不同 `name` | 新增空间项（多 PC） |
 | `name` 变化（PC 端改名）| 视为新空间；旧项保留直到用户删 |
 
-### 5.3 失效处理
+### 5.3 失效处理（v0.14 更新）
 
 | 场景 | 行为 |
 |---|---|
-| PC 重启换 secret | health 200 → projects 401 → 提示"密钥已过期" |
+| PC 重启（**v0.14**） | secret 复用 → App 旧 secret 仍然有效 → 无需重扫 |
+| PC 点「重置密钥」 | secret 已变 → health 200 → projects 401 → 提示"PC 端密钥已重置" |
 | PC 换 IP | health 失败 → 提示"连不上 PC" |
 | PC 关服务 | health 失败 → 同上 |
 | PC 端改名 | `name` 变 → 视为新空间 |
@@ -252,15 +255,17 @@ func deleteSpace(_ space: Space) {
 | 维度 | PC 端 `config.db` | App 端 Keychain / EncryptedSharedPreferences |
 |---|---|---|
 | 存储介质 | SQLite | Keychain / EncryptedSP |
-| 加密 | � 无 | ✅ 加密 |
-| 持久化内容 | 服务器配置 | 工作空间列表 |
+| 加密 | ❌ 无 | ✅ 加密 |
+| 持久化内容 | 服务器配置 + `upload_secret` | 工作空间列表（含 App 端复制的 secret） |
 | 网络位置 | 同 PC | 同设备 |
-| 内容 | PC 配置 + 当前 secret | 客户端持久化的 ip/port/secret |
+| 内容 | PC 配置 + 持久化 secret | 客户端持久化的 ip/port/secret |
 
-**两套独立**：
+**v0.14 两端都持久化 secret**：
 
-- PC 端不持久化 secret（每次启动重生成）
-- App 端持久化 secret（QR 拿到后写入）
+- PC 端：写到 `config.db.upload_secret`，重启复用
+- App 端：扫码后写入加密存储
+
+> 单一失效途径：用户点 PC 端「重置密钥」。此时 PC 端 secret 更新 + App 端旧 secret → 401 → 引导重扫。
 
 ---
 
@@ -307,9 +312,12 @@ iOS Keychain 可选同步到 iCloud（需 `kSecAttrSynchronizable = true`）。�
 
 | App 版本 | 持久化策略 |
 |---|---|
-| 1.0.0（v0.13） | 上文（多空间 + EncryptedSP / iOS Keychain+UD） |
+| 1.0.0（v0.13） | 多空间 + EncryptedSP / iOS Keychain+UD |
+| 1.1.0（v0.14） | 同上 + PC 端 secret 持久化协同 |
 
 字段**新增** = 老 App 不读，无破坏。**字段删除** = 新 App 老 db 读不出，OK。
+
+> **v0.13 → v0.14 升级路径**：App 端持久化结构无变化（仍存 ip/port/secret）；用户升级后首次启动若 health 200 即直接进主页，无迁移动作。降级到 v0.13 App 也兼容（仍按 secret 字段调用）。
 
 ---
 
@@ -318,3 +326,4 @@ iOS Keychain 可选同步到 iCloud（需 `kSecAttrSynchronizable = true`）。�
 | 日期 | 版本 | 内容 |
 |---|---|---|
 | 2026-08-21 | v0.13 | 改写：多空间列表模型；移除 UDP 5s / 6 位 token 持久化 |
+| 2026-08-21 | v0.14 | PC 端 secret 默认持久化；App 端 401 → 引导重扫的触发条件改为「PC 重置密钥」 |
