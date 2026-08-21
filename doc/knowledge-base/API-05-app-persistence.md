@@ -1,114 +1,115 @@
-# API-05 · App 端持久化
+# API-05 · App 端持久化（v0.13）
 
-App 端持久化 = 客户端存储。本文档定义 iOS / Android 的客户端存储字段、加密策略、失效处理。
+App 端持久化 = 工作空间（多 PC）存储。本文档定义 iOS / Android / macOS 客户端存储结构、加密策略、清理规则。
 
-## 一、存储什么
+> 配套：[05-mobile-app.md](05-mobile-app.md) §三「工作空间模型」
 
-| 数据 | 用途 | 安全性 |
-|---|---|---|
-| `pc.last_ip` | App 启动直连 PC | 公开 |
-| `pc.last_name` | UI 显示 | 公开 |
-| `pc.last_token` | 跳过 Token 输入 | **敏感** |
-| `pc.last_seen_at` | 时间戳 | 公开 |
-| `pc.last_connected_at` | 上次成功连接时间 | 公开 |
-| `pc.discovered` | 已知 PC 列表（含 IP/端口/name） | 公开 |
+## 一、存储内容
 
-### 字段语义
+### 1.1 工作空间结构
+
+```json
+{
+  "spaces": [
+    {
+      "name": "鱼鱼的 MacBook",
+      "ip": "192.168.1.10",
+      "port": 8765,
+      "secret": "7f3a9b2c8e1d4f6ab2c8e1d4f6ab2c8e",
+      "last_seen_at": "2026-08-21T14:32:00",
+      "current_project": "m42-2025-12-13"
+    },
+    {
+      "name": "工作室 Win11",
+      "ip": "192.168.1.20",
+      "port": 8765,
+      "secret": "...",
+      "last_seen_at": "2026-08-20T10:15:00",
+      "current_project": null
+    }
+  ],
+  "current_space_name": "鱼鱼的 MacBook"
+}
+```
+
+### 1.2 字段说明
 
 | 字段 | 类型 | 用途 |
 |---|---|---|
-| `last_ip` | string | 上次成功连接的 IP（含端口） |
-| `last_name` | string | PC 名（鱼鱼的 MacBook） |
-| `last_token` | string | 6 位数字 Token |
-| `last_seen_at` | long | Unix 毫秒（PC UDP 广播最后收到） |
-| `last_connected_at` | long | 上次成功 GET /api/v1/health 的时间 |
-| `discovered[]` | array | 本会话内 UDP 抓到的 PC 列表 |
+| `name` | string | **主键**（PC 端 health 响应的 `name`）|
+| `ip` | string | PC LAN IP |
+| `port` | int | HTTP 端口 |
+| `secret` | string | 32 字符 hex（QR 拿到的）|
+| `last_seen_at` | ISO 8601 | 上次成功 health 时间 |
+| `current_project` | string | 当前激活项目 basename（可空）|
+| `current_space_name` | string | 全局当前空间名 |
 
-### 字段大小
+### 1.3 安全性
 
-| 字段 | 平均字节 | 说明 |
+| 字段 | 敏感性 |
+|---|---|
+| `name` / `ip` / `port` | 公开 |
+| `secret` | **敏感**（必须加密） |
+| `last_seen_at` / `current_project` | 半公开 |
+
+---
+
+## 二、iOS 端：Keychain + UserDefaults
+
+### 2.1 选型
+
+| 数据 | 存储 |
+|---|---|
+| `spaces[]` 整体 | UserDefaults（JSON 序列化；含 secret） |
+| `current_space_name` | UserDefaults |
+
+> iOS Keychain 单条存敏感字段不适合存整个 JSON 列表。整体存 UserDefaults + 加密（详见 §二.3）。
+
+### 2.2 字段到 UserDefaults 映射
+
+| Key | 类型 | 内容 |
 |---|---|---|
-| `last_ip` | ~20 | "192.168.1.10:8765" |
-| `last_token` | 6 | "123456" |
-| `discovered[]` | ~500 | 最多 10 个 PC 记录 |
+| `pc.spaces` | Data (JSON) | 加密后的 spaces 数组 |
+| `pc.current_space_name` | string | 当前空间名 |
 
-总大小 < 1 KB。
+### 2.3 加密方案（v0.13 简化）
 
-## 二、iOS 端：Keychain
-
-### 2.1 选型 Keychain
-
-iOS 提供 `Keychain Services` API，给 App 存**单条**敏感凭据（SSL 证书、token、密码）。我们用它存 Token。
-
-非敏感数据（IP、PC name）放 **UserDefaults**。混合存储。
-
-### 2.2 字段到 Keychain 映射
-
-| 字段 | Keychain / UserDefaults | 备注 |
-|---|---|---|
-| `last_token` | Keychain `kSecClassGenericPassword` | 加密存储 |
-| `last_ip` | UserDefaults `pc.last.ip` | 公开 |
-| `last_name` | UserDefaults `pc.last.name` | 公开 |
-| `discovered[]` | UserDefaults `pc.discovered`（JSON） | 本会话缓存 |
-
-### 2.3 Keychain 配置
+v0.13 简化：不引入 CryptoKit 自加密。**依赖 iOS 设备级加密**（设备锁屏后无法访问）。
 
 ```swift
-// iOS Keychain query
-let query: [String: Any] = [
-    kSecClass as String: kSecClassGenericPassword,
-    kSecAttrService as String: "com.starttooler.app",
-    kSecAttrAccount as String: "pc.last.token",
-    kSecValueData as String: token.data(using: .utf8)!,
-    kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
-]
+// App 启动时
+let spacesData = try JSONEncoder().encode(spaces)
+UserDefaults.standard.set(spacesData, forKey: "pc.spaces")
 ```
 
-| 属性 | 值 | 含义 |
-|---|---|---|
-| `kSecClass` | `kSecClassGenericPassword` | 通用密码项 |
-| `kSecAttrService` | `"com.starttooler.app"` | 服务名（App 唯一） |
-| `kSecAttrAccount` | `"pc.last.token"` | 账户名 |
-| `kSecAttrAccessible` | `kSecAttrAccessibleAfterFirstUnlock` | 首次解锁后可用 |
+> 严格安全场景下应结合 Keychain + AES。本版本简化接受此权衡（用户设备锁屏即保护）。
 
-### 2.4 关键设计：何时清 Token
+### 2.4 关键设计：何时清
 
-- 用户主动"退出连接"按钮 → 删 `last_token`
-- 401 响应 → 删 `last_token`（但保留 IP 方便重连）
-- 用户重建 App → 系统自动清
-- iCloud 备份 → Keychain **可选不备份**（避免跨设备恢复导致 Token 泄漏）
+| 场景 | 行为 |
+|---|---|
+| 用户主动"删除空间"按钮 | 删 `pc.spaces` 里对应项 |
+| 401 响应持续 3 次 | 提示"密钥已过期"，不自动删 |
+| 30 天未用 | 启动时提示清理 |
+| App 卸载 | 系统自动清 |
+| 用户重建 App | 系统自动清 |
 
-### 2.5 iCloud 同步建议
-
-默认 Keychain **参与 iCloud 同步**（如果用户开启）。**不推荐**同步我们的 Token：
-
-```swift
-// 关闭 Token 的 iCloud 同步
-let query: [String: Any] = [
-    kSecAttrSynchronizable as String: kCFBooleanFalse!
-]
-```
+---
 
 ## 三、Android 端：EncryptedSharedPreferences
 
 ### 3.1 选型 EncryptedSharedPreferences
 
-Android 提供 `EncryptedSharedPreferences`（AndroidX Security），存**加密**键值对。
+AndroidX Security 提供的 `EncryptedSharedPreferences`，存**加密**键值对。
 
 AndroidKeyStore 保护 keys + AES 加密 values。
 
 ### 3.2 字段到 EncryptedSharedPreferences 映射
 
-| 字段 | Key | 备注 |
-|---|---|---|
-| `last_token` | `pc.last.token` | 加密 |
-| `last_ip` | `pc.last.ip` | 加密 |
-| `last_name` | `pc.last.name` | 加密 |
-| `last_seen_at` | `pc.last.seen_at` | 加密 |
-| `last_connected_at` | `pc.last.connected_at` | 加密 |
-| `discovered[]` | `pc.discovered`（JSON） | 加密 |
-
-全部字段都加密（实现简单，避免分别挑选）。
+| Key | 内容 |
+|---|---|
+| `pc.spaces` | 加密 JSON（spaces 数组）|
+| `pc.current_space_name` | 加密 string |
 
 ### 3.3 配置
 
@@ -126,16 +127,18 @@ val prefs = EncryptedSharedPreferences.create(
 )
 ```
 
-### 3.4 关键设计：何时清 Token
+### 3.4 关键设计：何时清
 
-- 用户主动"退出连接"按钮 → 删 `pc.last.token`
-- 401 响应 → 删 `pc.last.token`（保留 IP）
-- 用户清 App 数据 → 系统自动清
-- 卸载 → 系统自动清
+| 场景 | 行为 |
+|---|---|
+| 用户主动"删除空间"按钮 | 删 `pc.spaces` 里对应项 |
+| 401 响应持续 3 次 | 提示"密钥已过期"，不自动删 |
+| 30 天未用 | 启动时提示清理 |
+| App 卸载 | 系统自动清 |
 
 ### 3.5 备份建议
 
-EncryptedSharedPreferences 默认**不参与 Auto Backup**。如需备份，需在 `AndroidManifest.xml` 中显式配置：
+EncryptedSharedPreferences 默认**不参与 Auto Backup**。建议关闭 backup：
 
 ```xml
 <application
@@ -143,224 +146,159 @@ EncryptedSharedPreferences 默认**不参与 Auto Backup**。如需备份，需�
     android:fullBackupContent="false">
 ```
 
-**强烈建议**关闭 backup（不暴露 Token）。
+---
 
-## 四、字段生命周期
+## 四、macOS 端：Keychain（与 iOS 一致）
 
-### 4.1 写入时机
+```swift
+// macOS 同 iOS，使用 Keychain
+let query: [String: Any] = [
+    kSecClass as String: kSecClassGenericPassword,
+    kSecAttrService as String: "com.starttooler.app",
+    kSecAttrAccount as String: "pc.spaces",
+    kSecValueData as String: data,
+    kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+]
+```
+
+---
+
+## 五、字段生命周期
+
+### 5.1 写入时机
 
 | 字段 | 写入时机 |
 |---|---|
-| `last_ip` | 首次 GET /api/v1/health 成功 |
-| `last_name` | 同上 |
-| `last_token` | 用户在 Token 验证页输入并验证成功 |
-| `last_seen_at` | 每次收到 UDP 广播 |
-| `last_connected_at` | 每次 GET /api/v1/health 成功 |
-| `discovered[]` | 每次 UDP 扫描结束（覆盖，不累积） |
+| `spaces[name].name` | health 200 + version 兼容 |
+| `spaces[name].ip` / `port` / `secret` | QR 解析通过 + health 200 |
+| `spaces[name].last_seen_at` | 每次 GET /api/v1/health 成功 |
+| `spaces[name].current_project` | health 响应的 `currentProject` |
+| `current_space_name` | 用户切换空间时 |
 
-### 4.2 失效处理
+### 5.2 主键策略
 
-| 场景 | 失效字段 | 反应 |
-|---|---|---|
-| PC 端换 WiFi（IP 变） | `last_ip` 失效 | App 试探 /health 失败 → 跳连接页 |
-| PC 端 Token 重置 | `last_token` 失效 | 401 → 清 Token，跳验证页 |
-| PC 端关服务 | `last_seen_at` 不更新 | 试探 /health 失败 → 跳连接页（IP 暂保留） |
-| 用户手动切换 PC | 全部覆盖 | 写新 IP/Token |
-| 用户清 App 数据 | 全部清 | 重走首启流程 |
-
-### 4.3 保留有效期
-
-| 字段 | 保留 |
+| 触发 | 行为 |
 |---|---|
-| `last_ip` | 永久（直到用户切换） |
-| `last_token` | 永久（直到 401 或用户切换） |
-| `last_seen_at` | 永久（历史信息） |
-| `discovered[]` | 仅本会话（App 关闭清） |
+| 扫码解析通过 + 同 `name` | 覆盖 ip/port/secret/last_seen_at（同一 PC 重启场景）|
+| 扫码解析通过 + 不同 `name` | 新增空间项（多 PC） |
+| `name` 变化（PC 端改名）| 视为新空间；旧项保留直到用户删 |
 
-## 五、跨平台一致性
+### 5.3 失效处理
 
-### 5.1 字段命名约定
-
-| 字段 | 跨平台 |
+| 场景 | 行为 |
 |---|---|
-| `last_ip` | ✅ iOS / Android 都用 |
-| `last_token` | ✅ |
-| `last_name` | ✅ |
-| `last_seen_at` | ✅ |
-| `last_connected_at` | ✅ |
-| `discovered[]` | ✅ |
+| PC 重启换 secret | health 200 → projects 401 → 提示"密钥已过期" |
+| PC 换 IP | health 失败 → 提示"连不上 PC" |
+| PC 关服务 | health 失败 → 同上 |
+| PC 端改名 | `name` 变 → 视为新空间 |
 
-### 5.2 Token 字段冲突
+---
 
-如果用户同时有 iOS 和 Android 两个 App，分别连不同的 PC：
+## 六、清理策略
 
-- iOS Token = "123456"（连鱼鱼的 MacBook）
-- Android Token = "789012"（连工作室 Win11）
-
-**完全独立**——没有同步。每台 PC 自己的 Token。
-
-## 六、与 PC 端持久化的对比
-
-| 维度 | PC 端 `config.db` | App 端 Keychain/SP |
-|---|---|---|
-| 存储介质 | SQLite | Keychain / EncryptedSharedPreferences |
-| 加密 | ❌ 无 | ✅ 加密 |
-| 多字段 | ✅ N | ❌ 单字段为主 |
-| 拷贝 | 容易（db 文件） | 难（系统级） |
-| 网络位置 | 同 PC | 同设备 |
-| 内容 | 完整配置 | 客户端状态 |
-
-**两套独立**，互不依赖：
-
-- PC 端 `config.db` 不存客户端 IP（不知道有谁连过）
-- App 端不存 PC 端项目目录（每次动态拉）
-
-## 七、错误处理
-
-### 7.1 Keychain 失败
-
-| 错误 | 原因 | 缓解 |
-|---|---|---|
-| `errSecAuthFailed` | 设备锁定 | 提示用户解锁 |
-| `errSecItemNotFound` | 没记录 | 首次正常 |
-| `errSecDuplicateItem` | 重复 | 删除旧的 |
-| `errSecParam` | 参数错 | 修复 |
-
-### 7.2 EncryptedSharedPreferences 失败
-
-| 错误 | 原因 | 缓解 |
-|---|---|---|
-| `KeyStoreException` | 系统问题 | 退到 SharedPreferences |
-| `GeneralSecurityException` | 加密失败 | 提示用户清 App 数据 |
-| `IOException` | 磁盘 | 提示 |
-
-### 7.3 优雅降级
-
-Keychain 失败 → 退到 UserDefaults（iOS）或 SharedPreferences（Android）。
-
-存明文 token 时设置提醒：
+| 场景 | 行为 |
+|---|---|
+| 30 天未用 | 启动时弹窗"上次连接的 PC 超过 30 天未连接，是否清理？" |
+| 用户主动删除 | 弹"确认" → 立即清该项 |
+| 401 持续 3 次 | 提示"密钥已过期"（**不自动删**） |
+| App 卸载 / 清数据 | OS 自动清 |
 
 ```swift
-// iOS: UserDefaults 退到时打印警告
-print("[WARN] Token 存储退到 UserDefaults，未加密")
-```
-
-```kotlin
-// Android: 类似
-Log.w("Persistence", "退到 SharedPreferences，未加密")
-```
-
-## 八、最佳实践
-
-### 8.1 Token 绝不进日志
-
-```swift
-// ❌ 错
-print("Token: \(token)")
-
-// ✅ 对
-print("[DEBUG] Token len=\(token.count)")
-```
-
-### 8.2 序列化时排除 Token
-
-```kotlin
-// JSON 序列化时排除 token
-@JsonIgnore
-private val lastToken: String = ""
-
-// 排除字段（防止 Gson/Moshi 序列化泄漏）
-```
-
-### 8.3 写时加密，读时解密
-
-EncryptedSharedPreferences 自动做。Keychain 也要按规范操作。
-
-### 8.4 定期清无主 Token
-
-如果 `last_seen_at` 超过 30 天没更新 → 主动清：
-
-```swift
-if let lastSeen = lastSeenAt {
-    if Date().timeIntervalSince(lastSeen) > 30 * 86400 {
-        clearAll()
+// iOS 启动时检查
+for space in spaces {
+    if let lastSeen = space.lastSeenAt,
+       Date().timeIntervalSince(lastSeen) > 30 * 86400 {
+        showCleanupPrompt(space)
     }
 }
 ```
 
-## 九、未来扩展
+---
 
-### 9.1 多台 PC 持久化
+## 七、跨平台一致性
 
-当前只存"最近一台"。未来可支持：
+### 7.1 字段命名
 
-```json
-{
-  "history": [
-    {"ip": "192.168.1.10", "name": "鱼鱼的 MacBook", "token": "123456"},
-    {"ip": "192.168.1.20", "name": "工作室 Win11", "token": "789012"}
-  ]
-}
+| 字段 | iOS | Android | macOS |
+|---|---|---|---|
+| `pc.spaces` | ✅ | ✅ | ✅ |
+| `pc.current_space_name` | ✅ | ✅ | ✅ |
+
+### 7.2 多端独立
+
+- iOS 工作空间 ≠ Android 工作空间（完全独立，无云同步）
+- 用户可在不同设备维护不同的空间列表
+
+---
+
+## 八、与 PC 端持久化的对比
+
+| 维度 | PC 端 `config.db` | App 端 Keychain / EncryptedSharedPreferences |
+|---|---|---|
+| 存储介质 | SQLite | Keychain / EncryptedSP |
+| 加密 | � 无 | ✅ 加密 |
+| 持久化内容 | 服务器配置 | 工作空间列表 |
+| 网络位置 | 同 PC | 同设备 |
+| 内容 | PC 配置 + 当前 secret | 客户端持久化的 ip/port/secret |
+
+**两套独立**：
+
+- PC 端不持久化 secret（每次启动重生成）
+- App 端持久化 secret（QR 拿到后写入）
+
+---
+
+## 九、安全最佳实践
+
+### 9.1 Token 绝不进日志
+
+```swift
+// ❌ 错
+print("Secret: \(secret)")
+
+// ✅ 对
+print("[DEBUG] Secret len=\(secret.count)")
+// 或脱敏：print("[DEBUG] Secret=****\(secret.suffix(4))")
 ```
 
-### 9.2 Token 加密预协商
+### 9.2 JSON 序列化
 
-未来可用 ECDH 预协商加密 Token（防 LAN 嗅探）：
+iOS `Codable` / Android `Gson` 默认全部序列化字段。**不要**用 `@JsonIgnore` 跳过 secret（保留可序列化）；用**加密存储**防泄漏。
 
-1. PC 端发公钥
-2. App 端用公钥加密 Token
-3. PC 端私钥解密
+### 9.3 写时加密读时解密
 
-需要 PC 端发起一次性的交换协议。
+EncryptedSharedPreferences 自动做。UserDefaults 用户需自行加密或接受"设备锁屏保护"。
 
-### 9.3 端到端加密
+---
 
-未来照片可以 E2E 加密后上传。
+## 十、未来扩展
 
-## 十、API 客户端读取
+### 10.1 iCloud 同步（v0.14 候选）
 
-客户端（iOS / Android）**不读写** PC 端 `config.db`。它**只读**自己 App 内的 Keychain/SP。
+iOS Keychain 可选同步到 iCloud（需 `kSecAttrSynchronizable = true`）。当前 v0.13 **不启用**同步（避免跨设备泄漏 secret）。
 
-```
-┌──────────┐                    ┌──────────┐
-│  iOS     │  PC 的 IP/Token 在  │  PC 端    │
-│  App    │  iOS Keychain 里     │  config.db│
-│          │  ←─── 独立 ───→    │  (无客户端)│
-└──────────┘                    └──────────┘
-```
+### 10.2 多端并用（v0.14 候选）
 
-**两套独立，互不读写**。
+未来用户可同时在 iOS / Android 维护同一 PC 的空间。当前 v0.13 各端独立。
 
-## 十一、调试路径
+### 10.3 自定义空间名（v0.14 候选）
 
-### iOS 模拟器
+允许用户在 App 内为 PC 起别名（区别于 PC 端 `name`）。当前 v0.13 直接展示 PC 端 `name`。
 
-```
-Xcode → Window → Devices and Simulators → 选模拟器 → Download Container
-```
+---
 
-解压后：
-
-```
-AppData/Library/Preferences/com.starttooler.app.plist
-```
-
-### Android 模拟器
-
-```bash
-adb shell run-as com.starttooler.app ls /data/data/com.starttooler.app/shared_prefs/
-```
-
-或用 `Android Studio → App Inspection → Database`。
-
-## 十二、版本兼容
+## 十一、版本兼容
 
 | App 版本 | 持久化策略 |
 |---|---|
-| 1.0.0 | 上文所述（Keychain + UserDefaults / EncryptedSharedPreferences） |
-| 1.1.0 | 加多 PC 历史 |
-| 1.2.0 | 加 Token 重置自动清 |
+| 1.0.0（v0.13） | 上文（多空间 + EncryptedSP / iOS Keychain+UD） |
 
-字段**新增** = 老 App 启动不读，无破坏。**字段删除** = 新 App 老 db 读不出，OK。
+字段**新增** = 老 App 不读，无破坏。**字段删除** = 新 App 老 db 读不出，OK。
 
-详见 [API-04-config-schema.md](API-04-config-schema.md) PC 端持久化对照。
+---
+
+## 十二、变更记录
+
+| 日期 | 版本 | 内容 |
+|---|---|---|
+| 2026-08-21 | v0.13 | 改写：多空间列表模型；移除 UDP 5s / 6 位 token 持久化 |

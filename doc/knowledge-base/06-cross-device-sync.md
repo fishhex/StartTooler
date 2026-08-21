@@ -2,12 +2,14 @@
 
 星助的文件传输有**三种通道**，按使用场景区分。本文档解释三种通道的定位、用户什么时候用、它们怎么协同。
 
+> v0.13 起，LAN 通道**移除 UDP 自动发现**，改为 QR 唯一入口（详见 [05-mobile-app.md](05-mobile-app.md)）。
+
 ## 一、三个通道一览
 
 | 通道 | 介质 | 典型场景 | 用户必做的配置 |
 |---|---|---|---|
 | **OSS** | 阿里云对象存储 | 异地备灾 / 远程分享 / 永久存储 | 填 OSS 配置（Bucket + AK） |
-| **LAN** | 同 WiFi 局域网 | 拍照时手机直接传电脑 | 电脑开服务 + 扫码 |
+| **LAN** | 同 WiFi 局域网 | 拍照时手机直接传电脑 | **扫码 + PC 启服务** |
 | **公网 relay** | VPS 中转 | 异地电脑之间互传 | 配 VPS SSH 账号 |
 
 这三种通道**互补**，不是互斥——同一个项目可以同时挂在多个通道。
@@ -61,24 +63,24 @@
 
 代码：[AliyunOssStorage](../../StartTooler/Services/AliyunOssStorage.cs)。
 
-## 三、LAN 通道
+## 三、LAN 通道（v0.13 重写）
 
 ### 定位
 
 **同 WiFi 拍完即传** 的最快通道。手机拍照 → 立刻传到电脑 → 不用 import 不用数据线。
 
-### 工作流
+### 工作流（v0.13）
 
 ```
 PC 端：
   1. 切到"上传与共享" Tab
   2. 点"启动服务"（默认 8765 端口）
-  3. 看到 QR 码 + IP + Token
+  3. 看到 QR + IP + 32 字符 hex 密钥
 
 手机端：
   1. 同 WiFi
-  2. UDP 扫描 PC（无需扫码）
-  3. 选 PC → 输入 Token
+  2. 打开 App → 扫 PC 端 QR（**唯一发现入口**）
+  3. App 解析 URL → health 验证 → 取 PC name 作为工作空间名
   4. 选项目 + 选照片 → 上传
 ```
 
@@ -87,13 +89,15 @@ PC 端：
 - 不用配 OSS
 - 不用注册账号
 - 不用打开防火墙（应用层处理）
-- 不用手动输入 IP（默认走 UDP 抓）
+- 不用手动输入 IP / 端口 / Token（QR 一站搞定）
+- ❌ 不用 UDP 扫描（v0.13 移除）
 
 ### 关键限制
 
-- **必须同 WiFi**（UDP 广播不跨路由器）
+- **必须同 WiFi**（QR 锁定 IP，不跨路由器）
 - 必须 PC 端开着服务
-- 单次会话需 6 位数字 Token（PC 端可重置）
+- 单次会话需 32 字符 hex secret（PC 端每次启动重生成）
+- QR 含 `?k=` secret；公网 relay QR 不含 → 扫码视为"二维码无效"
 
 代码：[UploadServerService](../../StartTooler/Services/UploadServerService.cs)（[API-01-http-routes.md](API-01-http-routes.md)）。
 
@@ -101,9 +105,22 @@ PC 端：
 
 | 情形 | PC 端 UI | 手机端 UI |
 |---|---|---|
-| PC 端服务主 | 服务跑着 + 推 Token | 扫描 PC 列表，点击连接 |
-| PC 端 Token 重置 | 旧 App 端 401 提示 | 提示重新输入 Token |
-| PC 端换了 WiFi | 旧 IP 失效 | UDP 重新扫描 |
+| PC 端服务主 | 服务跑着 + 显示 QR | 扫 QR → 自动建工作空间 |
+| PC 端密钥重置 | 旧 App 端 401 提示 | 清 secret + 提示重新扫码 |
+| PC 端换了 WiFi（IP 变）| 黄色提示"网络 IP 已变" | 引导重新扫码 |
+
+> v0.13 起，App 端不再依赖任何自动发现；所有变化靠用户感知 + 重新扫码。
+
+### App 端对接需求
+
+完整文档：[05-mobile-app.md](05-mobile-app.md)（聚合主文档）
+
+| 维度 | 详细 |
+|---|---|
+| QR 协议 | [API-04-qr-protocol.md](API-04-qr-protocol.md) |
+| HTTP 路由 | [API-01-http-routes.md](API-01-http-routes.md) |
+| App 持久化 | [API-05-app-persistence.md](API-05-app-persistence.md) |
+| 错误 i18n | [API-06-error-i18n.md](API-06-error-i18n.md) |
 
 ## 四、公网 relay 通道
 
@@ -130,6 +147,7 @@ PC 端：
 - VPS 上跑 upload-relay（星助自己写的 Go 进程）
 - 流量经过 VPS 中转（**VPS 流量单价贵**）
 - 走 TCP（不是 HTTP），两端 SSH 通道
+- QR 不含 secret（保留 v0.12 行为）
 
 代码：[PublicRelayService](../../StartTooler/Services/PublicRelayService.cs)，配置：[PublicRelayConfig.cs](../../StartTooler/Services/PublicRelayConfig.cs)。
 
@@ -169,7 +187,7 @@ OSS：电脑上的文件定期（手动）上传到 OSS 备灾
 家里电脑：旧的 `/Users/hex/Astro/m42` 项目
 工作室电脑：新建同样的 `/Users/hex/Astro/m42` 项目
 两边分别拍照
-LAN 上传：工作室拍的照片 → 家里电脑
+LAN 上传：工作室拍的照片 → 家里电脑（需 PC 端启服务 + 扫 QR）
 OSS 备份：家里电脑上的文件 → OSS
   → 两份文件镜像备份
 ```
@@ -209,7 +227,7 @@ LAN 通道（0 成本 + 极速）从来不是第三方网盘能比的。
 
 ## 八、用户在 UI 上看到的选择
 
-### 上传 Tab 总览
+### 上传 Tab 总览（v0.13）
 
 ```
 ┌─ 上传与共享 ─────────────────────────┐
@@ -217,8 +235,8 @@ LAN 通道（0 成本 + 极速）从来不是第三方网盘能比的。
 │  局域网服务（LAN）                    │
 │  ├─ 端口：8765   [启动/停止]           │
 │  ├─ QR 码                            │
-│  ├─ URL：192.168.1.10:8765/upload     │
-│  ├─ Token：123456  [重置]              │
+│  ├─ URL：192.168.1.10:8765/upload?k=… │
+│  ├─ 密钥：7f3a9b2c...   [重置]        │
 │  └─ 上传历史                          │
 │                                       │
 │  公网代理（VPS relay）                │
@@ -233,13 +251,16 @@ LAN 通道（0 成本 + 极速）从来不是第三方网盘能比的。
 
 卡片右上角**同步徽章**永远显示，表示当前文件的同步状态（与具体通道无关）。
 
-## 九、故障排查
+## 九、故障排查（v0.13）
 
 | 现象 | 可能原因 | 排查 |
 |---|---|---|
-| LAN 上传 401 | Token 错 | PC 端 UI 看 Token 重置 |
+| LAN 上传 401 | Secret 错 / 已过期 | PC 端 UI 看密钥 / 重新扫 QR |
 | LAN 上传不到 | 跨 WiFi | 同一路由器 SSID 下 |
 | LAN 上传慢 | 5G 信号弱 | 用 2.4G WiFi |
+| LAN 找不到 PC | IP / 端口错 | 重新扫 QR |
+| QR 扫不到 / 不识别 | QR 模糊 / 距离远 | 靠近 PC 端屏幕重扫 |
+| QR 提示"二维码无效" | QR 不含 `?k=`（公网 relay 模式）| 同 LAN 扫码 / 关公网 relay |
 | OSS 上传失败 | AK 错 / 余额不足 | 设置 OSS 页面看错误 |
 | 公网 relay 部署失败 | SSH 配置错 | 配置 SSH 检查 |
 | 公网 relay 收不到文件 | 防火墙拦截 | VPS 端口 8766 开放 |
@@ -250,5 +271,12 @@ LAN 通道（0 成本 + 极速）从来不是第三方网盘能比的。
 - 端到端加密 → 隐私保护
 - 双向同步 → 任意设备改标签都同步
 - 同步冲突解决 → 解决"两边都改"的合并
+- iCloud 同步 App 端工作空间（v0.14 候选）
 
 详见 [03-half-built.md](03-half-built.md)。
+
+## 十一、变更记录
+
+| 日期 | 版本 | 内容 |
+|---|---|---|
+| 2026-08-21 | v0.13 | 改写：LAN 通道移除 UDP；改为 QR + 32 字符 hex secret |
