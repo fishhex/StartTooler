@@ -1,6 +1,6 @@
 # API-05 · App 端持久化（v0.13）
 
-App 端持久化 = 工作空间（多 PC）存储。本文档定义 iOS / Android / macOS 客户端存储结构、加密策略、清理规则。
+App 端持久化 = 工作空间（多 PC）存储。本文档定义 iOS / Android / macOS 客户端存储结构、加密策略。**清理仅用户主动**（App 端不自动清理）。
 
 > 配套：[05-mobile-app.md](05-mobile-app.md) §三「工作空间模型」
 
@@ -89,10 +89,11 @@ UserDefaults.standard.set(spacesData, forKey: "pc.spaces")
 | 场景 | 行为 |
 |---|---|
 | 用户主动"删除空间"按钮 | 删 `pc.spaces` 里对应项 |
-| 401 响应持续 3 次 | 提示"密钥已过期"，不自动删 |
-| 30 天未用 | 启动时提示清理 |
+| 401 响应持续 3 次 | 提示"密钥已过期"，**不**自动删 |
 | App 卸载 | 系统自动清 |
 | 用户重建 App | 系统自动清 |
+
+> **v0.13 原则**：App 端**不**按时间（如 30 天未用）自动清理。所有清理由用户发起。
 
 ---
 
@@ -132,9 +133,10 @@ val prefs = EncryptedSharedPreferences.create(
 | 场景 | 行为 |
 |---|---|
 | 用户主动"删除空间"按钮 | 删 `pc.spaces` 里对应项 |
-| 401 响应持续 3 次 | 提示"密钥已过期"，不自动删 |
-| 30 天未用 | 启动时提示清理 |
+| 401 响应持续 3 次 | 提示"密钥已过期"，**不**自动删 |
 | App 卸载 | 系统自动清 |
+
+> **v0.13 原则**：App 端**不**按时间（如 30 天未用）自动清理。所有清理由用户发起。
 
 ### 3.5 备份建议
 
@@ -194,22 +196,36 @@ let query: [String: Any] = [
 
 ---
 
-## 六、清理策略
+## 六、清理策略（仅用户主动）
+
+> **v0.13 原则**：App 端**不**主动清理持久化空间。所有清理由用户发起。
 
 | 场景 | 行为 |
 |---|---|
-| 30 天未用 | 启动时弹窗"上次连接的 PC 超过 30 天未连接，是否清理？" |
-| 用户主动删除 | 弹"确认" → 立即清该项 |
-| 401 持续 3 次 | 提示"密钥已过期"（**不自动删**） |
+| 用户主动"删除空间" | 弹"确认" → 立即清该项 |
+| 401 持续 3 次 | 提示"密钥已过期"（**不**自动删） |
 | App 卸载 / 清数据 | OS 自动清 |
 
+❌ 不做的事：
+
+- 不按时间（如 30 天未用）自动清理
+- 不按 401 次数自动清理
+- 不按 PC 端状态自动清理
+
 ```swift
-// iOS 启动时检查
-for space in spaces {
-    if let lastSeen = space.lastSeenAt,
-       Date().timeIntervalSince(lastSeen) > 30 * 86400 {
-        showCleanupPrompt(space)
-    }
+// 用户主动删除空间（弹确认）
+func deleteSpace(_ space: Space) {
+    let alert = UIAlertController(
+        title: "删除空间",
+        message: "确定要删除 \"\(space.name)\" 吗？",
+        preferredStyle: .alert
+    )
+    alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+    alert.addAction(UIAlertAction(title: "删除", style: .destructive) { _ in
+        self.persistence.remove(space.name)
+        self.spaces.removeAll { $0.name == space.name }
+    })
+    present(alert, animated: true)
 }
 ```
 
