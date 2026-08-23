@@ -1,13 +1,14 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using StartTooler.Data;
@@ -15,10 +16,11 @@ using StartTooler.Data;
 namespace StartTooler.Services;
 
 /// <summary>
-/// v0.12: 局域网 HTTP 上传服务。在 v0.10 基础上扩展：
+/// v0.14: 局域网 HTTP 上传服务。
 ///   - 路由：保留 /upload (H5)；新增 /api/v1/health、/api/v1/projects、/api/v1/projects/{name}/upload
-///   - 鉴权：6 位数字 token（启动生成 + 手动重置），受保护端点必须带 ?token= 或 X-Token header
-///   - UDP 广播：每 2s 广播 JSON 到 255.255.255.255:9876，供 App 端发现
+///   - 鉴权：32 字符 hex secret（启动从 config.db.upload_secret 读，无则生成并写回；手动「重置密钥」重新生成）
+///   - 受保护端点必须带 ?k= 或 X-Key header
+///   - 发现：App 端仅通过扫码 QR 连接（v0.15 起移除 UDP 广播 + unicast 兜底）
 ///   - 索引：落盘后异步触发 ScanDirectoryAsync 写入 media_files
 /// </summary>
 public class UploadServerService : IDisposable
@@ -32,23 +34,15 @@ public class UploadServerService : IDisposable
     private readonly IMediaRepository _mediaRepository;
     private readonly string _legacyDefaultDirectory;  // H5 /upload 用，保持 v0.10 行为
 
-    // v0.12: Token
-    private string _currentToken = GenerateToken();
-    public string CurrentToken => _currentToken;
-    public event Action<string>? OnTokenChanged;
+    // v0.14: Secret（替代 v0.12 的 6 位数字 Token）
+    // 启动时从 config.db.upload_secret 读，无则生成并写回。
+    // 唯一主动失效途径：UI 点「重置密钥」调 RegenerateSecret。
+    private string _currentSecret = "";
+    public string CurrentSecret => _currentSecret;
+    public event Action<string>? OnSecretChanged;
 
-    // v0.12: UDP 广播
-    private UdpClient? _udpClient;
-    private CancellationTokenSource? _udpCts;
-    private Task? _udpTask;
-    private const int UdpBroadcastPort = 9876;
-    private const int UdpBroadcastIntervalMs = 2000;
-
-    // 修复 v0.12.2：最近活跃客户端 IP 缓存（30s TTL）。
-    // HTTP 请求处理入口写入；UDP 广播循环读取，作为 unicast 兜底，
-    // 绕过企业路由器拦截 255.255.255.255 / 子网定向广播。
-    private static readonly ConcurrentDictionary<string, DateTime> s_recentClients = new();
-    private static readonly TimeSpan s_clientTtl = TimeSpan.FromSeconds(30);
+    // v0.15: UDP 广播 + 最近活跃客户端 IP 缓存（v0.12 unicast 兜底）已全部移除。
+    // App 端仅通过扫码 QR 连接；不再有任何局域网自动发现。
 
     // 允许上传的文件扩展名
     private static readonly string[] AllowedExtensions =
@@ -76,7 +70,8 @@ public class UploadServerService : IDisposable
         _configService = configService;
         _mediaRepository = mediaRepository;
         _legacyDefaultDirectory = legacyDefaultDirectory;
-        _currentToken = GenerateToken();
+        // v0.14: 从 config.db.upload_secret 读取，无则生成并写回
+        _currentSecret = LoadOrGenerateSecret(_configService);
     }
 
     public async Task StartAsync(int port, CancellationToken ct = default)
@@ -102,11 +97,8 @@ public class UploadServerService : IDisposable
         Debug.WriteLine($"[UploadServer] Started on port {port}");
         _listenTask = ListenAsync(_cts.Token);
 
-        // v0.12: 启动 UDP 广播
-        _udpTask = StartUdpBroadcastAsync(_cts.Token);
-
-        // v0.12: 通知 VM 刷新 Token 显示
-        OnTokenChanged?.Invoke(_currentToken);
+        // v0.14: 通知 VM 刷新 Secret 显示
+        OnSecretChanged?.Invoke(_currentSecret);
 
         await Task.CompletedTask;
     }
@@ -153,44 +145,92 @@ public class UploadServerService : IDisposable
             }
         }
 
-        // v0.12: 关闭 UDP 广播
-        try
-        {
-            _udpCts?.Cancel();
-        }
-        catch (ObjectDisposedException) { }
-        try
-        {
-            _udpClient?.Close();
-        }
-        catch (ObjectDisposedException) { }
-        _udpClient = null;
-        _udpCts = null;
-
         Debug.WriteLine("[UploadServer] Stopped");
     }
 
-    // v0.12: 重置 Token（UI "重置" 按钮调用）
-    public void RegenerateToken()
+    // v0.14: 重置 Secret 并写回 config.db.upload_secret
+    // UI「重置密钥」按钮调用。
+    public void RegenerateSecret()
     {
-        _currentToken = GenerateToken();
-        OnTokenChanged?.Invoke(_currentToken);
-        Debug.WriteLine($"[UploadServer] Token regenerated: {_currentToken}");
+        var fresh = GenerateSecret();
+        _currentSecret = fresh;
+        try
+        {
+            _configService.SetAsync("upload_secret", fresh).GetAwaiter().GetResult();
+            Debug.WriteLine("[UploadServer] Secret regenerated and persisted to config.db");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[UploadServer] Persist regenerated secret failed: {ex.Message}");
+        }
+        OnSecretChanged?.Invoke(_currentSecret);
     }
 
-    private static string GenerateToken()
+    /// <summary>
+    /// v0.14: 加载持久化的 secret。读 config.db.upload_secret：
+    ///   - 存在且合法（32 hex）→ 复用
+    ///   - 不存在 / 非法（被外部篡改）→ 重新生成 + 覆盖写回
+    /// 构造期同步调用（无 SynchronizationContext，不会死锁）。
+    /// </summary>
+    private static string LoadOrGenerateSecret(IConfigService configService)
     {
-        return Random.Shared.Next(0, 1_000_000).ToString("D6");
+        string? stored = null;
+        try
+        {
+            stored = configService.GetAsync<string>("upload_secret").GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[UploadServer] Read upload_secret failed: {ex.Message}");
+        }
+
+        if (!string.IsNullOrEmpty(stored) && IsValidSecret(stored))
+        {
+            Debug.WriteLine($"[UploadServer] upload_secret loaded from config.db (len={stored.Length})");
+            return stored;
+        }
+
+        // 不存在 / 非法 → 重生成 + 写回
+        var fresh = GenerateSecret();
+        try
+        {
+            configService.SetAsync("upload_secret", fresh).GetAwaiter().GetResult();
+            Debug.WriteLine("[UploadServer] upload_secret generated and persisted to config.db");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[UploadServer] Persist upload_secret failed: {ex.Message}");
+            // 即便写失败，也返回新生成的（内存能用，下次启动再重生成）
+        }
+        return fresh;
     }
 
-    private bool ValidateToken(HttpListenerRequest request)
+    private static bool IsValidSecret(string s)
     {
-        // 优先 query 参数 ?token=
-        var token = request.QueryString["token"];
-        // 备选 header X-Token
-        if (string.IsNullOrEmpty(token))
-            token = request.Headers["X-Token"];
-        return !string.IsNullOrEmpty(token) && token == _currentToken;
+        return !string.IsNullOrEmpty(s)
+            && s.Length == 32
+            && Regex.IsMatch(s, "^[a-f0-9]{32}$");
+    }
+
+    /// <summary>
+    /// v0.14: 生成 16 字节随机数，输出 32 字符小写 hex。
+    /// 使用系统加密安全随机源（RandomNumberGenerator）。
+    /// </summary>
+    private static string GenerateSecret()
+    {
+        var bytes = new byte[16];
+        RandomNumberGenerator.Fill(bytes);
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    private bool ValidateSecret(HttpListenerRequest request)
+    {
+        // 优先 query 参数 ?k=
+        var secret = request.QueryString["k"];
+        // 备选 header X-Key
+        if (string.IsNullOrEmpty(secret))
+            secret = request.Headers["X-Key"];
+        return !string.IsNullOrEmpty(secret) && secret == _currentSecret;
     }
 
     private async Task ListenAsync(CancellationToken ct)
@@ -228,11 +268,6 @@ public class UploadServerService : IDisposable
         var path = request.Url?.AbsolutePath ?? "";
         var method = request.HttpMethod;
 
-        // 修复 v0.12.2：记录客户端 IP，供 UDP 广播 unicast 兜底。
-        // 任何 HTTP 请求（health / projects / upload）都触发，手机首次
-        // 手动输入 IP + Port + Token 联调一次后，PC 即可 unicast 到手机。
-        RecordClientIp(request.RemoteEndPoint?.Address);
-
         try
         {
             // ===== 1. 无鉴权端点 =====
@@ -249,19 +284,19 @@ public class UploadServerService : IDisposable
                 {
                     Ok = true,
                     Service = "starttooler",
-                    Version = "0.12",
+                    Version = "0.14",
                     Name = Environment.MachineName,
                     Port = Port,
-                    Token = _currentToken,
+                    Secret = _currentSecret,
                     CurrentProject = currentProject ?? "",
                 });
                 return;
             }
 
             // ===== 2. 鉴权 =====
-            if (!ValidateToken(request))
+            if (!ValidateSecret(request))
             {
-                await WriteJsonAsync(response, 401, new ErrorResponse { Error = "invalid token" });
+                await WriteJsonAsync(response, 401, new ErrorResponse { Error = "invalid secret" });
                 return;
             }
 
@@ -634,93 +669,10 @@ public class UploadServerService : IDisposable
     }
 
     // ========================================================================
-    // UDP 广播（v0.12 新增）
+    // v0.15: 移除 UDP 广播（原 StartUdpBroadcastAsync + GetBroadcastEndpoints +
+    // RecordClientIp + PruneExpiredClients + s_recentClients + UdpBroadcastPayload）。
+    // App 端仅通过扫码 QR 连接。
     // ========================================================================
-
-    private async Task StartUdpBroadcastAsync(CancellationToken ct)
-    {
-        _udpCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var localCt = _udpCts.Token;
-
-        try
-        {
-            _udpClient = new UdpClient();
-            _udpClient.EnableBroadcast = true;
-
-            // 修复 v0.12：枚举所有活跃 IPv4 网卡的子网定向广播地址 + 255.255.255.255
-            // 单用 255.255.255.255 会被部分路由器/手机的 directed broadcast filter 丢弃
-            var endpoints = GetBroadcastEndpoints(UdpBroadcastPort);
-
-            while (!localCt.IsCancellationRequested)
-            {
-                var currentProject = await GetCurrentProjectNameAsync();
-                var payload = new UdpBroadcastPayload
-                {
-                    Service = "starttooler",
-                    Version = "0.12",
-                    Name = Environment.MachineName,
-                    Port = Port,
-                    Token = _currentToken,
-                    CurrentProject = currentProject ?? "",
-                };
-                var bytes = JsonSerializer.SerializeToUtf8Bytes(payload, JsonOpts);
-
-                try
-                {
-                    foreach (var endpoint in endpoints)
-                    {
-                        await _udpClient.SendAsync(bytes, endpoint);
-                    }
-
-                    // 修复 v0.12.2：追加 unicast 到最近 30s 活跃的客户端。
-                    // 解决企业 / 校园路由器拦截 directed broadcast 的最后一公里问题。
-                    PruneExpiredClients();
-                    foreach (var clientIp in s_recentClients.Keys)
-                    {
-                        if (IPAddress.TryParse(clientIp, out var ip))
-                        {
-                            try
-                            {
-                                await _udpClient.SendAsync(bytes, new IPEndPoint(ip, UdpBroadcastPort));
-                            }
-                            catch (Exception ex)
-                            {
-                                Trace.WriteLine($"[UploadServer] UDP unicast to {clientIp} failed: {ex.Message}");
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // 修复 v0.12：用 Trace 让异常写入 starttooler-debug.log，
-                    // Debug.WriteLine 在 WinExe 下不进文件，排查不到。
-                    Trace.WriteLine($"[UploadServer] UDP send failed: {ex.Message}");
-                }
-
-                try
-                {
-                    await Task.Delay(UdpBroadcastIntervalMs, localCt);
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // 正常停止
-        }
-        catch (Exception ex)
-        {
-            Trace.WriteLine($"[UploadServer] UDP broadcast error: {ex.Message}");
-        }
-        finally
-        {
-            try { _udpClient?.Close(); } catch { /* ignore */ }
-            _udpClient = null;
-        }
-    }
 
     // ========================================================================
     // JSON 响应（v0.12 统一）
@@ -897,78 +849,14 @@ public class UploadServerService : IDisposable
     /// 修复 v0.12：枚举所有活跃 IPv4 网卡，返回每个子网的定向广播地址，
     /// 加上 255.255.255.255 兜底。每个端点都发一次，最大化发现成功率。
     /// </summary>
-    private static List<IPEndPoint> GetBroadcastEndpoints(int port)
-    {
-        var endpoints = new List<IPEndPoint>();
-        try
-        {
-            foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
-                if (ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback) continue;
+    // v0.15: GetBroadcastEndpoints 已移除（UDP 广播功能下线）
 
-                var props = ni.GetIPProperties();
-                foreach (var ua in props.UnicastAddresses)
-                {
-                    if (ua.Address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
-                    if (ua.IPv4Mask == null) continue;
-
-                    var addr = ua.Address.GetAddressBytes();
-                    var mask = ua.IPv4Mask.GetAddressBytes();
-                    var bcast = new byte[4];
-                    for (int i = 0; i < 4; i++) bcast[i] = (byte)(addr[i] | ~mask[i]);
-
-                    endpoints.Add(new IPEndPoint(new IPAddress(bcast), port));
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[UploadServer] GetBroadcastEndpoints failed: {ex.Message}");
-        }
-
-        // 兜底：受限广播
-        endpoints.Add(new IPEndPoint(IPAddress.Broadcast, port));
-        return endpoints;
-    }
-
-    /// <summary>
-    /// 修复 v0.12.2：记录最近活跃客户端 IP。
-    /// 跳过回环 / IPv6 / 链路本地 (169.254.x.x) / 组播 (224+) 段。
-    /// </summary>
-    private static void RecordClientIp(IPAddress? ip)
-    {
-        if (ip == null) return;
-        if (IPAddress.IsLoopback(ip)) return;
-        if (ip.AddressFamily != AddressFamily.InterNetwork) return;
-
-        var b = ip.GetAddressBytes();
-        if (b[0] == 169 && b[1] == 254) return;  // 链路本地
-        if (b[0] >= 224) return;                  // 组播 / 保留
-
-        s_recentClients[ip.ToString()] = DateTime.UtcNow;
-    }
-
-    /// <summary>
-    /// 修复 v0.12.2：清理超过 30 秒未活动的客户端 IP。
-    /// </summary>
-    private static void PruneExpiredClients()
-    {
-        var now = DateTime.UtcNow;
-        foreach (var kv in s_recentClients)
-        {
-            if (now - kv.Value > s_clientTtl)
-            {
-                s_recentClients.TryRemove(kv.Key, out _);
-            }
-        }
-    }
+    // v0.15: RecordClientIp + PruneExpiredClients 已移除（v0.12 unicast 兜底下线）
 
     public void Dispose()
     {
         Stop();
         _cts?.Dispose();
-        _udpCts?.Dispose();
     }
 
     private sealed class ParsedFile
@@ -992,10 +880,10 @@ public sealed class HealthResponse
 {
     public bool Ok { get; init; }
     public string Service { get; init; } = "starttooler";
-    public string Version { get; init; } = "0.12";
+    public string Version { get; init; } = "0.14";
     public string Name { get; init; } = "";
     public int Port { get; init; }
-    public string Token { get; init; } = "";
+    public string Secret { get; init; } = "";  // v0.14: 替代 v0.12 的 Token
     public string CurrentProject { get; init; } = "";
 }
 
@@ -1034,12 +922,4 @@ public sealed class UploadFileItem
     public string Reason { get; init; } = "";
 }
 
-public sealed class UdpBroadcastPayload
-{
-    public string Service { get; init; } = "starttooler";
-    public string Version { get; init; } = "0.12";
-    public string Name { get; init; } = "";
-    public int Port { get; init; }
-    public string Token { get; init; } = "";
-    public string CurrentProject { get; init; } = "";
-}
+// v0.15: UdpBroadcastPayload 类已移除（UDP 广播功能下线）。

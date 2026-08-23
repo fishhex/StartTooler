@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -57,10 +58,14 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string? _errorMessage;
     [ObservableProperty] private string? _recentUploadMessage;
 
-    // v0.12: 当前 Token（6 位数字），UI 显示 + 拼到 QR URL
-    [ObservableProperty] private string _currentToken = "";
-    // v0.12: Token 变化时刷新 QR 码
-    partial void OnCurrentTokenChanged(string value) => RefreshQrForCurrentAddress();
+    // v0.14: 当前 Secret（32 字符 hex），UI 显示 + 拼到 QR URL
+    // 从 config.db.upload_secret 读取，UI「重置密钥」可重新生成。
+    [ObservableProperty] private string _currentSecret = "";
+    // v0.14: Secret 变化时刷新 QR 码
+    partial void OnCurrentSecretChanged(string value) => RefreshQrForCurrentAddress();
+
+    /// <summary>v0.14: 网络 IP 变化时为 true（黄色提示条 + QR host 字段刷新）。</summary>
+    [ObservableProperty] private bool _isNetworkChanged;
 
     /// <summary>当前 QR/URL 是否指向公网地址（公网 relay 在跑）。</summary>
     [ObservableProperty] private bool _isPublicMode;
@@ -165,10 +170,10 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
                 _mediaRepository,
                 _gallery.ProjectPath ?? "");
 
-            // v0.12: 订阅 Token 变化（OnTokenChanged 在 StartAsync 启动时同步触发，UI 立刻拿到 token）
-            _server.OnTokenChanged += token => Dispatcher.UIThread.Post(() => {
-                CurrentToken = token;
-                StatusMessage = $"Token 已刷新：{token}";
+            // v0.14: 订阅 Secret 变化（OnSecretChanged 在 StartAsync 启动时同步触发，UI 立刻拿到 secret）
+            _server.OnSecretChanged += secret => Dispatcher.UIThread.Post(() => {
+                CurrentSecret = secret;
+                StatusMessage = $"密钥已刷新：{MaskSecret(secret)}";
             });
             _cts = new CancellationTokenSource();
             _lastProjectPath = _gallery.ProjectPath;
@@ -216,7 +221,7 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
             StatusMessage = "服务已启动";
 
             // 拉取所有本机 IPv4（多网卡 / VPN / 虚拟机都可能给多个 IP；loopback 也包含便于本地调试）
-            // 修复 v0.12：统一走 UploadServerService.GetLocalIpv4Addresses()，与 UDP 广播端一致，
+            // 修复 v0.12：统一走 UploadServerService.GetLocalIpv4Addresses()，
             // 排序：私有 LAN 网段最前、127.0.0.1 最后、公网/虚拟次之。
             var addrs = UploadServerService.GetLocalIpv4Addresses();
             LocalAddresses.Clear();
@@ -232,6 +237,9 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
             AddressIndex = 0;
             OnPropertyChanged(nameof(DisplayUploadUrl));
             RefreshQrForCurrentAddress();
+
+            // v0.14: 启动 NetworkChange 监听（IP 变化触发黄色提示条 + QR 刷新）
+            SubscribeNetworkChange();
         }
         catch (Exception ex)
         {
@@ -322,9 +330,9 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void RegenerateToken()
+    private void RegenerateSecret()
     {
-        _server?.RegenerateToken();
+        _server?.RegenerateSecret();
     }
 
     [RelayCommand(CanExecute = nameof(CanStop))]
@@ -345,7 +353,9 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         IsPortConflict = false;
         SuggestedPorts = new List<int>();
         LocalAddresses.Clear();
-        CurrentToken = "";  // v0.12: 清空 Token 显示
+        CurrentSecret = "";  // v0.14: 清空 Secret 显示
+        IsNetworkChanged = false;  // v0.14: 清网络变化提示
+        UnsubscribeNetworkChange();  // v0.14: 解绑 NetworkChange 监听
         StatusMessage = "服务已停止";
         ErrorMessage = null;
     }
@@ -368,7 +378,7 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     /// <summary>
     /// 根据 AddressIndex 重新构造显示 URL，便于在多网卡 IP 间切换。
     /// 公网模式下直接返回 UploadUrl，不做 host 替换。
-    /// v0.12: LAN 模式下追加 ?t=token，扫码后 App 端可解析；公网模式不含 token（设计合理）。
+    /// v0.14: LAN 模式下追加 ?k={secret}（KB API-04-qr-protocol.md §1.1）；公网模式不含 secret（设计合理）。
     /// </summary>
     private string BuildDisplayUrl()
     {
@@ -381,10 +391,10 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
             var baseUri = new Uri(UploadUrl);
             var builder = new UriBuilder(baseUri) { Host = LocalAddresses[idx] };
             var url = builder.Uri.ToString().TrimEnd('/');
-            // v0.12: 拼 token（LAN 模式）
-            if (!string.IsNullOrEmpty(CurrentToken))
+            // v0.14: 拼 secret（LAN 模式）
+            if (!string.IsNullOrEmpty(CurrentSecret))
             {
-                url += $"?t={Uri.EscapeDataString(CurrentToken)}";
+                url += $"?k={Uri.EscapeDataString(CurrentSecret)}";
             }
             return url;
         }
@@ -464,9 +474,9 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         IsPublicMode = isPublic;
         UploadUrl = isPublic ? publicUrl! : _server.UploadUrl;
 
-        // v0.12: 改用 DisplayUploadUrl（已包含 ?t=token + 当前 AddressIndex 选中的 IP）
-        //  - LAN 模式：自动拼 ?t={token}
-        //  - 公网模式：直接返回 UploadUrl（不含 token，设计合理）
+        // v0.14: 改用 DisplayUploadUrl（已包含 ?k={secret} + 当前 AddressIndex 选中的 IP）
+        //  - LAN 模式：自动拼 ?k={secret}
+        //  - 公网模式：直接返回 UploadUrl（不含 secret，设计合理）
         GenerateQrCode(DisplayUploadUrl);
     }
 
@@ -493,6 +503,47 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
         }
     }
 
+    // ========================================================================
+    // v0.14: NetworkChange 监听 + Secret 脱敏
+    // ========================================================================
+
+    /// <summary>
+    /// v0.14: 订阅本机 IP 变化事件。事件触发后置 IsNetworkChanged=true + 刷 QR host 字段。
+    /// secret 不变（持久化复用），App 端下次 health 仍可走通；仅 QR 的 host 需刷新。
+    /// 重复订阅防护：先 -=
+    /// </summary>
+    private void SubscribeNetworkChange()
+    {
+        NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged;
+        NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
+    }
+
+    private void UnsubscribeNetworkChange()
+    {
+        NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged;
+    }
+
+    private void OnNetworkAddressChanged(object? sender, EventArgs e)
+    {
+        // NetworkChange 回调可能在任意线程触发，统一 marshal 到 UI 线程
+        Dispatcher.UIThread.Post(() =>
+        {
+            IsNetworkChanged = true;
+            ErrorMessage = "网络 IP 已变，请重新扫码";
+            RefreshQrForCurrentAddress();
+            Trace.WriteLine("[UploadServerVM] NetworkAddressChanged, IsNetworkChanged=true, QR host refreshed");
+        });
+    }
+
+    /// <summary>
+    /// v0.14: Secret 日志脱敏，形式 7f3a****2c8e（KB §十六 规定 12****56 形式的 32 hex 适配）。
+    /// </summary>
+    private static string MaskSecret(string s)
+    {
+        if (string.IsNullOrEmpty(s) || s.Length < 8) return "****";
+        return $"{s[..4]}****{s[^4..]}";
+    }
+
     public async Task InitializeAsync()
     {
         await PublicRelayViewModel.InitializeAsync();
@@ -502,6 +553,7 @@ public partial class UploadServerViewModel : ObservableObject, IDisposable
     {
         _gallery.PropertyChanged -= OnGalleryPropertyChanged;
         PublicRelayViewModel.PropertyChanged -= OnPublicRelayPropertyChanged;
+        UnsubscribeNetworkChange();  // v0.14: 防泄漏
         StopServer();
         _cts?.Dispose();
     }

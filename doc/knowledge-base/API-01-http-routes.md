@@ -3,6 +3,8 @@
 PC 端启了一个 HTTP 服务（[UploadServerService](../../StartTooler/Services/UploadServerService.cs)），对第三方客户端（H5 浏览器、手机 App、curl）暴露一套 API。App 端通过扫 PC 端 QR 解出 `{ip, port, secret}` 后用本协议做业务对接。
 
 > 协议版本：**v0.14**（v0.13 起移除 v0.12 的 UDP 广播 + 6 位数字 Token；v0.14 起 PC 端 secret 默认持久化到 `config.db.upload_secret`）
+>
+> **v0.15**：彻底删除 UDP 广播代码（_udpClient / _udpTask / s_recentClients / StartUdpBroadcastAsync / UdpBroadcastPayload 等），PC 端不再监听 9876。
 
 ## 一、协议基本信息
 

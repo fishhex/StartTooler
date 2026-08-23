@@ -281,3 +281,4 @@ LAN 通道（0 成本 + 极速）从来不是第三方网盘能比的。
 |---|---|---|
 | 2026-08-21 | v0.13 | 改写：LAN 通道移除 UDP；改为 QR + 32 字符 hex secret |
 | 2026-08-21 | v0.14 | PC 端 secret 默认持久化；LAN 通道「扫码一次终身免扫」（仅「重置密钥」失效） |
+| 2026-08-21 | v0.15 | 彻底删除 PC 端 UDP 广播代码（_udpClient / StartUdpBroadcastAsync / UdpBroadcastPayload 等）；KB 文档与代码对齐 |

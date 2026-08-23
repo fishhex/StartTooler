@@ -97,12 +97,13 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     // v0.11: 关于页静态数据（spec §12.2）
+    // v0.14: 兑底字符串 0.11.0 → 0.14.0（与 HealthResponse.Version 对齐；v0.15 起 UdpBroadcastPayload 已移除）
     public string AppVersion
     {
         get
         {
             var v = Assembly.GetEntryAssembly()?.GetName().Version;
-            return $"版本 {v?.ToString(3) ?? "0.11.0"}";
+            return $"版本 {v?.ToString(3) ?? "0.14.0"}";
         }
     }
     public string AppDescription => "跨平台桌面媒体管理工具";

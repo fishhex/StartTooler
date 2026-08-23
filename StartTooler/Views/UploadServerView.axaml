@@ -8,6 +8,26 @@
         <StackPanel Margin="40,24" Spacing="24">
 
             <!--
+              v0.14: 网络 IP 变化提示条（黄色 State.Warning）。
+              NetworkChange.NetworkAddressChanged 触发时显示，QR host 字段自动刷新。
+            -->
+            <Border IsVisible="{Binding IsNetworkChanged}"
+                    Background="{DynamicResource State.WarningBg}"
+                    Padding="12,8"
+                    CornerRadius="6">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="⚠"
+                               FontSize="14"
+                               Foreground="{DynamicResource State.Warning}"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="网络 IP 已变，请重新扫码"
+                               FontSize="12"
+                               Foreground="{DynamicResource State.Warning}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <!--
               v0.11 spec/17: 双卡片布局。LAN 上传（左）+ 扫码上传（右）等宽并排；
               间距 Space.5 (24)，外层 Grid MinWidth 防窄窗口挤压。
             -->
@@ -192,28 +212,29 @@
                                        IsVisible="{Binding ShowSuccessStatus}"/>
                         </StackPanel>
 
-                        <!-- v0.12: Token 区块（spec §4.6）—— App 端连接凭据 -->
+                        <!-- v0.14: Secret 区块（spec §4.6）—— App 端连接凭据 -->
                         <StackPanel Spacing="6" IsVisible="{Binding IsRunning}">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <TextBlock Grid.Column="0"
-                                           Text="Token: "
+                                           Text="Secret: "
                                            FontSize="12"
                                            Foreground="{DynamicResource Text.Secondary}"
                                            VerticalAlignment="Center"/>
                                 <TextBlock Grid.Column="1"
-                                           Text="{Binding CurrentToken}"
+                                           Text="{Binding CurrentSecret}"
                                            FontFamily="Consolas, Menlo, monospace"
-                                           FontSize="14"
+                                           FontSize="12"
                                            FontWeight="Bold"
                                            Foreground="{DynamicResource Accent.Stellar}"
-                                           VerticalAlignment="Center"/>
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"/>
                                 <Button Grid.Column="2"
-                                        Content="重置"
-                                        Command="{Binding RegenerateTokenCommand}"
+                                        Content="重置密钥"
+                                        Command="{Binding RegenerateSecretCommand}"
                                         Classes="toolbar-button"
                                         FontSize="11"/>
                             </Grid>
-                            <TextBlock Text="App 端扫码后输入此 token；点&lt;重置&gt;立即生效。"
+                            <TextBlock Text="App 端扫码一次即可；点&lt;重置密钥&gt;会让已扫码设备 401 需重新扫码。"
                                        FontSize="11"
                                        Foreground="{DynamicResource Text.Secondary}"
                                        TextWrapping="Wrap"/>
@@ -320,6 +341,12 @@
                                    FontSize="12"
                                    Foreground="{DynamicResource Text.Secondary}"
                                    HorizontalAlignment="Center"/>
+                        <!-- v0.14: 提示用户扫码一次后 PC 重启也无需重扫 -->
+                        <TextBlock Text="（扫码一次后，PC 重启也无需重扫）"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text.Tertiary}"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,4,0,0"/>
 
                         <!-- 最近一次上传的瞬时提示 -->
                         <TextBlock Text="{Binding RecentUploadMessage}"
