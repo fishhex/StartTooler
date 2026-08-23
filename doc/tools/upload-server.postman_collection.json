@@ -1,0 +1,237 @@
+{
+  "info": {
+    "name": "StartTooler LAN Upload Server (v0.14)",
+    "_postman_id": "starttooler-upload-server-v014",
+    "description": "覆盖 UploadServerService 全部路由 + 负面用例。\n\n导入后:\n1) 打开 Collection 变量,设置 host / port / secret / project\n2) 先跑 1.health 自动写入 secret 到环境变量(可选)\n3) 其余请求点 Send",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "host", "value": "127.0.0.1", "type": "default" },
+    { "key": "port", "value": "8080", "type": "default" },
+    { "key": "secret", "value": "replace_me_with_32_char_hex", "type": "default" },
+    { "key": "project", "value": "my-project", "type": "default" }
+  ],
+  "item": [
+    {
+      "name": "1) Health (no auth)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://{{host}}:{{port}}/api/v1/health",
+          "protocol": "http",
+          "host": ["{{host}}"],
+          "port": "{{port}}",
+          "path": ["api", "v1", "health"]
+        }
+      }
+    },
+    {
+      "name": "2) List projects (?k=)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://{{host}}:{{port}}/api/v1/projects?k={{secret}}",
+          "protocol": "http",
+          "host": ["{{host}}"],
+          "port": "{{port}}",
+          "path": ["api", "v1", "projects"],
+          "query": [
+            { "key": "k", "value": "{{secret}}" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "3) Upload to project (?k=)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "files",
+              "type": "file",
+              "src": []
+            }
+          ]
+        },
+        "url": {
+          "raw": "http://{{host}}:{{port}}/api/v1/projects/{{project}}/upload?k={{secret}}",
+          "protocol": "http",
+          "host": ["{{host}}"],
+          "port": "{{port}}",
+          "path": ["api", "v1", "projects", "{{project}}", "upload"],
+          "query": [
+            { "key": "k", "value": "{{secret}}" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "4) H5 upload page",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://{{host}}:{{port}}/upload",
+          "protocol": "http",
+          "host": ["{{host}}"],
+          "port": "{{port}}",
+          "path": ["upload"]
+        }
+      }
+    },
+    {
+      "name": "5) H5 legacy upload (no auth)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "files",
+              "type": "file",
+              "src": []
+            }
+          ]
+        },
+        "url": {
+          "raw": "http://{{host}}:{{port}}/upload",
+          "protocol": "http",
+          "host": ["{{host}}"],
+          "port": "{{port}}",
+          "path": ["upload"]
+        }
+      }
+    },
+    {
+      "name": "6) Negative cases",
+      "item": [
+        {
+          "name": "6.1 Wrong secret → 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://{{host}}:{{port}}/api/v1/projects?k=wrong_secret",
+              "protocol": "http",
+              "host": ["{{host}}"],
+              "port": "{{port}}",
+              "path": ["api", "v1", "projects"],
+              "query": [
+                { "key": "k", "value": "wrong_secret" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "6.2 X-Key header → 200",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Key", "value": "{{secret}}" }
+            ],
+            "url": {
+              "raw": "http://{{host}}:{{port}}/api/v1/projects",
+              "protocol": "http",
+              "host": ["{{host}}"],
+              "port": "{{port}}",
+              "path": ["api", "v1", "projects"]
+            }
+          }
+        },
+        {
+          "name": "6.3 Method mismatch → 405",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "http://{{host}}:{{port}}/api/v1/projects?k={{secret}}",
+              "protocol": "http",
+              "host": ["{{host}}"],
+              "port": "{{port}}",
+              "path": ["api", "v1", "projects"],
+              "query": [
+                { "key": "k", "value": "{{secret}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "6.4 Unknown path → 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://{{host}}:{{port}}/api/v1/nope",
+              "protocol": "http",
+              "host": ["{{host}}"],
+              "port": "{{port}}",
+              "path": ["api", "v1", "nope"]
+            }
+          }
+        },
+        {
+          "name": "6.5 Project not found → 404",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{host}}:{{port}}/api/v1/projects/no-such-project/upload?k={{secret}}",
+              "protocol": "http",
+              "host": ["{{host}}"],
+              "port": "{{port}}",
+              "path": ["api", "v1", "projects", "no-such-project", "upload"],
+              "query": [
+                { "key": "k", "value": "{{secret}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "6.6 Unsupported extension → 200 + failed[]",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\nContent-Disposition: form-data; name=\"files\"; filename=\"bad.txt\"\r\nContent-Type: text/plain\r\n\r\nhello\r\n------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+            },
+            "url": {
+              "raw": "http://{{host}}:{{port}}/api/v1/projects/{{project}}/upload?k={{secret}}",
+              "protocol": "http",
+              "host": ["{{host}}"],
+              "port": "{{port}}",
+              "path": ["api", "v1", "projects", "{{project}}", "upload"],
+              "query": [
+                { "key": "k", "value": "{{secret}}" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
